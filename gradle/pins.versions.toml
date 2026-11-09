@@ -2,11 +2,11 @@
 # single-app deps. Everything else (toolchain, BOM-managed Compose, lifecycle, Hilt, ktor,
 # coroutines, junit) comes from the shared `libs` catalog (build-conventions).
 [versions]
-# capullo-audio - immutable jitpack commit. Same pin as telecloud-radio, and deliberately the SAME
-# commit as the local capullo-audio-src checkout (cd1e595): everything HANDOFF-bootstrap documents
-# about SnapserverProcess/SnapcontrolPlugin/QueuePlaybackLoop behaviour was read at that commit, so
-# any other pin makes the docs and the artifact diverge silently.
-capulloAudio = "cd1e5959223e06b356034e6cf13e0ce1a783f37c"
+# capullo-audio - immutable jitpack commit. 92d1b63 = tip of fix/web-player-background (web player
+# background fix + cloudflared 2026.8.3), the same code the local ../capullo-audio composite build
+# uses, so friends' jitpack builds match the owner's. HANDOFF-bootstrap's notes on
+# SnapserverProcess/SnapcontrolPlugin/QueuePlaybackLoop were read at the older cd1e595.
+capulloAudio = "92d1b632b18d54154eec44b56994a97efb4150c2"
 # NOTE: no lib-snapcast-android pin here, on purpose. The native .so binaries arrive transitively
 # via capullo-audio, which owns the pin. telecloud's pins.versions.toml documents what a direct pin
 # cost them: a version mismatch let Gradle pick the lexically-higher hash and package a STALE .so
