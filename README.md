@@ -63,3 +63,7 @@ Then read [`HANDOFF-bootstrap.md`](HANDOFF-bootstrap.md) for the architecture an
 
 When you report station behaviour, name the tracks: "after liking X it played Y, Z" is useful,
 "it felt off" is not.
+
+## License
+
+GPL-3.0. See [`LICENSE`](LICENSE). Same licence as NewPipeExtractor, which this app uses.
