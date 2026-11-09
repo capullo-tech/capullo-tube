@@ -8,8 +8,13 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import dagger.hilt.android.AndroidEntryPoint
+import tech.capullo.tubecapullo.ui.player.PlayerScreen
 import tech.capullo.tubecapullo.ui.search.SearchScreen
 import tech.capullo.tubecapullo.ui.theme.TubeCapulloTheme
 
@@ -34,7 +39,13 @@ class MainActivity : ComponentActivity() {
         }
         setContent {
             TubeCapulloTheme {
-                SearchScreen()
+                // Two screens, so a flag instead of a nav library: rememberSaveable survives rotation.
+                var showPlayer by rememberSaveable { mutableStateOf(false) }
+                if (showPlayer) {
+                    PlayerScreen(onBack = { showPlayer = false })
+                } else {
+                    SearchScreen(onOpenPlayer = { showPlayer = true })
+                }
             }
         }
     }

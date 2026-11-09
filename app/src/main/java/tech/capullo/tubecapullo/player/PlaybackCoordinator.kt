@@ -21,9 +21,11 @@ class PlaybackCoordinator @Inject constructor() {
         val video: YtVideo? = null,
         val isPlaying: Boolean = false,
         val isBuffering: Boolean = false,
+        /** Current track length from the player; 0 until it's known (falls back to the video's). */
+        val durationMs: Long = 0,
     )
 
-    enum class Command { TOGGLE_PLAY_PAUSE, NEXT, STOP }
+    enum class Command { TOGGLE_PLAY_PAUSE, NEXT, PREVIOUS, STOP }
 
     private val _state = MutableStateFlow(State())
     val state = _state.asStateFlow()
@@ -35,6 +37,13 @@ class PlaybackCoordinator @Inject constructor() {
 
     private val _commands = MutableSharedFlow<Command>(extraBufferCapacity = 4)
     val commands = _commands.asSharedFlow()
+
+    // Separate from State so the 500 ms position tick only recomposes the seek bar.
+    private val _position = MutableStateFlow(0L)
+    val position = _position.asStateFlow()
+
+    private val _seeks = MutableSharedFlow<Long>(extraBufferCapacity = 1)
+    val seeks = _seeks.asSharedFlow()
 
     /** User-facing one-liners from the service ("skipped an unplayable track"), shown as toasts. */
     private val _events = MutableSharedFlow<String>(extraBufferCapacity = 4)
@@ -51,6 +60,20 @@ class PlaybackCoordinator @Inject constructor() {
 
     fun next() {
         _commands.tryEmit(Command.NEXT)
+    }
+
+    /** The station never goes back (played ids are burned): previous restarts the track. */
+    fun previous() {
+        _commands.tryEmit(Command.PREVIOUS)
+    }
+
+    fun seekTo(positionMs: Long) {
+        _seeks.tryEmit(positionMs)
+    }
+
+    /** Service-side: publish the playhead. */
+    fun updatePosition(positionMs: Long) {
+        _position.value = positionMs
     }
 
     fun stop() {

@@ -87,6 +87,8 @@ dependencies {
     // jar in the Gradle cache so the SPI signatures can be read before M4 (HANDOFF-bootstrap §7).
     // Brings lib-snapcast-android (the native .so binaries) + ktor transitively.
     implementation(pins.capullo.audio)
+    // Shared capullo UI: the multiroom SnapcastControlSheet (same sheet telecloud-radio uses).
+    implementation(pins.capullo.audio.ui)
 
     ksp(libs.hilt.android.compiler)
     implementation(libs.hilt.android)

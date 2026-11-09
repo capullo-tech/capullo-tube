@@ -65,7 +65,7 @@ import tech.capullo.tubecapullo.util.NetworkAddress
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SearchScreen(viewModel: SearchViewModel = hiltViewModel()) {
+fun SearchScreen(onOpenPlayer: () -> Unit, viewModel: SearchViewModel = hiltViewModel()) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val playerState by viewModel.playerState.collectAsStateWithLifecycle()
     val snapcastState by viewModel.snapcastState.collectAsStateWithLifecycle()
@@ -97,6 +97,7 @@ fun SearchScreen(viewModel: SearchViewModel = hiltViewModel()) {
                         onToggleLike = viewModel::toggleLike,
                         onTogglePlayPause = viewModel::togglePlayPause,
                         onNext = viewModel::next,
+                        onOpen = onOpenPlayer,
                     )
                 }
             }
@@ -151,7 +152,10 @@ fun SearchScreen(viewModel: SearchViewModel = hiltViewModel()) {
                             ResultRow(
                                 video = video,
                                 isPlaying = video.videoId == playerState.video?.videoId,
-                                onPlay = { viewModel.play(video) },
+                                onPlay = {
+                                    viewModel.play(video)
+                                    onOpenPlayer()
+                                },
                             )
                             HorizontalDivider()
                         }
@@ -245,8 +249,9 @@ private fun NowPlayingBar(
     onToggleLike: () -> Unit,
     onTogglePlayPause: () -> Unit,
     onNext: () -> Unit,
+    onOpen: () -> Unit,
 ) {
-    Surface(color = MaterialTheme.colorScheme.surfaceVariant) {
+    Surface(color = MaterialTheme.colorScheme.surfaceVariant, onClick = onOpen) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier

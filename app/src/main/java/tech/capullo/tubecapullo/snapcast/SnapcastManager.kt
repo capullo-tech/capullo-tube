@@ -151,6 +151,27 @@ class SnapcastManager @Inject constructor(
         }
     }
 
+    /** Client.SetVolume, applied optimistically so the sheet's slider doesn't jump back while the
+     *  server round-trips (ported from telecloud, minus its volume persistence). */
+    fun adjustClientVolume(clientId: String, percent: Int, muted: Boolean) {
+        _state.update { st ->
+            st.copy(
+                groups = st.groups.map { group ->
+                    group.copy(
+                        clients = group.clients.map { c ->
+                            if (c.id == clientId) c.copy(config = c.config.copy(volume = Volume(muted, percent))) else c
+                        },
+                    )
+                },
+            )
+        }
+        scope.launch { controlClient?.sendSetVolume(clientId, muted, percent) }
+    }
+
+    fun adjustClientLatency(clientId: String, latencyMs: Int) {
+        scope.launch { controlClient?.sendSetLatency(clientId, latencyMs) }
+    }
+
     fun stopBroadcast() {
         if (snapserverProcess == null && snapcontrolPlugin == null) return
         Log.d(TAG, "Stopping broadcast stack")

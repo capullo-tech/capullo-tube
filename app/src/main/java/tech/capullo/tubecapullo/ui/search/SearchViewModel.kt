@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -87,7 +88,12 @@ class SearchViewModel @Inject constructor(
                 }
                 _uiState.value = _uiState.value.copy(results = results)
                 if (results.isEmpty()) _toast.tryEmit("Nothing found for \"$query\"")
-            }.onFailure { _uiState.value = _uiState.value.copy(error = it.readable()) }
+            }.onFailure {
+                // A newer submit cancelled this search: not an error, and the newer job owns the
+                // spinner. runCatching catches CancellationException, so rethrow it here.
+                if (it is CancellationException) throw it
+                _uiState.value = _uiState.value.copy(error = it.readable())
+            }
             _uiState.value = _uiState.value.copy(isSearching = false)
         }
     }

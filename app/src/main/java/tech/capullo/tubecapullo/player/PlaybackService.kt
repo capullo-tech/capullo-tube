@@ -2,6 +2,7 @@ package tech.capullo.tubecapullo.player
 
 import android.app.PendingIntent
 import android.content.Intent
+import android.net.Uri
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.ForwardingPlayer
@@ -28,6 +29,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import tech.capullo.audio.contracts.NowPlaying
@@ -197,7 +199,10 @@ class PlaybackService : MediaSessionService() {
 
             override fun onPlaybackStateChanged(playbackState: Int) {
                 coordinator.updateState {
-                    it.copy(isBuffering = playbackState == Player.STATE_BUFFERING)
+                    it.copy(
+                        isBuffering = playbackState == Player.STATE_BUFFERING,
+                        durationMs = exo.duration.takeIf { d -> d != C.TIME_UNSET } ?: it.durationMs,
+                    )
                 }
                 if (playbackState == Player.STATE_ENDED) {
                     // The station queue is finite-and-growing (isRotating = false), so track end
@@ -282,7 +287,8 @@ class PlaybackService : MediaSessionService() {
         ).also { loop = it }
         stationLoop.onTrackChanged = { index ->
             val video = stationEngine.videoAt(index)
-            coordinator.updateState { it.copy(video = video, isBuffering = true) }
+            coordinator.updateState { it.copy(video = video, isBuffering = true, durationMs = 0) }
+            coordinator.updatePosition(0)
             // Update the session metadata too, so the notification / lock screen track the station.
             exo.currentMediaItem?.let { item ->
                 exo.replaceMediaItem(
@@ -292,6 +298,7 @@ class PlaybackService : MediaSessionService() {
                             MediaMetadata.Builder()
                                 .setTitle(video?.title)
                                 .setArtist(video?.uploader)
+                                .setArtworkUri(video?.thumbnailUrl?.let(Uri::parse))
                                 .build(),
                         )
                         .build(),
@@ -312,6 +319,7 @@ class PlaybackService : MediaSessionService() {
                 stationLoop.start()
             }
         }
+        launchPlayerTickers(exo)
         serviceScope.launch {
             coordinator.commands.collect { cmd ->
                 when (cmd) {
@@ -324,11 +332,24 @@ class PlaybackService : MediaSessionService() {
                         }
                     }
                     PlaybackCoordinator.Command.NEXT -> skipCurrent()
+                    PlaybackCoordinator.Command.PREVIOUS -> exo.seekTo(0)
                     PlaybackCoordinator.Command.STOP -> {
                         exo.stop()
                         coordinator.updateState { PlaybackCoordinator.State() }
                     }
                 }
+            }
+        }
+    }
+
+    private fun launchPlayerTickers(exo: ExoPlayer) {
+        serviceScope.launch { coordinator.seeks.collect { exo.seekTo(it) } }
+        // ponytail: fixed 500 ms poll, same cadence telecloud's seek bar uses; ticks while paused too
+        // (cheap: one property read), switch to an isPlaying-gated loop if battery ever shows it.
+        serviceScope.launch {
+            while (true) {
+                coordinator.updatePosition(exo.currentPosition)
+                delay(POSITION_TICK_MS)
             }
         }
     }
@@ -380,6 +401,8 @@ class PlaybackService : MediaSessionService() {
     }
 
     private companion object {
+        const val POSITION_TICK_MS = 500L
+
         // Matches what the YouTube extractor sends (TubeCapulloDownloader.USER_AGENT mirrors this;
         // both comments name each other because the values must move together).
         const val STREAM_USER_AGENT =
