@@ -22,6 +22,9 @@ real device. The taste weights are first guesses and need tuning from real liste
 
 Requirements: JDK 17, Android SDK 36. Device: Android 8.0+ (minSdk 26).
 
+Point Gradle at your SDK: open the project once in Android Studio (it writes `local.properties`),
+or set `ANDROID_HOME`, or create `local.properties` with `sdk.dir=/path/to/Android/Sdk`.
+
 ```bash
 ./gradlew :app:assembleDebug        # APK in app/build/outputs/
 ./gradlew :app:installDebug         # install on a connected device
