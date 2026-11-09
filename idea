@@ -1,0 +1,25 @@
+here i am describing the idea of what i would like to achieve.
+able to use youtube as an audio source where one android phone will act as the server,
+then could share audio to other clients.
+you can reference the repositories and libraries here
+
+https://github.com/capullo-tech
+https://github.com/orgs/capullo-tech/repositories
+lib-snapserver, integrate the snapcast same as RadioCapullo and telecloud-radio do.
+In the folder /home/danilovm/Documents/Proyectos/tele_cloud/
+i have already telecloud project which i've been playing with, also did development related to youtube audio
+where i can extract the audio and stream it as a telegram channel. 
+However, i decided i dont want to mix telecloud app with the youtube as a source audio,
+so i would like to create separate app.
+Using youtube to create a intelligent playlist, use the generator of youtube itself
+to give likes to create a playlist live, etc. 
+something like spotify, choose one music, the algorith choose for you,
+song radio based, while you give like the playlist is created
+if want to skip to other, search other to play. that's the fundamental idea.
+
+for the development, please also read the CONTRIBUTING.md in this folder.
+
+so i think let's start by learning the structure, creating the basis, same time learning
+how snapcast works, how is used, reference the capullo repos. in the future
+this idea of youtube as audio source, can become another source for the Radio capullo.
+

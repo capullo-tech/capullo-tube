@@ -1,0 +1,19 @@
+*.iml
+.gradle
+/local.properties
+/.idea
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+.kotlin
+app/build/
+
+# stray test APKs pulled for device install
+*.apk
+
+# local Claude Code / tokensave tooling
+.claude/
+.tokensave/
