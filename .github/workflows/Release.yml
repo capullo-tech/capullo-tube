@@ -9,8 +9,6 @@ on:
   push:
     branches:
       - main
-      # TEMPORARY smoke wiring for the ci-preview-release branch; removed before landing.
-      - ci-preview-release
   workflow_dispatch:
 
 permissions:
