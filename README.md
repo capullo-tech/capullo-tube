@@ -36,6 +36,20 @@ The capullo libraries (`capullo-audio`, `build-conventions`, Snapcast binaries) 
 jitpack. You do not need to clone them. To build `capullo-audio` from source instead, clone it to
 `../capullo-audio`; `settings.gradle.kts` then substitutes it automatically.
 
+## Preview releases
+
+Every push to `main` publishes a preview APK. The release `preview` holds one APK. GitHub deletes
+the previous release, so only one release exists at all times.
+
+Install previews with [Obtainium](https://github.com/ImranR98/Obtainium):
+
+1. Add the app source `https://github.com/capullo-tech/capullo-tube`.
+2. Set version detection to **Release title**.
+3. Enable prereleases.
+
+Every preview is signed with the same key as the previous one. Obtainium therefore installs a new
+preview over the old one, like an OTA update.
+
 ## Listen on another device
 
 1. Start a station on the phone. The app shows a **Broadcasting** URL.

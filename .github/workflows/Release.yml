@@ -1,0 +1,76 @@
+name: Release
+
+on:
+  # Preview channel only - no vX.Y.Z stable releases yet (RadioCapullo's preview mechanism,
+  # without its every-branch trigger: quantumcast retired that because republishing a public
+  # prerelease from every branch push is clutter). Each push to main republishes the single
+  # rolling `preview` prerelease, so OTA tools (Obtainium) see updates while exactly one
+  # release and one artifact exist at all times. Dispatch exists for the smoke test.
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# The delete-then-recreate sequence below keeps exactly one `preview` release; serializing runs
+# guards that invariant against two runs interleaving (push + dispatch racing each other).
+concurrency:
+  group: preview-release
+  cancel-in-progress: true
+
+jobs:
+  build:
+    uses: ./.github/workflows/Build.yml
+    # Reusable workflows don't get the repo secrets unless we pass them through - without this
+    # the build has no signing keystore and emits an UNSIGNED APK (telecloud-radio's comment).
+    secrets: inherit
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout project sources
+        uses: actions/checkout@v4
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: capullo-tube-${{ github.sha }}
+          path: ./artifacts
+      - name: Verify the APK is signed
+        # A mistyped RELEASE_* secret name leaves the signingConfig unbuilt and the APK
+        # unsigned; the build stays green and ships something no device can install. Unsigned
+        # APKs fail apksigner verify, so stop here, before the old release is deleted.
+        run: |
+          set -eu
+          apk=$(find ./artifacts -name "*.apk" | head -1)
+          apksigner=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          "$apksigner" verify --print-certs "$apk" | grep 'SHA-256 digest'
+      - name: Publish the rolling preview release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          apk_file=$(find ./artifacts -name "*.apk" | head -1)
+          commit_hash=$(git rev-parse --short HEAD)
+          tag="preview"
+
+          # Rolling single release: drop the previous one. Each step is idempotent so the
+          # first-ever run passes too (RadioCapullo's exact sequence).
+          gh release delete "$tag" --yes || true
+          git tag -d "$tag" || true
+          git push origin :refs/tags/preview || true
+
+          # The title carries the run number and commit hash: the tag never changes, so
+          # Obtainium's release-title version detection is what sees each republication
+          # as a new version.
+          gh release create "$tag" \
+            --target "${{ github.ref_name }}" \
+            --prerelease \
+            --title "Preview ${{ github.run_number }} ($commit_hash)" \
+            --notes "Preview build from $commit_hash. Signed with the preview key: it installs over previous previews."
+          # Rename the file itself (gh's `#label` only sets a display label, not the asset
+          # name - telecloud-radio's comment). Stable asset name = stable download URL for
+          # OTA tools: /releases/download/preview/capullo-tube-preview.apk
+          cp "$apk_file" "capullo-tube-preview.apk"
+          gh release upload "$tag" "capullo-tube-preview.apk" --clobber
