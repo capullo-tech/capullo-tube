@@ -24,6 +24,24 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // CI signs with the preview keystore from RELEASE_* env, quantumcast's exact pattern
+    // (.github/workflows/Build.yml decodes RELEASE_KEYSTORE_BASE64 to $RUNNER_TEMP). Absent or
+    // empty env - local dev, fork PRs - leaves the release build UNSIGNED: green but
+    // un-installable. Release.yml runs `apksigner verify` before publishing to reject that case.
+    val releaseKeystore = System.getenv("RELEASE_KEYSTORE_FILE")
+        ?.let(::file)
+        ?.takeIf { it.exists() && it.length() > 0L }
+    signingConfigs {
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = releaseKeystore
+                storePassword = System.getenv("RELEASE_STORE_PASSWORD")
+                keyAlias = System.getenv("RELEASE_KEY_ALIAS")
+                keyPassword = System.getenv("RELEASE_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -31,6 +49,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            signingConfig = signingConfigs.findByName("release")
         }
     }
     compileOptions {
