@@ -1,5 +1,6 @@
 package tech.capullo.tubecapullo.ui.search
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -52,8 +53,9 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import tech.capullo.tubecapullo.data.youtube.YtVideo
-import tech.capullo.tubecapullo.player.PlaybackCoordinator
-import tech.capullo.tubecapullo.util.NetworkAddress
+import tech.capullo.tubecapullo.ui.shared.BroadcastRow
+import tech.capullo.tubecapullo.ui.shared.NowPlayingBar
+import tech.capullo.tubecapullo.util.formatDuration
 
 /**
  * Search YouTube and tap a row to play it - the M2 slice. The seed-a-station flow (M4) will grow
@@ -65,7 +67,13 @@ import tech.capullo.tubecapullo.util.NetworkAddress
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SearchScreen(onOpenPlayer: () -> Unit, viewModel: SearchViewModel = hiltViewModel()) {
+fun SearchScreen(
+    onOpenPlayer: () -> Unit,
+    onBack: (() -> Unit)? = null,
+    viewModel: SearchViewModel = hiltViewModel(),
+) {
+    // Set only when Search is stacked on Home; as the launch screen, system back exits as before.
+    BackHandler(enabled = onBack != null) { onBack?.invoke() }
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val playerState by viewModel.playerState.collectAsStateWithLifecycle()
     val snapcastState by viewModel.snapcastState.collectAsStateWithLifecycle()
@@ -208,103 +216,4 @@ private fun ResultRow(
         },
         modifier = Modifier.clickable(onClick = onPlay),
     )
-}
-
-@Composable
-private fun BroadcastRow(httpPort: Int, listenerCount: Int) {
-    // The count includes this phone's own snapclient, so "listeners" is honest: 1 = just here.
-    val url = NetworkAddress.lanIpv4()?.let { "http://$it:$httpPort" }
-    Surface(color = MaterialTheme.colorScheme.secondaryContainer) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 6.dp),
-        ) {
-            Icon(
-                Icons.Default.Sensors,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                modifier = Modifier.size(18.dp),
-            )
-            Text(
-                buildString {
-                    append("  Broadcasting · $listenerCount listening")
-                    if (url != null) append(" · $url")
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
-}
-
-@Composable
-private fun NowPlayingBar(
-    video: YtVideo,
-    state: PlaybackCoordinator.State,
-    isLiked: Boolean,
-    onToggleLike: () -> Unit,
-    onTogglePlayPause: () -> Unit,
-    onNext: () -> Unit,
-    onOpen: () -> Unit,
-) {
-    Surface(color = MaterialTheme.colorScheme.surfaceVariant, onClick = onOpen) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    video.title,
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                video.uploader?.let {
-                    Text(
-                        it,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-            IconButton(onClick = onToggleLike) {
-                Icon(
-                    if (isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                    contentDescription = if (isLiked) "Unlike" else "Like - more like this",
-                    tint = if (isLiked) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
-                )
-            }
-            if (state.isBuffering) {
-                CircularProgressIndicator(Modifier.size(24.dp))
-            } else {
-                IconButton(onClick = onTogglePlayPause) {
-                    Icon(
-                        if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (state.isPlaying) "Pause" else "Play",
-                    )
-                }
-            }
-            IconButton(onClick = onNext) {
-                Icon(Icons.Default.SkipNext, contentDescription = "Next track")
-            }
-        }
-    }
-}
-
-private fun formatDuration(seconds: Long): String? {
-    if (seconds <= 0) return null
-    val minutes = seconds / 60
-    return "%d:%02d".format(minutes, seconds % 60)
 }

@@ -2,6 +2,7 @@ package tech.capullo.tubecapullo.station
 
 import io.mockk.coEvery
 import io.mockk.mockk
+import io.mockk.verify
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -11,6 +12,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import tech.capullo.tubecapullo.data.history.LikedTracks
+import tech.capullo.tubecapullo.data.history.PlayHistory
 import tech.capullo.tubecapullo.data.youtube.YouTubeExtractorClient
 import tech.capullo.tubecapullo.data.youtube.YtStream
 import tech.capullo.tubecapullo.data.youtube.YtVideo
@@ -60,7 +63,10 @@ class StationEngineTest {
         return extractor
     }
 
-    private fun TestScope.engine() = StationEngine(fakeExtractor(), this)
+    private val playHistory = mockk<PlayHistory>(relaxed = true)
+    private val likedTracks = mockk<LikedTracks>(relaxed = true)
+
+    private fun TestScope.engine() = StationEngine(fakeExtractor(), this, playHistory, likedTracks)
 
     /** Walk the station like the loop would: read idAt, report advanced. */
     private fun StationEngine.advanceThrough(count: Int): List<String> {
@@ -119,7 +125,7 @@ class StationEngineTest {
         )
         coEvery { extractor.relatedStreams(any(), any()) } returns emptyList()
         coEvery { extractor.resolveAudioStream(any(), any()) } answers { stream(firstArg()) }
-        val engine = StationEngine(extractor, this)
+        val engine = StationEngine(extractor, this, playHistory, likedTracks)
 
         engine.startStation(video("seed0000000"))
         advanceUntilIdle()
@@ -131,7 +137,7 @@ class StationEngineTest {
     @Test
     fun `refill draws from the currently playing track, so the station drifts`() = runTest(StandardTestDispatcher()) {
         val mixSeeds = mutableListOf<String>()
-        val engine = StationEngine(fakeExtractor(mixSeeds), this)
+        val engine = StationEngine(fakeExtractor(mixSeeds), this, playHistory, likedTracks)
         engine.startStation(video("seed0000000"))
         advanceUntilIdle()
 
@@ -143,6 +149,43 @@ class StationEngineTest {
         assertTrue(
             "refills only ever drew from the original seed: $mixSeeds",
             mixSeeds.drop(1).any { it != "seed0000000" },
+        )
+    }
+
+    @Test
+    fun `advancing records the played track in history`() = runTest(StandardTestDispatcher()) {
+        val engine = engine()
+        engine.startStation(video("seed0000000"))
+        advanceUntilIdle()
+        engine.advanceThrough(1)
+
+        // onQueueAdvanced is the write point - history backs Home's "Because you played".
+        verify { playHistory.record(match { it.videoId == "seed0000000" }) }
+    }
+
+    @Test
+    fun `liking persists through the liked store`() = runTest(StandardTestDispatcher()) {
+        val engine = engine()
+        engine.startStation(video("seed0000000"))
+        advanceUntilIdle()
+        engine.advanceThrough(1)
+
+        engine.toggleLike("seed0000000")
+        verify { likedTracks.set(match { it.videoId == "seed0000000" }, true) }
+
+        engine.toggleLike("seed0000000")
+        verify { likedTracks.set(match { it.videoId == "seed0000000" }, false) }
+    }
+
+    @Test
+    fun `likes hydrate from the store at startup`() = runTest(StandardTestDispatcher()) {
+        coEvery { likedTracks.all() } returns listOf(video("liked000001"))
+        val engine = engine()
+        advanceUntilIdle()
+
+        assertTrue(
+            "hydrated like missing: ${engine.likedIds.value}",
+            "liked000001" in engine.likedIds.value,
         )
     }
 }
@@ -203,9 +246,12 @@ class StationTasteTest {
         return played
     }
 
+    private val playHistory = mockk<PlayHistory>(relaxed = true)
+    private val likedTracks = mockk<LikedTracks>(relaxed = true)
+
     @Test
     fun `a like shifts the very next picks to the liked neighbourhood`() = runTest(StandardTestDispatcher()) {
-        val engine = StationEngine(fakeExtractor(), this)
+        val engine = StationEngine(fakeExtractor(), this, playHistory, likedTracks)
         engine.startStation(video("SEED"))
         advanceUntilIdle()
 
@@ -235,7 +281,7 @@ class StationTasteTest {
 
     @Test
     fun `unlike removes the boost`() = runTest(StandardTestDispatcher()) {
-        val engine = StationEngine(fakeExtractor(), this)
+        val engine = StationEngine(fakeExtractor(), this, playHistory, likedTracks)
         engine.startStation(video("SEED"))
         advanceUntilIdle()
         val played = engine.advanceThrough(2)
@@ -250,7 +296,7 @@ class StationTasteTest {
     @Test
     fun `a skip damps the skipped neighbourhood in favour of neutral candidates`() = runTest(StandardTestDispatcher()) {
         val mixSeeds = mutableListOf<String>()
-        val engine = StationEngine(fakeExtractor(mixSeeds), this)
+        val engine = StationEngine(fakeExtractor(mixSeeds), this, playHistory, likedTracks)
         engine.startStation(video("SEED"))
         advanceUntilIdle()
 
@@ -286,7 +332,7 @@ class StationTasteTest {
         coEvery { extractor.mix(any(), any()) } answers { listOf(video(firstArg())) + shared }
         coEvery { extractor.relatedStreams(any(), any()) } returns emptyList()
         coEvery { extractor.resolveAudioStream(any(), any()) } answers { stream(firstArg()) }
-        val engine = StationEngine(extractor, this)
+        val engine = StationEngine(extractor, this, playHistory, likedTracks)
 
         engine.startStation(video("SEEDA"))
         advanceUntilIdle()
@@ -303,7 +349,7 @@ class StationTasteTest {
     @Test
     fun `a like re-seeds a mix from the liked track immediately`() = runTest(StandardTestDispatcher()) {
         val mixSeeds = mutableListOf<String>()
-        val engine = StationEngine(fakeExtractor(mixSeeds), this)
+        val engine = StationEngine(fakeExtractor(mixSeeds), this, playHistory, likedTracks)
         engine.startStation(video("SEED"))
         advanceUntilIdle()
         val played = engine.advanceThrough(2)

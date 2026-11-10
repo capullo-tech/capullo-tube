@@ -16,6 +16,7 @@ import org.schabi.newpipe.extractor.exceptions.ReCaptchaException
 import org.schabi.newpipe.extractor.exceptions.SignInConfirmNotBotException
 import org.schabi.newpipe.extractor.exceptions.SoundCloudGoPlusContentException
 import org.schabi.newpipe.extractor.exceptions.YoutubeMusicPremiumContentException
+import org.schabi.newpipe.extractor.kiosk.KioskInfo
 import org.schabi.newpipe.extractor.localization.ContentCountry
 import org.schabi.newpipe.extractor.localization.Localization
 import org.schabi.newpipe.extractor.playlist.PlaylistInfo
@@ -32,10 +33,10 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * The whole YouTube surface the rest of the app is allowed to touch: search, playlist/mix
- * expansion, related streams and stream resolution. Nothing else in TubeCapullo imports
- * `org.schabi.newpipe.*`, so when extraction breaks (and it will - YouTube rotates its player JS,
- * see the pin comment in pins.versions.toml) the blast radius is this file.
+ * The whole YouTube surface the rest of the app is allowed to touch: search, the trending-music
+ * kiosk, playlist/mix expansion, related streams and stream resolution. Nothing else in
+ * TubeCapullo imports `org.schabi.newpipe.*`, so when extraction breaks (and it will - YouTube
+ * rotates its player JS, see the pin comment in pins.versions.toml) the blast radius is this file.
  *
  * Every call suspends onto IO and translates the extractor's dozen exception types into
  * [YouTubeError], which callers can actually branch on.
@@ -67,6 +68,21 @@ class YouTubeExtractorClient @Inject constructor(
                 "",
             ),
         )
+        info.relatedItems
+            .filterIsInstance<StreamInfoItem>()
+            .filter { it.streamType == StreamType.VIDEO_STREAM }
+            .take(limit)
+            .mapNotNull { it.toYtVideo() }
+    }
+
+    /**
+     * YouTube's trending-music chart (`trending_music` kiosk; general Trending is deprecated in
+     * the extractor since YouTube removed that page 2025-07-21). Metadata only, like [search] -
+     * the launch home's recommendation cards. Region follows the device locale, which
+     * [ensureInitialized] pins into the extractor's [org.schabi.newpipe.extractor.localization.ContentCountry].
+     */
+    suspend fun trendingMusic(limit: Int = 30): List<YtVideo> = extract("trending_music") {
+        val info = KioskInfo.getInfo(ServiceList.YouTube, TRENDING_MUSIC_URL)
         info.relatedItems
             .filterIsInstance<StreamInfoItem>()
             .filter { it.streamType == StreamType.VIDEO_STREAM }
@@ -290,5 +306,11 @@ class YouTubeExtractorClient @Inject constructor(
          *  reached inside the first two pages; paging past ~100 raw items buys repeats, not
          *  tracks (docs/probes/rd-mix-results.md, run 2026-08-18). */
         const val MIX_RAW_FETCH_LIMIT = 100
+
+        /** The trending-music kiosk URL. Mirrors YoutubeTrendingMusicLinkHandlerFactory's
+         *  getUrl ("https://charts.youtube.com" + "/charts/TrendingVideos" + "/RightNow"),
+         *  spelled out so the fetch needs no handler args; if the extractor moves the chart,
+         *  re-derive from that factory (KIOSK_ID "trending_music"). */
+        const val TRENDING_MUSIC_URL = "https://charts.youtube.com/charts/TrendingVideos/RightNow"
     }
 }

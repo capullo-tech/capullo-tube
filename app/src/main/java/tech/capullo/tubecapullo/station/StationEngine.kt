@@ -8,6 +8,8 @@ import kotlinx.coroutines.launch
 import tech.capullo.audio.contracts.MediaRequest
 import tech.capullo.audio.contracts.MediaSourceProvider
 import tech.capullo.audio.contracts.PlaybackQueue
+import tech.capullo.tubecapullo.data.history.LikedTracks
+import tech.capullo.tubecapullo.data.history.PlayHistory
 import tech.capullo.tubecapullo.data.youtube.YouTubeExtractorClient
 import tech.capullo.tubecapullo.data.youtube.YtVideo
 import javax.inject.Inject
@@ -42,6 +44,8 @@ import kotlin.random.Random
 class StationEngine @Inject constructor(
     private val extractor: YouTubeExtractorClient,
     private val scope: CoroutineScope,
+    private val playHistory: PlayHistory,
+    private val likedTracks: LikedTracks,
 ) : MediaSourceProvider {
 
     data class Candidate(val video: YtVideo, val source: Source, val fromVideoId: String) {
@@ -61,8 +65,9 @@ class StationEngine @Inject constructor(
     private var current = -1
     private var refilling = false
 
-    // Taste, session-scoped. Uploader sets catch resemblance across neighbourhoods (the only
-    // similarity signal the metadata carries). All mutated under [lock].
+    // Taste. Likes persist across restarts (M-C, hydrated in init); skips stay session-scoped.
+    // Uploader sets catch resemblance across neighbourhoods (the only similarity signal the
+    // metadata carries). All mutated under [lock].
     private val _likedIds = MutableStateFlow<Set<String>>(emptySet())
     private val skippedIds = mutableSetOf<String>()
     private val likedUploaders = mutableSetOf<String>()
@@ -70,6 +75,19 @@ class StationEngine @Inject constructor(
 
     /** Liked video ids, for the UI's heart state. */
     val likedIds: StateFlow<Set<String>> = _likedIds.asStateFlow()
+
+    init {
+        // Hydrate likes from disk once (M-C): ids feed the heart state, uploaders feed the nudge.
+        // Ms-scale; a like pressed before this lands would toggle against an empty set - an
+        // accepted race for a window of one DB read.
+        scope.launch {
+            val persisted = likedTracks.all()
+            synchronized(lock) {
+                _likedIds.value = _likedIds.value + persisted.map { it.videoId }
+                persisted.forEach { it.uploader?.let { u -> likedUploaders += u } }
+            }
+        }
+    }
 
     /** Jump to a new station seeded from [seed]: clears queue and pool but KEEPS the session's
      *  played history and taste, so a jump never causes a replay and likes keep steering. Instant -
@@ -89,8 +107,10 @@ class StationEngine @Inject constructor(
      *  liked track immediately - the pool floods with its neighbourhood without waiting for the
      *  low-water refill. Unlike only removes the boost; it does not claw back candidates. */
     fun toggleLike(videoId: String) {
+        var video: YtVideo? = null
         val becameLiked = synchronized(lock) {
-            val uploader = queue.find { it.videoId == videoId }?.uploader
+            video = queue.find { it.videoId == videoId }
+            val uploader = video?.uploader
             if (videoId in _likedIds.value) {
                 _likedIds.value -= videoId
                 uploader?.let { likedUploaders -= it }
@@ -101,6 +121,8 @@ class StationEngine @Inject constructor(
                 true
             }
         }
+        // Persist both directions (M-C) - the full video carries the row's metadata.
+        video?.let { likedTracks.set(it, becameLiked) }
         // A taste change must reach the EAR quickly: the queue already holds a lookahead picked
         // under the old scores, so re-plan it - for a new like, after the re-seeded mix lands (the
         // boosted neighbourhood isn't in the pool until then); for an unlike, immediately.
@@ -140,6 +162,7 @@ class StationEngine @Inject constructor(
             current = index
             queue.getOrNull(index)?.also { playedIds += it.videoId }
         } ?: return
+        playHistory.record(playing) // fire-and-forget bookkeeping (M-B); never stalls the loop
         appendFromPool()
         maybeRefill(playing.videoId)
         prefetch(index + 1)

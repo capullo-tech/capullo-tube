@@ -81,6 +81,12 @@ androidComponents {
     }
 }
 
+// Room schema export: versioned JSON under app/schemas/ so future migrations are reviewable
+// (Jetispot's convention; telecloud runs Room without schema export).
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 dependencies {
     // The snapcast delivery engine's transport classes + capullo-audio-contracts (re-exported as
     // api). Pulled in at M1 on purpose: it validates the jitpack pin early and lands the contracts
@@ -91,6 +97,7 @@ dependencies {
     implementation(pins.capullo.audio.ui)
 
     ksp(libs.hilt.android.compiler)
+    ksp(libs.room.compiler)
     implementation(libs.hilt.android)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
@@ -116,6 +123,12 @@ dependencies {
     // for the player-JS deobfuscation.
     implementation(pins.newpipe.extractor)
     implementation(pins.okhttp) // backs the extractor's blocking Downloader SPI (see data/youtube/)
+    implementation(pins.coil.compose) // home card art (search rows stay icon-only; see ResultRow)
+
+    // Play history ("Because you played" on Home). Versions come from the shared catalog,
+    // same as telecloud's Room setup.
+    implementation(libs.room.runtime)
+    implementation(libs.room.ktx)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
