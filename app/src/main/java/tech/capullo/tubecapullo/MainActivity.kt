@@ -14,6 +14,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import dagger.hilt.android.AndroidEntryPoint
+import tech.capullo.tubecapullo.ui.home.HomeScreen
 import tech.capullo.tubecapullo.ui.player.PlayerScreen
 import tech.capullo.tubecapullo.ui.search.SearchScreen
 import tech.capullo.tubecapullo.ui.theme.TubeCapulloTheme
@@ -39,12 +40,21 @@ class MainActivity : ComponentActivity() {
         }
         setContent {
             TubeCapulloTheme {
-                // Two screens, so a flag instead of a nav library: rememberSaveable survives rotation.
+                // Three screens (home, search, player), still flag pairs rather than a nav
+                // library: rememberSaveable survives rotation, and no screen needs back-stack
+                // arguments. Revisit for Navigation3 (CONTRIBUTING §2) when screens need args.
+                var showSearch by rememberSaveable { mutableStateOf(false) }
                 var showPlayer by rememberSaveable { mutableStateOf(false) }
-                if (showPlayer) {
-                    PlayerScreen(onBack = { showPlayer = false })
-                } else {
-                    SearchScreen(onOpenPlayer = { showPlayer = true })
+                when {
+                    showPlayer -> PlayerScreen(onBack = { showPlayer = false })
+                    showSearch -> SearchScreen(
+                        onOpenPlayer = { showPlayer = true },
+                        onBack = { showSearch = false },
+                    )
+                    else -> HomeScreen(
+                        onOpenSearch = { showSearch = true },
+                        onOpenPlayer = { showPlayer = true },
+                    )
                 }
             }
         }
