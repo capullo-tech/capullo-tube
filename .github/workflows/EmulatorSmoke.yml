@@ -182,10 +182,19 @@ jobs:
           set -euo pipefail
           # -g pre-grants POST_NOTIFICATIONS on API 33+, so the first frame is the app and not
           # the system permission sheet (the smoke assertions don't need it, but the failure
-          # screenshots benefit). Retried, not one-shot: a just-booted 37.0 guest can refuse the
-          # package service with Broken pipe for a few seconds after boot_completed=1 (same
-          # settling window that breaks the emulator action's keyevent) - identical installs
-          # succeed seconds later.
+          # screenshots benefit).
+          #
+          # Everything below is defensive around the post-boot settling window: a fresh 37.0
+          # guest's package service answers boot_completed but Broken-pipes the first install,
+          # and that poisoned half-install outlives the retry - instrumentation then starts
+          # against a package whose APK binding reads "inode == 0" and every activity lookup
+          # fails. So: wait for the service to actually answer, retry the installs anyway, and
+          # do not instrument until the package genuinely resolves.
+          for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+            adb shell pm path android >/dev/null 2>&1 && break
+            echo "package service not answering yet, waiting..."
+            sleep 2
+          done
           install_with_retry() {
             for _ in 1 2 3 4 5 6 7 8 9 10; do
               if adb install -r -g "$1"; then return 0; fi
@@ -195,9 +204,15 @@ jobs:
             echo "::error::could not install $1 after 10 attempts"
             return 1
           }
+          adb logcat -c
           install_with_retry apks/debug/app-debug.apk
           install_with_retry apks/androidTest/debug/app-debug-androidTest.apk
-          adb logcat -c
+          for _ in 1 2 3 4 5 6 7 8 9 10; do
+            adb shell pm path tech.capullo.tubecapullo | grep -q apk && break
+            echo "package not fully registered yet, waiting..."
+            sleep 3
+          done
+          adb shell pm path tech.capullo.tubecapullo | grep -q apk
           adb shell am instrument -w -e class tech.capullo.tubecapullo.MainSmokeTest \
             tech.capullo.tubecapullo.test/androidx.test.runner.AndroidJUnitRunner \
             2>&1 | tee "$RUNNER_TEMP/instrument.log"
