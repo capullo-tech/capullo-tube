@@ -191,29 +191,17 @@ jobs:
             done
           fi
           echo "Emulator booted (android-$ANDROID_API, $EMU_CORES cores / $EMU_RAM)."
-          # Launcher stability gate: the newest images crash-loop NexusLauncher for the first
-          # minute or two after boot (DEAD_OBJECT creating gesture-monitor surfaces), and any
-          # process death in that window can tear the UiAutomation connection down mid-test
-          # ("System has crashed"). Wait until the launcher pid holds steady across checks
-          # before touching the guest - a few seconds on stable legs, self-limiting on 37.0.
-          last=""; stable=0
-          for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24; do
-            cur=$(adb shell pidof com.google.android.apps.nexuslauncher 2>/dev/null | tr -d '\r' || true)
-            if [ -n "$cur" ] && [ "$cur" = "$last" ]; then stable=$((stable+1)); else stable=0; fi
-            last="$cur"
-            if [ "$stable" -ge 3 ]; then break; fi
-            sleep 5
-          done
-          echo "Launcher settled (pid $last, stability $stable/3)."
-          # User-unlock gate: FBE images boot through a locked-user (direct boot) phase, and
-          # until the credential-encrypted storage unlocks, activities of apps that are not
+          # User-unlock gate, FIRST (the launcher cannot settle under a locked user): FBE
+          # images boot through a locked-user (direct boot) phase; until the
+          # credential-encrypted storage is prepared, activities of apps that are not
           # direct-boot-aware cannot start at all (am start Error type 3 against an activity
-          # dumpsys shows registered) while the system churns (SystemUI/launcher crash loops,
-          # UiAutomation teardowns). Poll for the unlocked state, nudging the no-credential
-          # keyguard with dismiss-keyguard every round - that is the unlock trigger on
-          # emulators. Best-effort, not fatal: the string is verified on the images this
-          # matrix runs, but a reworded dumpsys on some future minor must not fail a leg
-          # whose system is actually fine.
+          # dumpsys shows registered), the launcher crash-loops, and - the trap run 15 hit -
+          # RUNNING_UNLOCKED alone is premature: prepareUserData/reconcileAppsData still runs
+          # for ~20s after it and SIGKILLs app processes that started during the locked phase,
+          # taking the instrumentation down with them ("System has crashed"). So: wait for
+          # RUNNING_UNLOCKED, nudging the no-credential keyguard with dismiss-keyguard every
+          # round (the unlock trigger on emulators), THEN also wait for
+          # sys.user.0.ce_available=true before anything else touches the guest.
           unlocked=0
           for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36; do
             if adb shell dumpsys user 2>/dev/null | tr -d '\r' | grep -q RUNNING_UNLOCKED; then
@@ -224,10 +212,36 @@ jobs:
             sleep 5
           done
           if [ "$unlocked" = "1" ]; then
-            echo "User 0 unlocked (RUNNING_UNLOCKED seen)."
+            echo "User 0 state RUNNING_UNLOCKED; waiting for CE storage."
           else
             echo "::warning::user-unlock marker never appeared (3 min); proceeding anyway"
           fi
+          ce_ok=0
+          for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do
+            if [ "$(adb shell getprop sys.user.0.ce_available 2>/dev/null | tr -d '\r')" = "true" ]; then
+              ce_ok=1
+              break
+            fi
+            sleep 5
+          done
+          if [ "$ce_ok" = "1" ]; then
+            echo "User 0 CE storage available."
+          else
+            echo "::warning::sys.user.0.ce_available never became true; proceeding anyway"
+          fi
+          sleep 20
+          # Launcher stability gate, now meaningful (post-unlock): any process still dying at
+          # this point would still tear the UiAutomation connection down mid-test ("System has
+          # crashed"). Wait until the launcher pid holds steady across checks.
+          last=""; stable=0
+          for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24; do
+            cur=$(adb shell pidof com.google.android.apps.nexuslauncher 2>/dev/null | tr -d '\r' || true)
+            if [ -n "$cur" ] && [ "$cur" = "$last" ]; then stable=$((stable+1)); else stable=0; fi
+            last="$cur"
+            if [ "$stable" -ge 3 ]; then break; fi
+            sleep 5
+          done
+          echo "Launcher settled (pid $last, stability $stable/3)."
           # Post-boot settle, best-effort on purpose: a just-booted guest can refuse the input
           # service for a few seconds (the unlock keyevent is what killed the action-based
           # runs) and none of it is required for the smoke test to be meaningful.
