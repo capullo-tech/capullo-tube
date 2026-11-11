@@ -49,8 +49,8 @@ jobs:
       # into the log and summary - "which system images existed when this ran" - so a leg
       # failing on a missing image is diagnosed in one glance; (2) resolve SDK 37's platform
       # minor for the matrix (below). NOTE the absolute sdkmanager path: cmdline-tools is NOT
-      # on PATH for plain steps (only android-emulator-runner puts it there), and the first
-      # catalog dump silently no-oped behind 2>/dev/null that way.
+      # on PATH for plain steps, and a catalog dump once no-oped silently behind 2>/dev/null
+      # that way.
       - name: Dump system-image catalog, resolve SDK 37 minor
         id: catalog
         run: |
@@ -91,18 +91,37 @@ jobs:
       # One leg's emulator crashing says nothing about the other nine API levels.
       fail-fast: false
       matrix:
-        # Quoted: the 37 leg's resolved string substitutes through the same input.
+        # Quoted: the 37 leg's resolved string substitutes through the same env.
         api-level: ['28', '29', '30', '31', '32', '33', '34', '35', '36', '37']
         include:
           # The 37.0 image is the matrix's slowest cold boot (newest guest, biggest system):
           # on the default 2 vCPU / 2GB AVD it sat in "adb: device offline" past the whole
-          # 15-minute boot budget (run 4). Give this leg the runner's full 4 vCPU / 4GB and
-          # twice the budget - the rest boot in ~2 minutes on the defaults.
+          # 15-minute boot budget. Give this leg the runner's full 4 vCPU / 4GB and twice the
+          # budget - the rest boot in ~2 minutes on the defaults.
           - api-level: '37'
             cores: '4'
             ram-size: '4096M'
             boot-timeout: '1800'
+    env:
+      # For 37, the build leg's resolved platform minor ("37.x") replaces the literal: the
+      # catalog has no android-37, only minor-versioned 37.0/37.1/... platforms and images.
+      ANDROID_API: ${{ matrix.api-level == '37' && needs.build.outputs.api37 || matrix.api-level }}
+      EMU_CORES: ${{ matrix.cores || '2' }}
+      EMU_RAM: ${{ matrix.ram-size || '2048M' }}
+      BOOT_TIMEOUT: ${{ matrix.boot-timeout || '900' }}
     steps:
+      # Emulator orchestration is manual on purpose, not reactivecircus/android-emulator-runner:
+      # the action runs its post-boot "input keyevent 82" unlock with no retry and treats its
+      # failure as fatal (a just-booted 37.0 guest's input service returns Broken pipe), it
+      # splits script: into single lines each run as its own sh -c, and it hides exactly the
+      # boot lifecycle a ten-leg matrix needs to see. ~30 lines here own all of that.
+      - name: Put Android SDK tools on PATH
+        run: |
+          SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          echo "$SDK/platform-tools" >> "$GITHUB_PATH"
+          echo "$SDK/emulator" >> "$GITHUB_PATH"
+          echo "$SDK/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
       - name: Download smoke APKs
         uses: actions/download-artifact@v4
         with:
@@ -116,42 +135,68 @@ jobs:
             | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Boot emulator and run the launch smoke test
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          # upload-artifact roots multi-path uploads at the least common ancestor, so the APKs
-          # land as debug/... and androidTest/debug/... under the download dir - not flat.
-          # For 37, the build leg's resolved platform minor ("37.x") replaces the literal: the
-          # catalog has no android-37, only minor-versioned 37.0/37.1/... platforms and images.
-          api-level: ${{ matrix.api-level == '37' && needs.build.outputs.api37 || matrix.api-level }}
-          arch: x86_64
-          target: google_apis
-          emulator-options: >-
-            -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
-            -no-metrics -camera-back none -camera-front none
-          disable-animations: true
-          cores: ${{ matrix.cores || '2' }}
-          ram-size: ${{ matrix.ram-size || '2048M' }}
-          emulator-boot-timeout: ${{ matrix.boot-timeout || '900' }}
-          script: |
-            # NOTE: android-emulator-runner splits this into single LINES, each its own sh -c
-            # (dash - no pipefail): every command below is one self-contained line, and adb
-            # transport failures are caught by the positive OK-marker check instead.
-            # -g pre-grants POST_NOTIFICATIONS on API 33+, so the first frame is the app and
-            # not the system permission sheet (the smoke assertions don't need it, but the
-            # failure screenshots benefit).
-            adb install -r -g apks/debug/app-debug.apk
-            adb install -r apks/androidTest/debug/app-debug-androidTest.apk
-            adb logcat -c
-            adb shell am instrument -w -e class tech.capullo.tubecapullo.MainSmokeTest tech.capullo.tubecapullo.test/androidx.test.runner.AndroidJUnitRunner 2>&1 | tee "$RUNNER_TEMP/instrument.log"
-            # A missing OK marker means adb died mid-run or the run never finished; failure
-            # markers cover the cases where am instrument exits 0 despite failures.
-            if ! grep -qE '^OK \([0-9]+ tests?\)$' "$RUNNER_TEMP/instrument.log"; then echo "::error::smoke test did not complete on API ${{ matrix.api-level }} (transcript above)"; exit 1; fi
-            if grep -qE 'FAILURES!!!|INSTRUMENTATION_FAILED|Process crashed|Test run failed' "$RUNNER_TEMP/instrument.log"; then echo "::error::smoke instrumentation failed on API ${{ matrix.api-level }} (transcript above)"; exit 1; fi
+      - name: Install system image, create AVD
+        run: |
+          set -eu
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager --install "system-images;android-$ANDROID_API;google_apis;x86_64" > /dev/null
+          echo no | avdmanager create avd --force -n smoke \
+            --package "system-images;android-$ANDROID_API;google_apis;x86_64"
+          printf 'hw.cpu.ncore=%s\nhw.ramSize=%s\n' "$EMU_CORES" "$EMU_RAM" \
+            >> "$HOME/.android/avd/smoke.avd/config.ini"
+      - name: Boot emulator
+        timeout-minutes: 35
+        run: |
+          set -eu
+          nohup emulator -avd smoke -port 5554 -no-window -gpu swiftshader_indirect -noaudio \
+            -no-boot-anim -no-snapshot -no-metrics -camera-back none -camera-front none \
+            > /tmp/emulator.log 2>&1 &
+          deadline=$(( $(date +%s) + BOOT_TIMEOUT ))
+          until [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; do
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "::error::emulator did not boot within ${BOOT_TIMEOUT}s - emulator log tail:"
+              tail -50 /tmp/emulator.log
+              exit 1
+            fi
+            sleep 5
+          done
+          echo "Emulator booted (android-$ANDROID_API, $EMU_CORES cores / $EMU_RAM)."
+          # Post-boot settle, best-effort on purpose: a just-booted guest can refuse the input
+          # service for a few seconds (the unlock keyevent is what killed the action-based
+          # runs) and none of it is required for the smoke test to be meaningful.
+          for _ in 1 2 3 4 5; do adb shell input keyevent 82 >/dev/null 2>&1 && break; sleep 3; done
+          adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
+          adb shell settings put global window_animation_scale 0.0 >/dev/null 2>&1 || true
+          adb shell settings put global transition_animation_scale 0.0 >/dev/null 2>&1 || true
+          adb shell settings put global animator_duration_scale 0.0 >/dev/null 2>&1 || true
+      - name: Install APKs, run the launch smoke test
+        run: |
+          set -euo pipefail
+          # -g pre-grants POST_NOTIFICATIONS on API 33+, so the first frame is the app and not
+          # the system permission sheet (the smoke assertions don't need it, but the failure
+          # screenshots benefit).
+          adb install -r -g apks/debug/app-debug.apk
+          adb install -r apks/androidTest/debug/app-debug-androidTest.apk
+          adb logcat -c
+          adb shell am instrument -w -e class tech.capullo.tubecapullo.MainSmokeTest \
+            tech.capullo.tubecapullo.test/androidx.test.runner.AndroidJUnitRunner \
+            2>&1 | tee "$RUNNER_TEMP/instrument.log"
+          # A missing OK marker means adb died mid-run or the run never finished; failure
+          # markers cover the cases where am instrument exits 0 despite failures. Explicit
+          # if-blocks, not bare grep lines: under set -e a trailing "! grep" result is masked
+          # by the commands after it.
+          if ! grep -qE '^OK \([0-9]+ tests?\)$' "$RUNNER_TEMP/instrument.log"; then
+            echo "::error::smoke test did not complete on API ${{ matrix.api-level }} (transcript above)"
+            exit 1
+          fi
+          if grep -qE 'FAILURES!!!|INSTRUMENTATION_FAILED|Process crashed|Test run failed' "$RUNNER_TEMP/instrument.log"; then
+            echo "::error::smoke instrumentation failed on API ${{ matrix.api-level }} (transcript above)"
+            exit 1
+          fi
+          adb emu kill >/dev/null 2>&1 || true
       - name: Capture failure evidence (screenshot, view dump, logcat)
         # Steps default to success()-only; failure evidence must run exactly when things broke.
-        # timeout on every adb: with the emulator dead, adb blocks indefinitely on device wait
-        # (the first run's evidence steps hung 45 minutes to the job timeout that way).
+        # timeout on every adb: with the emulator dead, adb blocks indefinitely on device wait.
         if: failure()
         run: |
           mkdir -p evidence
@@ -159,6 +204,7 @@ jobs:
           timeout 30 adb shell uiautomator dump /sdcard/smoke-dump.xml >/dev/null 2>&1 || true
           timeout 30 adb pull /sdcard/smoke-dump.xml evidence/ >/dev/null 2>&1 || true
           timeout 30 adb logcat -d > evidence/logcat.txt 2>/dev/null || true
+          cp /tmp/emulator.log evidence/ 2>/dev/null || true
       - name: Upload failure evidence
         if: failure()
         uses: actions/upload-artifact@v4
