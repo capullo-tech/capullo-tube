@@ -150,7 +150,7 @@ jobs:
           # Visible confirmation - a create that silently lands nowhere dies here, not three
           # steps later in a confusing boot failure.
           avdmanager list avd | grep -A2 'Name: smoke'
-          printf 'hw.cpu.ncore=%s\nhw.ramSize=%s\n' "$EMU_CORES" "$EMU_RAM" \
+          printf 'hw.cpu.ncore=%s\nhw.ramSize=%s\ndisk.dataPartition.size=8G\n' "$EMU_CORES" "$EMU_RAM" \
             >> "${ANDROID_AVD_HOME:-$HOME/.android/avd}/smoke.avd/config.ini"
       - name: Boot emulator
         timeout-minutes: 35
