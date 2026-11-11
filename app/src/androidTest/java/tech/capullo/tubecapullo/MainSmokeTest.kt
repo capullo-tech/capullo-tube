@@ -38,7 +38,10 @@ class MainSmokeTest {
             app.packageManager.getLaunchIntentForPackage("tech.capullo.tubecapullo")
                 ?: Intent(Intent.ACTION_MAIN).apply {
                     addCategory(Intent.CATEGORY_LAUNCHER)
-                    setClassName("tech.capullo.tubecapullo", "tech.capullo.tubecapullo.MainActivity")
+                    setClassName(
+                        "tech.capullo.tubecapullo",
+                        "tech.capullo.tubecapullo.MainActivity",
+                    )
                 }
         launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
         device.pressHome()
