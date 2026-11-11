@@ -86,13 +86,22 @@ jobs:
     name: Smoke API ${{ matrix.api-level }}
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     strategy:
       # One leg's emulator crashing says nothing about the other nine API levels.
       fail-fast: false
       matrix:
         # Quoted: the 37 leg's resolved string substitutes through the same input.
         api-level: ['28', '29', '30', '31', '32', '33', '34', '35', '36', '37']
+        include:
+          # The 37.0 image is the matrix's slowest cold boot (newest guest, biggest system):
+          # on the default 2 vCPU / 2GB AVD it sat in "adb: device offline" past the whole
+          # 15-minute boot budget (run 4). Give this leg the runner's full 4 vCPU / 4GB and
+          # twice the budget - the rest boot in ~2 minutes on the defaults.
+          - api-level: '37'
+            cores: '4'
+            ram-size: '4096M'
+            boot-timeout: '1800'
     steps:
       - name: Download smoke APKs
         uses: actions/download-artifact@v4
@@ -121,7 +130,9 @@ jobs:
             -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
             -no-metrics -camera-back none -camera-front none
           disable-animations: true
-          emulator-boot-timeout: 900
+          cores: ${{ matrix.cores || '2' }}
+          ram-size: ${{ matrix.ram-size || '2048M' }}
+          emulator-boot-timeout: ${{ matrix.boot-timeout || '900' }}
           script: |
             # NOTE: android-emulator-runner splits this into single LINES, each its own sh -c
             # (dash - no pipefail): every command below is one self-contained line, and adb
