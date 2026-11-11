@@ -1,8 +1,6 @@
 package tech.capullo.tubecapullo
 
-import android.content.Context
-import android.content.Intent
-import androidx.test.core.app.ApplicationProvider
+import android.os.ParcelFileDescriptor
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
@@ -19,33 +17,28 @@ import org.junit.runner.RunWith
  * an infinite CircularProgressIndicator while trending loads, and a Compose rule's idle
  * synchronization never settles under an infinite animation - every matrix leg would die in
  * waitForIdle instead of testing anything. UiAutomator polls the window hierarchy directly, so
- * the check is exactly what a per-API-level matrix is for: the launcher intent surfaces a live
- * process with the home scaffold composed.
+ * the check is exactly what a per-API-level matrix is for: the launcher surfaces a live process
+ * with the home scaffold composed.
  */
 @RunWith(AndroidJUnit4::class)
 class MainSmokeTest {
     @Test
     fun coldStartShowsHomePage() {
-        val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
-        val app = ApplicationProvider.getApplicationContext<Context>()
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val device = UiDevice.getInstance(instrumentation)
 
-        // Cold start through the launcher intent - the same path a tap on the launcher icon
-        // takes - from a cleared task: re-resuming an already-open activity proves nothing.
-        // getLaunchIntentForPackage can come back null on newer releases (seen on API 37.0
-        // with the package freshly installed and queryable) - fall back to the explicit
-        // MAIN/LAUNCHER component rather than fail a healthy launch.
-        val launch =
-            app.packageManager.getLaunchIntentForPackage("tech.capullo.tubecapullo")
-                ?: Intent(Intent.ACTION_MAIN).apply {
-                    addCategory(Intent.CATEGORY_LAUNCHER)
-                    setClassName(
-                        "tech.capullo.tubecapullo",
-                        "tech.capullo.tubecapullo.MainActivity",
-                    )
-                }
-        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        // Cold start from a clean task, through the shell's am - the exact resolution path the
+        // adb CLI uses. NOT Context.startActivity from the app's own package: on a fresh API 37
+        // guest, in-process resolution fails two different ways (getLaunchIntentForPackage
+        // null; explicit-component ActivityNotFoundException) for a package whose process is
+        // demonstrably alive and running this very test, while the same launch via am works.
+        // MainActivity is the manifest's launcher activity, so this is still the real entry
+        // point, just resolved system-side.
         device.pressHome()
-        app.startActivity(launch)
+        val amOutput = instrumentation.uiAutomation
+            .executeShellCommand("am start -W -n tech.capullo.tubecapullo/.MainActivity")
+            .use { fd -> ParcelFileDescriptor.AutoCloseInputStream(fd).readBytes().decodeToString() }
+        println("am start said: $amOutput")
 
         // The home page's stable identity is the top bar title IN THE APP'S OWN WINDOW - a
         // bare text match can hit the launcher's icon label during the open transition (seen

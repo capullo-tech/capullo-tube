@@ -238,6 +238,7 @@ jobs:
           timeout 30 adb exec-out screencap -p > evidence/screen.png 2>/dev/null || true
           timeout 30 adb shell uiautomator dump /sdcard/smoke-dump.xml >/dev/null 2>&1 || true
           timeout 30 adb pull /sdcard/smoke-dump.xml evidence/ >/dev/null 2>&1 || true
+          timeout 30 adb shell dumpsys package tech.capullo.tubecapullo > evidence/dumpsys-package.txt 2>/dev/null || true
           timeout 30 adb logcat -d > evidence/logcat.txt 2>/dev/null || true
           cp /tmp/emulator.log evidence/ 2>/dev/null || true
       - name: Upload failure evidence
