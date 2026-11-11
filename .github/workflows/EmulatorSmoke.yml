@@ -169,6 +169,20 @@ jobs:
             sleep 5
           done
           echo "Emulator booted (android-$ANDROID_API, $EMU_CORES cores / $EMU_RAM)."
+          # Launcher stability gate: the newest images crash-loop NexusLauncher for the first
+          # minute or two after boot (DEAD_OBJECT creating gesture-monitor surfaces), and any
+          # process death in that window can tear the UiAutomation connection down mid-test
+          # ("System has crashed"). Wait until the launcher pid holds steady across checks
+          # before touching the guest - a few seconds on stable legs, self-limiting on 37.0.
+          last=""; stable=0
+          for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24; do
+            cur=$(adb shell pidof com.google.android.apps.nexuslauncher 2>/dev/null | tr -d '\r' || true)
+            if [ -n "$cur" ] && [ "$cur" = "$last" ]; then stable=$((stable+1)); else stable=0; fi
+            last="$cur"
+            if [ "$stable" -ge 3 ]; then break; fi
+            sleep 5
+          done
+          echo "Launcher settled (pid $last, stability $stable/3)."
           # Post-boot settle, best-effort on purpose: a just-booted guest can refuse the input
           # service for a few seconds (the unlock keyevent is what killed the action-based
           # runs) and none of it is required for the smoke test to be meaningful.

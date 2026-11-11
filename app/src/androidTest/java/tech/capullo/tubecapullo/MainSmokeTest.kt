@@ -33,11 +33,15 @@ class MainSmokeTest {
         // null; explicit-component ActivityNotFoundException) for a package whose process is
         // demonstrably alive and running this very test, while the same launch via am works.
         // MainActivity is the manifest's launcher activity, so this is still the real entry
-        // point, just resolved system-side.
-        device.pressHome()
+        // point, just resolved system-side. No pressHome first: on a fresh boot the launcher is
+        // already foreground, the app has never run (nothing to clear), and re-foregrounding
+        // the launcher is exactly what re-triggers its early-boot gesture-monitor crash loop
+        // on the 37.0 image.
         val amOutput = instrumentation.uiAutomation
             .executeShellCommand("am start -W -n tech.capullo.tubecapullo/.MainActivity")
-            .use { fd -> ParcelFileDescriptor.AutoCloseInputStream(fd).readBytes().decodeToString() }
+            .use { fd ->
+                ParcelFileDescriptor.AutoCloseInputStream(fd).readBytes().decodeToString()
+            }
         println("am start said: $amOutput")
 
         // The home page's stable identity is the top bar title IN THE APP'S OWN WINDOW - a
