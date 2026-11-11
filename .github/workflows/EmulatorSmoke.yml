@@ -43,16 +43,18 @@ jobs:
             app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
           if-no-files-found: error
       # Runs once per workflow, not once per leg: answers "which system images existed when this
-      # ran" directly in the summary, so a matrix leg failing on a missing/stale image pin (API
-      # levels age; see api-level 37 vs android-37.x platform minors) is diagnosed in one glance.
+      # ran" directly in the log and summary, so a matrix leg failing on a missing/stale image
+      # name (API levels age: android-37's platform minors are 37.0/37.1/37.2) is diagnosed in
+      # one glance.
       - name: Dump system-image catalog into the summary
         run: |
+          IMAGES=$(sdkmanager --list 2>/dev/null \
+            | grep -E 'system-images;android-(2[89]|3[0-9])' | sort -u || true)
+          echo "$IMAGES"
           {
-            echo '### Available google_apis x86_64 system images (stable channel)'
+            echo '### Available system images (stable channel)'
             echo '```'
-            sdkmanager --list 2>/dev/null \
-              | grep -E 'system-images;android-(2[89]|3[0-9](\.[0-9]+)?(-[a-z0-9]+)?);google_apis;x86_64' \
-              | sort -u
+            echo "$IMAGES"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -92,32 +94,41 @@ jobs:
           disable-animations: true
           emulator-boot-timeout: 900
           script: |
-            set -euo pipefail
-            # -g pre-grants POST_NOTIFICATIONS on API 33+, so the first frame is the app and not
-            # the system permission sheet (the smoke assertions don't need it, evidence
-            # screenshots benefit).
+            # NOTE: android-emulator-runner pipes this through /usr/bin/sh (dash), not bash -
+            # no pipefail (it killed every leg of the first run). adb transport failures are
+            # caught by the positive OK-marker check below instead.
+            set -eu
+            # -g pre-grants POST_NOTIFICATIONS on API 33+, so the first frame is the app and
+            # not the system permission sheet (the smoke assertions don't need it, but the
+            # failure screenshots benefit).
             adb install -r -g apks/app-debug.apk
             adb install -r apks/app-debug-androidTest.apk
             adb logcat -c
             adb shell am instrument -w -e class tech.capullo.tubecapullo.MainSmokeTest \
               tech.capullo.tubecapullo.test/androidx.test.runner.AndroidJUnitRunner \
               2>&1 | tee "$RUNNER_TEMP/instrument.log"
-            # `am instrument` exit codes are inconsistent across API levels (0 despite test
-            # failures on some), so the transcript is the source of truth.
+            # A missing OK marker means adb died mid-run or the run never finished; failure
+            # markers cover the cases where am instrument exits 0 despite failures.
+            if ! grep -qE '^OK \([0-9]+ tests?\)$' "$RUNNER_TEMP/instrument.log"; then
+              echo "::error::smoke test did not complete on API ${{ matrix.api-level }} (transcript above)"
+              exit 1
+            fi
             if grep -qE 'FAILURES!!!|INSTRUMENTATION_FAILED|Process crashed|Test run failed' \
               "$RUNNER_TEMP/instrument.log"; then
-              echo "::error::smoke test failed on API ${{ matrix.api-level }} (see transcript above)"
+              echo "::error::smoke instrumentation failed on API ${{ matrix.api-level }} (transcript above)"
               exit 1
             fi
       - name: Capture failure evidence (screenshot, view dump, logcat)
         # Steps default to success()-only; failure evidence must run exactly when things broke.
+        # timeout on every adb: with the emulator dead, adb blocks indefinitely on device wait
+        # (the first run's evidence steps hung 45 minutes to the job timeout that way).
         if: failure()
         run: |
           mkdir -p evidence
-          adb exec-out screencap -p > evidence/screen.png 2>/dev/null || true
-          adb shell uiautomator dump /sdcard/smoke-dump.xml >/dev/null 2>&1 || true
-          adb pull /sdcard/smoke-dump.xml evidence/ >/dev/null 2>&1 || true
-          adb logcat -d > evidence/logcat.txt 2>/dev/null || true
+          timeout 30 adb exec-out screencap -p > evidence/screen.png 2>/dev/null || true
+          timeout 30 adb shell uiautomator dump /sdcard/smoke-dump.xml >/dev/null 2>&1 || true
+          timeout 30 adb pull /sdcard/smoke-dump.xml evidence/ >/dev/null 2>&1 || true
+          timeout 30 adb logcat -d > evidence/logcat.txt 2>/dev/null || true
       - name: Upload failure evidence
         if: failure()
         uses: actions/upload-artifact@v4
