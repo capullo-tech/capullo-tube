@@ -122,6 +122,11 @@ jobs:
           echo "$SDK/emulator" >> "$GITHUB_PATH"
           echo "$SDK/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
           echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          # avdmanager only reliably lands AVDs under an explicitly-set ANDROID_AVD_HOME that
+          # already exists (the action creates it for the same reason); the emulator launch
+          # needs the variable too.
+          echo "ANDROID_AVD_HOME=$HOME/.android/avd" >> "$GITHUB_ENV"
+          mkdir -p "$HOME/.android/avd"
       - name: Download smoke APKs
         uses: actions/download-artifact@v4
         with:
@@ -142,8 +147,11 @@ jobs:
           sdkmanager --install "system-images;android-$ANDROID_API;google_apis;x86_64" > /dev/null
           echo no | avdmanager create avd --force -n smoke \
             --package "system-images;android-$ANDROID_API;google_apis;x86_64"
+          # Visible confirmation - a create that silently lands nowhere dies here, not three
+          # steps later in a confusing boot failure.
+          avdmanager list avd | grep -A2 'Name: smoke'
           printf 'hw.cpu.ncore=%s\nhw.ramSize=%s\n' "$EMU_CORES" "$EMU_RAM" \
-            >> "$HOME/.android/avd/smoke.avd/config.ini"
+            >> "${ANDROID_AVD_HOME:-$HOME/.android/avd}/smoke.avd/config.ini"
       - name: Boot emulator
         timeout-minutes: 35
         run: |
