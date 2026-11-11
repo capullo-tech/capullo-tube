@@ -64,12 +64,13 @@ jobs:
             echo "$IMAGES"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-          # platforms;android-37 does not exist: 37 ships as versioned minors (37.0/37.1/...),
-          # the same convention the emulator-runner's api-level already speaks ('35-ext15').
-          # Resolve the newest minor with a google_apis x86_64 image off the live catalog
-          # rather than pinning one minor that silently rots on the next re-minor.
-          API37=$(printf '%s\n' "$IMAGES" \
-            | grep -oE 'android-37[.0-9]*' | sort -uV | tail -1 \
+          # platforms;android-37 does not exist: 37 ships as versioned minors, and only 37.0
+          # carries a plain google_apis x86_64 image (37.1/37.2 ship ps16k variants only - an
+          # inexact grep resolved 37.2 on the first try and the leg died on a missing image).
+          # Exact-target match keeps this honest as Google re-minors; the probe fallback tries
+          # the same exact packages, newest minor first.
+          IMGS37=$(printf '%s\n' "$IMAGES" | grep -E 'system-images;android-37[.0-9]*;google_apis;x86_64' || true)
+          API37=$(printf '%s\n' "$IMGS37" | grep -oE 'android-37[.0-9]*' | sort -uV | tail -1 \
             | sed -E 's/^android-//')
           if [ -z "$API37" ]; then
             echo '::warning::no 37-family image in catalog listing; probing installs'
@@ -122,30 +123,20 @@ jobs:
           disable-animations: true
           emulator-boot-timeout: 900
           script: |
-            # NOTE: android-emulator-runner pipes this through /usr/bin/sh (dash), not bash -
-            # no pipefail (it killed every leg of the first run). adb transport failures are
-            # caught by the positive OK-marker check below instead.
-            set -eu
+            # NOTE: android-emulator-runner splits this into single LINES, each its own sh -c
+            # (dash - no pipefail): every command below is one self-contained line, and adb
+            # transport failures are caught by the positive OK-marker check instead.
             # -g pre-grants POST_NOTIFICATIONS on API 33+, so the first frame is the app and
             # not the system permission sheet (the smoke assertions don't need it, but the
             # failure screenshots benefit).
             adb install -r -g apks/debug/app-debug.apk
             adb install -r apks/androidTest/debug/app-debug-androidTest.apk
             adb logcat -c
-            adb shell am instrument -w -e class tech.capullo.tubecapullo.MainSmokeTest \
-              tech.capullo.tubecapullo.test/androidx.test.runner.AndroidJUnitRunner \
-              2>&1 | tee "$RUNNER_TEMP/instrument.log"
+            adb shell am instrument -w -e class tech.capullo.tubecapullo.MainSmokeTest tech.capullo.tubecapullo.test/androidx.test.runner.AndroidJUnitRunner 2>&1 | tee "$RUNNER_TEMP/instrument.log"
             # A missing OK marker means adb died mid-run or the run never finished; failure
             # markers cover the cases where am instrument exits 0 despite failures.
-            if ! grep -qE '^OK \([0-9]+ tests?\)$' "$RUNNER_TEMP/instrument.log"; then
-              echo "::error::smoke test did not complete on API ${{ matrix.api-level }} (transcript above)"
-              exit 1
-            fi
-            if grep -qE 'FAILURES!!!|INSTRUMENTATION_FAILED|Process crashed|Test run failed' \
-              "$RUNNER_TEMP/instrument.log"; then
-              echo "::error::smoke instrumentation failed on API ${{ matrix.api-level }} (transcript above)"
-              exit 1
-            fi
+            if ! grep -qE '^OK \([0-9]+ tests?\)$' "$RUNNER_TEMP/instrument.log"; then echo "::error::smoke test did not complete on API ${{ matrix.api-level }} (transcript above)"; exit 1; fi
+            if grep -qE 'FAILURES!!!|INSTRUMENTATION_FAILED|Process crashed|Test run failed' "$RUNNER_TEMP/instrument.log"; then echo "::error::smoke instrumentation failed on API ${{ matrix.api-level }} (transcript above)"; exit 1; fi
       - name: Capture failure evidence (screenshot, view dump, logcat)
         # Steps default to success()-only; failure evidence must run exactly when things broke.
         # timeout on every adb: with the emulator dead, adb blocks indefinitely on device wait
