@@ -1,0 +1,127 @@
+name: Emulator Smoke
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+# Ten emulator legs per push is expensive; a newer run on the same ref supersedes it (same
+# pattern Release.yml carries, for the same one-artifact-invariant reason).
+concurrency:
+  group: emulator-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build smoke APKs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout project sources
+        uses: actions/checkout@v4
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      # Debug variant, not release: the smoke matrix tests the app, not the signing path - and
+      # release needs the RELEASE_* secrets, which fork PRs don't have (Build.yml's lesson).
+      - name: Build app + instrumentation APKs
+        run: ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest
+      - name: Upload smoke APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-apks-${{ github.sha }}
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          if-no-files-found: error
+      # Runs once per workflow, not once per leg: answers "which system images existed when this
+      # ran" directly in the summary, so a matrix leg failing on a missing/stale image pin (API
+      # levels age; see api-level 37 vs android-37.x platform minors) is diagnosed in one glance.
+      - name: Dump system-image catalog into the summary
+        run: |
+          {
+            echo '### Available google_apis x86_64 system images (stable channel)'
+            echo '```'
+            sdkmanager --list 2>/dev/null \
+              | grep -E 'system-images;android-(2[89]|3[0-9](\.[0-9]+)?(-[a-z0-9]+)?);google_apis;x86_64' \
+              | sort -u
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  smoke:
+    name: Smoke API ${{ matrix.api-level }}
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      # One leg's emulator crashing says nothing about the other nine API levels.
+      fail-fast: false
+      matrix:
+        api-level: [28, 29, 30, 31, 32, 33, 34, 35, 36, 37]
+    steps:
+      - name: Download smoke APKs
+        uses: actions/download-artifact@v4
+        with:
+          name: smoke-apks-${{ github.sha }}
+          path: apks
+      # Nested virtualization on ubuntu-latest needs the KVM node writable by the runner user -
+      # the android-emulator-runner project's documented enabling step.
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Boot emulator and run the launch smoke test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api-level }}
+          arch: x86_64
+          target: google_apis
+          emulator-options: >-
+            -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
+            -no-metrics -camera-back none -camera-front none
+          disable-animations: true
+          emulator-boot-timeout: 900
+          script: |
+            set -euo pipefail
+            # -g pre-grants POST_NOTIFICATIONS on API 33+, so the first frame is the app and not
+            # the system permission sheet (the smoke assertions don't need it, evidence
+            # screenshots benefit).
+            adb install -r -g apks/app-debug.apk
+            adb install -r apks/app-debug-androidTest.apk
+            adb logcat -c
+            adb shell am instrument -w -e class tech.capullo.tubecapullo.MainSmokeTest \
+              tech.capullo.tubecapullo.test/androidx.test.runner.AndroidJUnitRunner \
+              2>&1 | tee "$RUNNER_TEMP/instrument.log"
+            # `am instrument` exit codes are inconsistent across API levels (0 despite test
+            # failures on some), so the transcript is the source of truth.
+            if grep -qE 'FAILURES!!!|INSTRUMENTATION_FAILED|Process crashed|Test run failed' \
+              "$RUNNER_TEMP/instrument.log"; then
+              echo "::error::smoke test failed on API ${{ matrix.api-level }} (see transcript above)"
+              exit 1
+            fi
+      - name: Capture failure evidence (screenshot, view dump, logcat)
+        # Steps default to success()-only; failure evidence must run exactly when things broke.
+        if: failure()
+        run: |
+          mkdir -p evidence
+          adb exec-out screencap -p > evidence/screen.png 2>/dev/null || true
+          adb shell uiautomator dump /sdcard/smoke-dump.xml >/dev/null 2>&1 || true
+          adb pull /sdcard/smoke-dump.xml evidence/ >/dev/null 2>&1 || true
+          adb logcat -d > evidence/logcat.txt 2>/dev/null || true
+      - name: Upload failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-failure-api${{ matrix.api-level }}-${{ github.run_id }}
+          path: evidence/
+          if-no-files-found: ignore

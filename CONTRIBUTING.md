@@ -103,7 +103,8 @@ catalog. Unused entries in a shared catalog cost nothing, so put any shared vers
 - **Media:** Media3 and ExoPlayer.
 - **Persistence:** Room, processed by KSP.
 - **DI:** Hilt.
-- **Test:** JUnit4, kotlinx-coroutines-test, androidx junit and espresso for instrumented tests.
+- **Test:** JUnit4, kotlinx-coroutines-test, androidx junit and espresso for instrumented
+  tests; UiAutomator for device-level smoke tests (EmulatorSmoke.yml's matrix).
 
 ### To add a dependency
 
