@@ -205,6 +205,29 @@ jobs:
             sleep 5
           done
           echo "Launcher settled (pid $last, stability $stable/3)."
+          # User-unlock gate: FBE images boot through a locked-user (direct boot) phase, and
+          # until the credential-encrypted storage unlocks, activities of apps that are not
+          # direct-boot-aware cannot start at all (am start Error type 3 against an activity
+          # dumpsys shows registered) while the system churns (SystemUI/launcher crash loops,
+          # UiAutomation teardowns). Poll for the unlocked state, nudging the no-credential
+          # keyguard with dismiss-keyguard every round - that is the unlock trigger on
+          # emulators. Best-effort, not fatal: the string is verified on the images this
+          # matrix runs, but a reworded dumpsys on some future minor must not fail a leg
+          # whose system is actually fine.
+          unlocked=0
+          for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36; do
+            if adb shell dumpsys user 2>/dev/null | tr -d '\r' | grep -q RUNNING_UNLOCKED; then
+              unlocked=1
+              break
+            fi
+            adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
+            sleep 5
+          done
+          if [ "$unlocked" = "1" ]; then
+            echo "User 0 unlocked (RUNNING_UNLOCKED seen)."
+          else
+            echo "::warning::user-unlock marker never appeared (3 min); proceeding anyway"
+          fi
           # Post-boot settle, best-effort on purpose: a just-booted guest can refuse the input
           # service for a few seconds (the unlock keyevent is what killed the action-based
           # runs) and none of it is required for the smoke test to be meaningful.
@@ -275,6 +298,7 @@ jobs:
           timeout 30 adb shell uiautomator dump /sdcard/smoke-dump.xml >/dev/null 2>&1 || true
           timeout 30 adb pull /sdcard/smoke-dump.xml evidence/ >/dev/null 2>&1 || true
           timeout 30 adb shell dumpsys package tech.capullo.tubecapullo > evidence/dumpsys-package.txt 2>/dev/null || true
+          timeout 30 adb shell dumpsys user > evidence/dumpsys-user.txt 2>/dev/null || true
           timeout 30 adb logcat -d > evidence/logcat.txt 2>/dev/null || true
           cp /tmp/emulator.log evidence/ 2>/dev/null || true
       - name: Upload failure evidence
