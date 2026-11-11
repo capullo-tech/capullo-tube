@@ -20,6 +20,9 @@ jobs:
   build:
     name: Build smoke APKs
     runs-on: ubuntu-latest
+    outputs:
+      # SDK 37's resolved api-level string ("37.x") for the matrix leg - see the resolve step.
+      api37: ${{ steps.catalog.outputs.api37 }}
     steps:
       - name: Checkout project sources
         uses: actions/checkout@v4
@@ -42,13 +45,17 @@ jobs:
             app/build/outputs/apk/debug/app-debug.apk
             app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
           if-no-files-found: error
-      # Runs once per workflow, not once per leg: answers "which system images existed when this
-      # ran" directly in the log and summary, so a matrix leg failing on a missing/stale image
-      # name (API levels age: android-37's platform minors are 37.0/37.1/37.2) is diagnosed in
-      # one glance.
-      - name: Dump system-image catalog into the summary
+      # Runs once per workflow, not once per leg. Two jobs in one: (1) dump the image catalog
+      # into the log and summary - "which system images existed when this ran" - so a leg
+      # failing on a missing image is diagnosed in one glance; (2) resolve SDK 37's platform
+      # minor for the matrix (below). NOTE the absolute sdkmanager path: cmdline-tools is NOT
+      # on PATH for plain steps (only android-emulator-runner puts it there), and the first
+      # catalog dump silently no-oped behind 2>/dev/null that way.
+      - name: Dump system-image catalog, resolve SDK 37 minor
+        id: catalog
         run: |
-          IMAGES=$(sdkmanager --list 2>/dev/null \
+          SDKMGR="${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools/latest/bin/sdkmanager"
+          IMAGES=$("$SDKMGR" --list 2>/dev/null \
             | grep -E 'system-images;android-(2[89]|3[0-9])' | sort -u || true)
           echo "$IMAGES"
           {
@@ -57,6 +64,22 @@ jobs:
             echo "$IMAGES"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+          # platforms;android-37 does not exist: 37 ships as versioned minors (37.0/37.1/...),
+          # the same convention the emulator-runner's api-level already speaks ('35-ext15').
+          # Resolve the newest minor with a google_apis x86_64 image off the live catalog
+          # rather than pinning one minor that silently rots on the next re-minor.
+          API37=$(printf '%s\n' "$IMAGES" \
+            | grep -oE 'android-37[.0-9]*' | sort -uV | tail -1 \
+            | sed -E 's/^android-//')
+          if [ -z "$API37" ]; then
+            echo '::warning::no 37-family image in catalog listing; probing installs'
+            for cand in 37.2 37.1 37.0; do
+              if yes | "$SDKMGR" --install "system-images;android-$cand;google_apis;x86_64" \
+                >/dev/null 2>&1; then API37=$cand; break; fi
+            done
+          fi
+          echo "Resolved SDK 37 api-level string: ${API37:-<none>}"
+          echo "api37=$API37" >> "$GITHUB_OUTPUT"
 
   smoke:
     name: Smoke API ${{ matrix.api-level }}
@@ -67,7 +90,8 @@ jobs:
       # One leg's emulator crashing says nothing about the other nine API levels.
       fail-fast: false
       matrix:
-        api-level: [28, 29, 30, 31, 32, 33, 34, 35, 36, 37]
+        # Quoted: the 37 leg's resolved string substitutes through the same input.
+        api-level: ['28', '29', '30', '31', '32', '33', '34', '35', '36', '37']
     steps:
       - name: Download smoke APKs
         uses: actions/download-artifact@v4
@@ -85,7 +109,11 @@ jobs:
       - name: Boot emulator and run the launch smoke test
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: ${{ matrix.api-level }}
+          # upload-artifact roots multi-path uploads at the least common ancestor, so the APKs
+          # land as debug/... and androidTest/debug/... under the download dir - not flat.
+          # For 37, the build leg's resolved platform minor ("37.x") replaces the literal: the
+          # catalog has no android-37, only minor-versioned 37.0/37.1/... platforms and images.
+          api-level: ${{ matrix.api-level == '37' && needs.build.outputs.api37 || matrix.api-level }}
           arch: x86_64
           target: google_apis
           emulator-options: >-
@@ -101,8 +129,8 @@ jobs:
             # -g pre-grants POST_NOTIFICATIONS on API 33+, so the first frame is the app and
             # not the system permission sheet (the smoke assertions don't need it, but the
             # failure screenshots benefit).
-            adb install -r -g apks/app-debug.apk
-            adb install -r apks/app-debug-androidTest.apk
+            adb install -r -g apks/debug/app-debug.apk
+            adb install -r apks/androidTest/debug/app-debug-androidTest.apk
             adb logcat -c
             adb shell am instrument -w -e class tech.capullo.tubecapullo.MainSmokeTest \
               tech.capullo.tubecapullo.test/androidx.test.runner.AndroidJUnitRunner \
