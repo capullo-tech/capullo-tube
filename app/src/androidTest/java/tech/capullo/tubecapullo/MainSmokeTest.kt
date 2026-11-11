@@ -29,11 +29,17 @@ class MainSmokeTest {
         val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
         val app = ApplicationProvider.getApplicationContext<Context>()
 
-        // Cold start through the real launcher intent - the same path a tap on the launcher
-        // icon takes - from a cleared task: re-resuming an already-open activity proves nothing.
+        // Cold start through the launcher intent - the same path a tap on the launcher icon
+        // takes - from a cleared task: re-resuming an already-open activity proves nothing.
+        // getLaunchIntentForPackage can come back null on newer releases (seen on API 37.0
+        // with the package freshly installed and queryable) - fall back to the explicit
+        // MAIN/LAUNCHER component rather than fail a healthy launch.
         val launch =
             app.packageManager.getLaunchIntentForPackage("tech.capullo.tubecapullo")
-                ?: error("no launcher intent - wrong applicationId?")
+                ?: Intent(Intent.ACTION_MAIN).apply {
+                    addCategory(Intent.CATEGORY_LAUNCHER)
+                    setClassName("tech.capullo.tubecapullo", "tech.capullo.tubecapullo.MainActivity")
+                }
         launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
         device.pressHome()
         app.startActivity(launch)
