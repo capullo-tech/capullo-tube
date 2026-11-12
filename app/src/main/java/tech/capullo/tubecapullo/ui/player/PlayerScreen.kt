@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -45,6 +46,7 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -84,19 +86,22 @@ import kotlin.math.abs
 
 /**
  * Swipe distance on the art that counts as a gesture (left = skip, right = restart, up = Up
- * next). Carried over from telecloud's art gestures, chosen by eye there (GUESS, not measured):
- * shorter and a tap's jitter or a scroll attempt fires it; longer and a short flick does nothing.
+ * next), and up on the lyrics card (the lyrics drawer). Carried over from telecloud's art
+ * gestures, chosen by eye there (GUESS, not measured): shorter and a tap's jitter or a scroll
+ * attempt fires it; longer and a short flick does nothing.
  */
-private val ART_SWIPE_THRESHOLD = 90.dp
+internal val ART_SWIPE_THRESHOLD = 90.dp
 
 /**
  * Full-screen now-playing, ported from telecloud-radio's PortraitPlayer: square art (the YouTube
  * thumbnail) taking whatever space the fixed info + transport leave, slim seek bar, transport row,
- * and a secondary row: Multiroom, like, share and Queue spread evenly. The top
- * bar names the station's source. After a like, a chip over the art says what it did
- * to the queue ([LikeChip]). The Telegram-only parts (reactions, download, stats, sleep timer,
- * album-art tinting) are not ported - telecloud's PlayerScreen is the reference when any of them
- * comes back.
+ * and a secondary row: Multiroom, like, share and Queue spread evenly. When the song has lyrics,
+ * a slim tab under those rows ([LyricsTab]), or with Settings > Lyrics card a card with the
+ * current line ([LyricsCard]), opens the lyrics drawer ([LyricsSheet]). The top bar names the
+ * station's source. After a like, a chip over the art
+ * says what it did to the queue ([LikeChip]). The Telegram-only parts (reactions, download,
+ * stats, sleep timer, album-art tinting) are not ported - telecloud's PlayerScreen is the
+ * reference when any of them comes back.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -111,11 +116,26 @@ fun PlayerScreen(
     val likedIds by viewModel.likedIds.collectAsStateWithLifecycle()
     val likedAlbumIds by viewModel.likedAlbumIds.collectAsStateWithLifecycle()
     val albumArt by viewModel.albumArt.collectAsStateWithLifecycle()
+    val lyrics by viewModel.lyrics.collectAsStateWithLifecycle()
+    val lyricsCard by viewModel.lyricsCard.collectAsStateWithLifecycle()
     // Saveable: an open sheet survives rotation (CONTRIBUTING §3).
     var upNextOpen by rememberSaveable { mutableStateOf(false) }
+    var lyricsOpen by rememberSaveable { mutableStateOf(false) }
     val likeChip = rememberLikeChipState(viewModel.likeEffects, viewModel.rollOvers)
 
     if (upNextOpen) UpNextSheet(onDismiss = { upNextOpen = false })
+    // The drawer stays open while the next track's lookup runs (Pending) and closes with the
+    // card when a track has no lyrics.
+    LaunchedEffect(lyrics) { if (lyrics == PlayerLyrics.None) lyricsOpen = false }
+    if (lyricsOpen && lyrics != PlayerLyrics.None) {
+        LyricsSheet(
+            lyrics = (lyrics as? PlayerLyrics.Shown)?.lyrics,
+            songTitle = state.video?.let(UpNextText::clean).orEmpty(),
+            positionState = viewModel.position,
+            onSeek = viewModel::seekTo,
+            onDismiss = { lyricsOpen = false },
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -130,7 +150,12 @@ fun PlayerScreen(
         },
     ) { padding ->
         val video = state.video
-        Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+        // Bottom inset handled by the Player itself: the lyrics tab runs down under the
+        // navigation bar, like the drawer it opens; everything else stays above it.
+        Box(
+            Modifier.fillMaxSize().padding(top = padding.calculateTopPadding()),
+            contentAlignment = Alignment.Center,
+        ) {
             if (video == null) {
                 Text(
                     "Nothing playing. Search for a song to start a station.",
@@ -149,8 +174,11 @@ fun PlayerScreen(
                     connectedOthers = clients.count { it.connected && it.id != viewModel.localClientId },
                     anyConnected = clients.any { it.connected },
                     likeChip = likeChip,
+                    lyrics = lyrics,
+                    lyricsCard = lyricsCard,
                     onOpenClients = onOpenMultiroom,
                     onOpenUpNext = { upNextOpen = true },
+                    onOpenLyrics = { lyricsOpen = true },
                 )
             }
         }
@@ -198,14 +226,21 @@ private fun PortraitPlayer(
     connectedOthers: Int,
     anyConnected: Boolean,
     likeChip: LikeChipState,
+    lyrics: PlayerLyrics,
+    lyricsCard: Boolean,
     onOpenClients: () -> Unit,
     onOpenUpNext: () -> Unit,
+    onOpenLyrics: () -> Unit,
 ) {
     val context = LocalContext.current
     // Fit-to-space (telecloud): the art is the sole weight holder, a square capped at the width,
     // so info + transport are never squeezed at any font scale.
     Column(
-        modifier = Modifier.fillMaxSize().padding(bottom = 8.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            // Tab mode: the tab's slot ends at the screen edge (it runs under the navigation
+            // bar), so the column takes no bottom inset of its own.
+            .then(if (lyricsCard) Modifier.navigationBarsPadding().padding(bottom = 8.dp) else Modifier),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         BoxWithConstraints(
@@ -274,6 +309,25 @@ private fun PortraitPlayer(
                     Icon(Icons.AutoMirrored.Filled.QueueMusic, contentDescription = "Queue")
                 }
             }
+        }
+        // Lyrics under the control rows. The art above is the only flexible item, so neither
+        // overlaps the controls. Default: the slim tab's slot is always reserved (owner review
+        // 2026-11-12), so the Player never moves between songs; the tab shows once lyrics are
+        // found, so none flashes for a lookup that finds nothing. Settings > Lyrics card: the
+        // card with the current line, which holds its slot while the next track's lookup runs;
+        // no lyrics there means no card, and the art takes the room.
+        val slot = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp)
+        when {
+            lyricsCard -> if (lyrics != PlayerLyrics.None) {
+                LyricsCard(
+                    lyrics = (lyrics as? PlayerLyrics.Shown)?.lyrics,
+                    positionState = viewModel.position,
+                    onOpen = onOpenLyrics,
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
+                )
+            }
+            lyrics is PlayerLyrics.Shown -> LyricsTab(onOpen = onOpenLyrics, modifier = slot)
+            else -> Spacer(slot.navigationBarsPadding().height(Dimens.PLAYER_LYRICS_TAB_HEIGHT))
         }
     }
 }

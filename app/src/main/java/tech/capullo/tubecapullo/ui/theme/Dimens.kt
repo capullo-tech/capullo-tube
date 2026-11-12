@@ -118,28 +118,49 @@ object Dimens {
      *  68 dp play buttons. */
     val PLAYER_ORDER_BUTTON_SIZE = 40.dp
 
+    /** The lyrics card at the Player's bottom: a fixed slot, so the Player does not move while
+     *  the lines change. Calculated, not tuned: two lines of bodyMedium (20 sp line height each)
+     *  and 12 dp above and below. At a font scale above 1.0 the lines need more than 20 dp and
+     *  the second one clips (our inference from the arithmetic; not seen on a device). The card
+     *  is a row of the Player's column under the control rows, so it never overlaps them; with
+     *  the 12 dp gap above it, it takes 76 dp from the art, the only flexible item. Arithmetic
+     *  from the Player's sizes (274 dp of fixed rows; not measured on a device): on the OPPO
+     *  (360 x 800 dp) the art goes from 360 to about 330 dp, on the OnePlus 3 (360 x 640 dp)
+     *  from about 230 to 154 dp, and on a 393 x 873 dp phone it keeps its 393 dp and the
+     *  content moves up. */
+    val PLAYER_LYRICS_CARD_HEIGHT = 64.dp
+
+    /** The slim lyrics tab at the Player's bottom (the default; Settings > Lyrics card off): one
+     *  label line, no handle (owner review 2026-11-12: slimmer). Judgement, not measured: below
+     *  Material's 48 dp touch-target height, which the tab's full width makes up for; any lower
+     *  and titleMedium (24 sp line) loses its margin. */
+    val PLAYER_LYRICS_TAB_HEIGHT = 36.dp
+
     // Search (SearchScreen.kt).
 
     /** Gap between the four filter chips. Was 8 dp; at 6 dp each chip on a 360 dp screen gets
      *  1.5 dp more for its label. Smaller and the chips start to read as one bar. */
     val SEARCH_CHIP_SPACING = 6.dp
 
-    // Queue sheet (UpNextSheet.kt). Owner review 2026-11-11: the sheet may expand upwards but
-    // stays a drawer, never full screen.
+    // Player drawers: the Queue sheet and the lyrics drawer (ui/shared/PlayerDrawer.kt). Owner
+    // review 2026-11-11: a drawer may expand upwards but stays a drawer, never full screen.
 
-    /** The expanded sheet's maximum height, as a fraction of the window height below the status
-     *  bar. Higher and the Player's top bar disappears behind the sheet (it reads as a new
-     *  screen); lower and fewer queue rows fit. */
-    const val UP_NEXT_MAX_HEIGHT_FRACTION = 0.85f
+    /** The expanded drawer's maximum height, as a fraction of the window height below the
+     *  status bar. Higher and the Player's top bar disappears behind the drawer (it reads as a
+     *  new screen); lower and fewer queue rows or lyric lines fit. */
+    const val PLAYER_DRAWER_MAX_HEIGHT_FRACTION = 0.85f
 
-    /** Height of M3's default drag handle above the sheet's content (22 dp vertical padding x 2
+    /** Height of M3's default drag handle above the drawer's content (22 dp vertical padding x 2
      *  + 4 dp bar = 48 dp, ModalBottomSheet's BottomSheetDefaults.DragHandle). The content cap is
-     *  the sheet cap minus this, so the whole sheet stays within UP_NEXT_MAX_HEIGHT_FRACTION. */
-    val UP_NEXT_HANDLE_SPACE = 48.dp
+     *  the drawer cap minus this, so the whole drawer stays within
+     *  PLAYER_DRAWER_MAX_HEIGHT_FRACTION. */
+    val PLAYER_DRAWER_HANDLE_SPACE = 48.dp
 
-    /** Gap between the sheet and each side of the screen, so it reads as a floating drawer.
-     *  The sheet's bottom stays on the screen edge, so its bottom corners stay square. */
-    val UP_NEXT_SHEET_SIDE_MARGIN = 8.dp
+    /** Gap between the drawer and each side of the screen, so it reads as floating. The
+     *  drawer's bottom stays on the screen edge, so its bottom corners stay square. */
+    val PLAYER_DRAWER_SIDE_MARGIN = 8.dp
+
+    // Queue sheet (UpNextSheet.kt).
 
     /** Alpha of a played row's art and text in the Queue (owner decision 2026-11-12: played
      *  rows dimmed). GUESS: chosen without a device check. Lower and a played title gets hard

@@ -144,6 +144,20 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
         _askForSharedLinks.value = enabled
     }
 
+    private val _lyricsCard = MutableStateFlow(prefs.getBoolean(KEY_LYRICS_CARD, false))
+
+    /**
+     * Whether the Player shows a card with the current lyric line. Default off (owner decision
+     * 2026-11-12): the Player shows only a slim tab that says lyrics exist, and the drawer opens
+     * on a tap, so the art keeps its size.
+     */
+    val lyricsCard: StateFlow<Boolean> = _lyricsCard.asStateFlow()
+
+    fun setLyricsCard(enabled: Boolean) {
+        prefs.edit { putBoolean(KEY_LYRICS_CARD, enabled) }
+        _lyricsCard.value = enabled
+    }
+
     companion object {
         /**
          * Trending rows Home may show. GUESS, unmeasured: each row is one kiosk fetch (~0.9 s,
@@ -217,6 +231,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
          *  survives the update ([songsPerLikeOf] rounds an odd one up). */
         private const val KEY_SONGS_PER_LIKE = "mix_songs"
         private const val KEY_ASK_FOR_SHARED_LINKS = "ask_for_shared_links"
+        private const val KEY_LYRICS_CARD = "lyrics_card"
     }
 }
 

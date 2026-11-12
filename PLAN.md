@@ -9,7 +9,7 @@ section "Delivery" says how the local history becomes a short, direct branch tre
 |---|---|
 | Done, device-checked | navigation shell, Library, Settings, Queue, share, links in and out, liked export and import, playlists and channels with shuffle and repeat, search filters, Home rows, stall watchdog, CapulloTube name |
 | In progress | density pass (smaller type and tighter rows, Spotify-like mini-bar) |
-| Built, unit-tested, not device-checked | Home v2 and albums (section "Home v2 and albums") |
+| Built, unit-tested, not device-checked | Home v2 and albums (section "Home v2 and albums"), lyrics (section "Lyrics") |
 | Next | simpler radio (section "Radio") |
 | Owner, on device | hour-long soak; swipe-from-recents check |
 
@@ -139,6 +139,36 @@ Pass criteria go to `docs/probes/radio-criteria.md` before the first listening t
   it. Row buttons: heart, share, and a menu with Go to radio.
 - Each row says where it came from ("From the Mix of X", "Related to X").
 
+## Lyrics (owner decisions 2026-11-12)
+
+- When a song has lyrics, a slim Lyrics tab (the top edge of the lyrics drawer) sits at the
+  Player's bottom. Its place is kept for songs without lyrics too, so the Player never moves
+  between songs. Settings > Lyrics card (default off) shows a card with the current line
+  instead; a song without lyrics then shows no card, and the art takes the room.
+- A tap or a drag up on the tab or the card opens the lyrics drawer, in one step at the Queue's
+  capped height, with no handle, so no line sits behind the navigation bar. Synced lyrics show the current line in color and follow the song
+  until you scroll. A tap on a synced line plays from that line. A small label names the source:
+  "Lyrics by LRCLIB" or "From the video description".
+- Sources, in this order:
+  1. LRCLIB (lrclib.net, free, no key): a lookup by artist, title and duration, then a search
+     with "artist title". A result counts only when its duration is within 5 s of the video
+     (GUESS from the probe).
+  2. The video description, when it holds a lyrics block: 12 or more short lines with a
+     chorus (two lines repeated together), and no credits, links, hashtags or timestamps. A
+     description with two songs (a medley) gives none. These lyrics are plain.
+  No captions.
+- The artist and the title come from the video title and the channel name. The parser reads
+  `Artist - Title`, `Artist《Title》`, `Artist【Title】`, `Artist [ Title ]`, `artist: title`,
+  a Chinese name and a title, and a title alone (the channel is the artist).
+- Privacy: LRCLIB receives the artist, the title and the duration of each song that plays and
+  is not in the cache, and the phone's IP address, as every server does. The request names the
+  app and its repository in the User-Agent. It sends no account and no device id.
+- Cache: Room keeps the result for each video (synced, plain or none) with its date. Lyrics are
+  kept. A song with no lyrics is looked up again after 7 days (GUESS). A failed lookup (no
+  network) is not kept, so the next play tries again.
+- The lookup starts when a song starts, in the background. Playback never waits for it.
+- Pass criteria and results: `docs/probes/lyrics-criteria.md`, `docs/probes/lyrics-results.md`.
+
 ## Previous (owner decision 2026-11-12)
 
 The Player button, the cover swipe, the notification, the lock screen, Bluetooth and the web
@@ -181,6 +211,8 @@ chapter before; on the first chapter it acts as on a song. Pass criteria:
 - `adb logcat -s TubeHome`: one line per Home row fetch (`moreLike`, `fullAlbums`, `reload`).
 - `adb shell dumpsys activity service tech.capullo.tubecapullo/.player.PlaybackService`: station
   state and a `player:` line (state, buffer, error, loop index).
+- `adb logcat -s TubeLyrics`: one line per song: `lyrics id= source=lrclib-get|lrclib-search|
+  description|none synced= ms= cache=hit|miss`, with the query on a cache miss.
 - `adb shell am start -n tech.capullo.tubecapullo/.MainActivity --es dbg <name>`, where `<name>`
   is `station`, `player`, `dump`, `like`, `skip`, `liked` or `likedradio`.
 - Settings > Developer > Station debug: the dump, live.

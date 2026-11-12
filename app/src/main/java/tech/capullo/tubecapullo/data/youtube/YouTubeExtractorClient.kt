@@ -32,6 +32,7 @@ import org.schabi.newpipe.extractor.services.youtube.extractors.kiosk.YoutubeTre
 import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory
 import org.schabi.newpipe.extractor.stream.AudioStream
 import org.schabi.newpipe.extractor.stream.DeliveryMethod
+import org.schabi.newpipe.extractor.stream.Description
 import org.schabi.newpipe.extractor.stream.StreamInfo
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
 import org.schabi.newpipe.extractor.stream.StreamSegment
@@ -279,6 +280,17 @@ class YouTubeExtractorClient @Inject constructor(private val downloader: TubeCap
         YtAlbum(info.toYtVideo(videoId), chapters(info.streamSegments.orEmpty()))
     }
 
+    /**
+     * The video's description as plain text (YouTube's links and line breaks come as HTML;
+     * [descriptionText] turns them into text). One `StreamInfo` fetch, so the lyrics lookup asks
+     * for it only after LRCLIB found nothing.
+     */
+    suspend fun description(videoId: String): String = extract("description") {
+        val info = StreamInfo.getInfo(ServiceList.YouTube, YouTubeUrls.watchUrl(videoId))
+        val description = info.description ?: return@extract ""
+        descriptionText(description.content.orEmpty(), html = description.type == Description.HTML)
+    }
+
     private fun StreamInfo.toYtVideo(videoId: String) = YtVideo(
         videoId = videoId,
         title = name.orEmpty().ifBlank { videoId },
@@ -522,6 +534,43 @@ internal fun chapters(segments: List<StreamSegment>): List<YtChapter> {
         }
     return chapters.takeIf { it.size >= MIN_CHAPTERS }.orEmpty()
 }
+
+/**
+ * A description's text. NewPipe gives YouTube's description as HTML when YouTube sent links or
+ * formatting: `<br>` for each line break, `<a href>` around links, `&amp;` and `&#39;` for the
+ * characters HTML reserves. With [html] the line breaks come back, the tags go and the entities
+ * decode (in one pass, so "&amp;lt;" stays "&lt;"); without it the text is returned as is.
+ */
+internal fun descriptionText(content: String, html: Boolean): String {
+    if (!html) return content
+    val text = HTML_TAG.replace(HTML_BREAK.replace(content, "\n"), "")
+    return HTML_ENTITY.replace(text) { match ->
+        val name = match.groupValues[1]
+        when {
+            name.startsWith("#x", ignoreCase = true) ->
+                name.drop(2).toIntOrNull(16)?.let(::codePointText)
+            name.startsWith("#") -> name.drop(1).toIntOrNull()?.let(::codePointText)
+            else -> NAMED_ENTITIES[name]
+        } ?: match.value
+    }
+}
+
+private fun codePointText(codePoint: Int): String? {
+    if (!Character.isValidCodePoint(codePoint)) return null
+    return String(Character.toChars(codePoint))
+}
+
+private val HTML_BREAK = Regex("""<br\s*/?>|</p>""", RegexOption.IGNORE_CASE)
+private val HTML_TAG = Regex("""<[^>]+>""")
+private val HTML_ENTITY = Regex("""&(#[0-9]+|#[xX][0-9a-fA-F]+|[a-zA-Z]+);""")
+private val NAMED_ENTITIES = mapOf(
+    "amp" to "&",
+    "lt" to "<",
+    "gt" to ">",
+    "quot" to "\"",
+    "apos" to "'",
+    "nbsp" to " ",
+)
 
 // Biggest thumbnail YouTube offered. Unknown dimensions sort last rather than winning by default.
 private fun List<Image>.bestThumbnailUrl(): String? = maxByOrNull { if (it.height > 0) it.height else 0 }?.url

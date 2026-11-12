@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.Lyrics
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Remove
@@ -77,6 +78,7 @@ fun SettingsScreen(
     val moreLikeRows by viewModel.moreLikeRows.collectAsStateWithLifecycle()
     val continueCards by viewModel.continueCards.collectAsStateWithLifecycle()
     val fullAlbums by viewModel.fullAlbums.collectAsStateWithLifecycle()
+    val lyricsCard by viewModel.lyricsCard.collectAsStateWithLifecycle()
     val likeMode by viewModel.likeMode.collectAsStateWithLifecycle()
     val songsPerLike by viewModel.songsPerLike.collectAsStateWithLifecycle()
     val openYouTubeLinks by viewModel.openYouTubeLinks.collectAsStateWithLifecycle()
@@ -159,6 +161,25 @@ fun SettingsScreen(
                     value = fullAlbums,
                     role = Role.Switch,
                     onValueChange = viewModel::setFullAlbums,
+                ),
+            )
+            ListItem(
+                leadingContent = { Icon(Icons.Default.Lyrics, contentDescription = null) },
+                headlineContent = { Text("Lyrics card") },
+                supportingContent = {
+                    Text(
+                        if (lyricsCard) {
+                            "The Player shows the current lyric line; tap it for all lyrics"
+                        } else {
+                            "Off: a slim Lyrics tab; tap it for the lyrics"
+                        },
+                    )
+                },
+                trailingContent = { Switch(checked = lyricsCard, onCheckedChange = null) },
+                modifier = Modifier.toggleable(
+                    value = lyricsCard,
+                    role = Role.Switch,
+                    onValueChange = viewModel::setLyricsCard,
                 ),
             )
             ListItem(
