@@ -20,8 +20,8 @@ android {
         // API 26+, but its java.util.stream use is NOT all native: Collectors.toUnmodifiableList
         // (JDK 10) only exists on Android from API 33, and the trending kiosk died with
         // NoSuchMethodError on API 28-32 until desugaring was enabled (2026-11-11 smoke matrix,
-        // docs/probes/desugar-api28-32-criteria.md). TC desugars for the same reason plus nio
-        // (it is minSdk 24); we desugar for the stream additions only.
+        // docs/probes/desugar-api28-32-criteria.md). URLDecoder.decode(String, Charset)
+        // (API 33) needs the _nio flavour too (OnePlus 3, Android 11, 2026-11-12).
         minSdk = 26
         targetSdk = 36
         versionCode = 2
@@ -115,8 +115,9 @@ ksp {
 }
 
 dependencies {
-    // See compileOptions.isCoreLibraryDesugaringEnabled - stream backport for API < 33.
-    coreLibraryDesugaring(pins.desugar.jdk.libs)
+    // See compileOptions.isCoreLibraryDesugaringEnabled - stream and URLDecoder backports for
+    // API < 33 (the _nio flavour; see pins.versions.toml).
+    coreLibraryDesugaring(pins.desugar.jdk.libs.nio)
     // The snapcast delivery engine's transport classes + capullo-audio-contracts (re-exported as
     // api). Pulled in at M1 on purpose: it validates the jitpack pin early and lands the contracts
     // jar in the Gradle cache so the SPI signatures can be read before M4 (HANDOFF-bootstrap §7).
