@@ -114,7 +114,6 @@ jobs:
       EMU_CORES: ${{ matrix.cores || '2' }}
       EMU_RAM: ${{ matrix.ram-size || '2048M' }}
       BOOT_TIMEOUT: ${{ matrix.boot-timeout || '900' }}
-      WARM_REBOOT: ${{ matrix.warm-reboot || 'false' }}
     steps:
       # Emulator orchestration is manual on purpose, not reactivecircus/android-emulator-runner:
       # the action runs its post-boot "input keyevent 82" unlock with no retry and treats its
@@ -174,21 +173,6 @@ jobs:
             fi
             sleep 5
           done
-          if [ "$WARM_REBOOT" = "true" ]; then
-            echo "First boot up; rebooting for a warm, churn-free boot."
-            sleep 20
-            adb reboot
-            adb wait-for-device
-            deadline=$(( $(date +%s) + BOOT_TIMEOUT ))
-            until [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; do
-              if [ "$(date +%s)" -ge "$deadline" ]; then
-                echo "::error::emulator did not reboot within ${BOOT_TIMEOUT}s - emulator log tail:"
-                tail -50 /tmp/emulator.log
-                exit 1
-              fi
-              sleep 5
-            done
-          fi
           echo "Emulator booted (android-$ANDROID_API, $EMU_CORES cores / $EMU_RAM)."
           # User-unlock gate, FIRST (the launcher cannot settle under a locked user): FBE
           # images boot through a locked-user (direct boot) phase; until the
