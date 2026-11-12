@@ -7,14 +7,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -32,13 +27,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -58,7 +51,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
@@ -75,6 +67,7 @@ import tech.capullo.tubecapullo.data.youtube.YtVideo
 import tech.capullo.tubecapullo.station.PlaySource
 import tech.capullo.tubecapullo.ui.shared.CompactListItem
 import tech.capullo.tubecapullo.ui.shared.LikeButton
+import tech.capullo.tubecapullo.ui.shared.PlayerDrawer
 import tech.capullo.tubecapullo.ui.shared.SongActionsMenu
 import tech.capullo.tubecapullo.ui.theme.Dimens
 import tech.capullo.tubecapullo.util.ShareLink
@@ -114,9 +107,7 @@ private class RowActions(
  * plays (Liked, a playlist, a channel), a menu adds Go to radio (a song radio from the row), which
  * replaces the station and closes the sheet. A radio row has no menu: Go to radio is its only
  * item, and a radio hides it. An upcoming row swiped toward the start leaves the queue (owner
- * decision 2026-11-11). The sheet may expand upwards but stays a drawer, never full screen: its
- * height is capped below the Player's top and it floats between small side margins (owner review
- * 2026-11-11; [Dimens]).
+ * decision 2026-11-11). The sheet is a [PlayerDrawer]: two steps, capped below the Player's top.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -182,58 +173,39 @@ fun UpNextSheet(onDismiss: () -> Unit, viewModel: UpNextViewModel = hiltViewMode
         }
     }
 
-    // A drawer, never full screen: the cap keeps the Player's top in view above the expanded
-    // sheet, and the side margins make it float. The cap sits on the LIST, not on the sheet: with
-    // `heightIn` on the sheet's own modifier, M3 1.4.0 placed the Expanded anchor for the
-    // uncapped content, so sliding up parked the capped sheet against the top of the screen with
-    // an empty band below it (owner report 2026-11-12; measured on the OPPO: sheet top at 178 px,
-    // list bottom at 1813 px, navigation bar at 2268 px). Capping the content keeps the sheet's
-    // measured height and its anchors the same thing.
-    val windowHeight = with(LocalDensity.current) {
-        LocalWindowInfo.current.containerSize.height.toDp()
-    }
-    val statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val maxSheetHeight = (windowHeight - statusBar) * Dimens.UP_NEXT_MAX_HEIGHT_FRACTION
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        // Two steps (owner call 2026-11-12): half-way first, showing the next songs; drag up for
-        // the capped full height; pull down inside the list to see the current and played songs.
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false),
-        modifier = Modifier.padding(horizontal = Dimens.UP_NEXT_SHEET_SIDE_MARGIN),
-    ) {
-        Box(Modifier.fillMaxWidth().heightIn(max = maxSheetHeight - Dimens.UP_NEXT_HANDLE_SPACE)) {
-            Column {
-                QueueTitle(station.source)
-                LazyColumn(
-                    state = listState,
-                    contentPadding = PaddingValues(
-                        bottom = with(LocalDensity.current) { bottomSlackPx.toDp() },
-                    ),
-                ) {
-                    items(entries, key = { it.key }, contentType = { it::class }) { entry ->
-                        when (entry) {
-                            is EndLine -> EndLineText(entry.text)
-                            is ChapterEntry -> ChapterRow(entry, actions)
-                            is TrackEntry -> TrackRow(
-                                track = entry,
-                                // The current row's heart is the Player's: the album's in album
-                                // mode.
-                                isLiked = entry.video.videoId in if (
-                                    entry.state == RowState.CURRENT && station.albumMode
-                                ) {
-                                    likedAlbumIds
-                                } else {
-                                    likedIds
-                                },
-                                isCollection = station.isCollection,
-                                actions = actions,
-                            )
-                        }
+    // A drawer, never full screen, opened half-way (PlayerDrawer).
+    PlayerDrawer(onDismiss = onDismiss) {
+        Column {
+            QueueTitle(station.source)
+            LazyColumn(
+                state = listState,
+                contentPadding = PaddingValues(
+                    bottom = with(LocalDensity.current) { bottomSlackPx.toDp() },
+                ),
+            ) {
+                items(entries, key = { it.key }, contentType = { it::class }) { entry ->
+                    when (entry) {
+                        is EndLine -> EndLineText(entry.text)
+                        is ChapterEntry -> ChapterRow(entry, actions)
+                        is TrackEntry -> TrackRow(
+                            track = entry,
+                            // The current row's heart is the Player's: the album's in album
+                            // mode.
+                            isLiked = entry.video.videoId in if (
+                                entry.state == RowState.CURRENT && station.albumMode
+                            ) {
+                                likedAlbumIds
+                            } else {
+                                likedIds
+                            },
+                            isCollection = station.isCollection,
+                            actions = actions,
+                        )
                     }
                 }
             }
-            SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter))
         }
+        SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter))
     }
 }
 

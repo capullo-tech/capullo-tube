@@ -14,6 +14,9 @@ as clients. You pick one song. The app extends it into an endless radio:
   "Save only" or "Switch now").
 - **Next** goes to the next song. A skip is not a signal.
 - **⌕ Search** starts somewhere new.
+- **Lyrics** show under the Player's controls when a song has them: synced lyrics from
+  [LRCLIB](https://lrclib.net), or lyrics pasted into the video description. LRCLIB receives the
+  artist, the title and the duration of each song that plays (PLAN.md, section "Lyrics").
 
 Part of the [capullo-tech](https://github.com/capullo-tech) family (RadioCapullo, telecloud-radio).
 
@@ -72,6 +75,7 @@ station/   StationEngine  - radios as chained pairs of YouTube Mix and related v
 player/    ExoPlayer → PCM → snapfifo   (PlaybackService = foreground media service)
 snapcast/  SnapcastManager - runs snapserver on the phone
 data/youtube/  NewPipeExtractor client: search, streams, related, Mix
+data/lyrics/   LRCLIB client, the artist and title parser, description lyrics, Room cache
 ```
 
 ## Contributing

@@ -45,6 +45,7 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -84,19 +85,21 @@ import kotlin.math.abs
 
 /**
  * Swipe distance on the art that counts as a gesture (left = skip, right = restart, up = Up
- * next). Carried over from telecloud's art gestures, chosen by eye there (GUESS, not measured):
- * shorter and a tap's jitter or a scroll attempt fires it; longer and a short flick does nothing.
+ * next), and up on the lyrics card (the lyrics drawer). Carried over from telecloud's art
+ * gestures, chosen by eye there (GUESS, not measured): shorter and a tap's jitter or a scroll
+ * attempt fires it; longer and a short flick does nothing.
  */
-private val ART_SWIPE_THRESHOLD = 90.dp
+internal val ART_SWIPE_THRESHOLD = 90.dp
 
 /**
  * Full-screen now-playing, ported from telecloud-radio's PortraitPlayer: square art (the YouTube
  * thumbnail) taking whatever space the fixed info + transport leave, slim seek bar, transport row,
- * and a secondary row: Multiroom, like, share and Queue spread evenly. The top
- * bar names the station's source. After a like, a chip over the art says what it did
- * to the queue ([LikeChip]). The Telegram-only parts (reactions, download, stats, sleep timer,
- * album-art tinting) are not ported - telecloud's PlayerScreen is the reference when any of them
- * comes back.
+ * and a secondary row: Multiroom, like, share and Queue spread evenly. When the song has lyrics,
+ * a card under those rows shows the current line ([LyricsCard]) and opens the lyrics drawer
+ * ([LyricsSheet]). The top bar names the station's source. After a like, a chip over the art
+ * says what it did to the queue ([LikeChip]). The Telegram-only parts (reactions, download,
+ * stats, sleep timer, album-art tinting) are not ported - telecloud's PlayerScreen is the
+ * reference when any of them comes back.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -111,11 +114,25 @@ fun PlayerScreen(
     val likedIds by viewModel.likedIds.collectAsStateWithLifecycle()
     val likedAlbumIds by viewModel.likedAlbumIds.collectAsStateWithLifecycle()
     val albumArt by viewModel.albumArt.collectAsStateWithLifecycle()
+    val lyrics by viewModel.lyrics.collectAsStateWithLifecycle()
     // Saveable: an open sheet survives rotation (CONTRIBUTING §3).
     var upNextOpen by rememberSaveable { mutableStateOf(false) }
+    var lyricsOpen by rememberSaveable { mutableStateOf(false) }
     val likeChip = rememberLikeChipState(viewModel.likeEffects, viewModel.rollOvers)
 
     if (upNextOpen) UpNextSheet(onDismiss = { upNextOpen = false })
+    // The drawer stays open while the next track's lookup runs (Pending) and closes with the
+    // card when a track has no lyrics.
+    LaunchedEffect(lyrics) { if (lyrics == PlayerLyrics.None) lyricsOpen = false }
+    if (lyricsOpen && lyrics != PlayerLyrics.None) {
+        LyricsSheet(
+            lyrics = (lyrics as? PlayerLyrics.Shown)?.lyrics,
+            songTitle = state.video?.let(UpNextText::clean).orEmpty(),
+            positionState = viewModel.position,
+            onSeek = viewModel::seekTo,
+            onDismiss = { lyricsOpen = false },
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -149,8 +166,10 @@ fun PlayerScreen(
                     connectedOthers = clients.count { it.connected && it.id != viewModel.localClientId },
                     anyConnected = clients.any { it.connected },
                     likeChip = likeChip,
+                    lyrics = lyrics,
                     onOpenClients = onOpenMultiroom,
                     onOpenUpNext = { upNextOpen = true },
+                    onOpenLyrics = { lyricsOpen = true },
                 )
             }
         }
@@ -198,8 +217,10 @@ private fun PortraitPlayer(
     connectedOthers: Int,
     anyConnected: Boolean,
     likeChip: LikeChipState,
+    lyrics: PlayerLyrics,
     onOpenClients: () -> Unit,
     onOpenUpNext: () -> Unit,
+    onOpenLyrics: () -> Unit,
 ) {
     val context = LocalContext.current
     // Fit-to-space (telecloud): the art is the sole weight holder, a square capped at the width,
@@ -274,6 +295,17 @@ private fun PortraitPlayer(
                     Icon(Icons.AutoMirrored.Filled.QueueMusic, contentDescription = "Queue")
                 }
             }
+        }
+        // Lyrics: a fixed slot under the control rows (Dimens.PLAYER_LYRICS_CARD_HEIGHT). The
+        // art above is the only flexible item, so the card never overlaps the controls. No
+        // lyrics: no card, and the layout is the same as without the feature.
+        if (lyrics != PlayerLyrics.None) {
+            LyricsCard(
+                lyrics = (lyrics as? PlayerLyrics.Shown)?.lyrics,
+                positionState = viewModel.position,
+                onOpen = onOpenLyrics,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
+            )
         }
     }
 }
