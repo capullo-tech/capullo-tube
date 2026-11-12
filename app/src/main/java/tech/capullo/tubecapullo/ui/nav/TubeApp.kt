@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
@@ -17,6 +18,8 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarDefaults
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -41,6 +44,7 @@ import androidx.navigation3.runtime.rememberDecoratedNavEntries
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import kotlinx.coroutines.flow.Flow
+import tech.capullo.tubecapullo.links.LinksViewModel
 import tech.capullo.tubecapullo.ui.debug.StationDebugScreen
 import tech.capullo.tubecapullo.ui.home.HomeScreen
 import tech.capullo.tubecapullo.ui.library.LibraryScreen
@@ -60,15 +64,22 @@ private val MULTIROOM_BACKDROP_BLUR = 12.dp
  * The app root: tab back stacks ([TubeNavigator]) in a NavDisplay, and around the tab roots the
  * shell (now-playing mini-bar, bottom navigation). Full-screen routes draw without
  * the shell. [navRequests] carries routes from outside the composition: notification taps and
- * `--es dbg` commands, forwarded by MainActivity.
+ * `--es dbg` commands, forwarded by MainActivity. [links] is the incoming-link handler that
+ * MainActivity feeds shares and tapped links to; its progress, dialog and messages show here, over
+ * whichever screen is current.
  */
 @Composable
 fun TubeApp(
     navRequests: Flow<Route>,
+    links: LinksViewModel,
     shell: ShellViewModel = hiltViewModel(),
 ) {
     val navigator = rememberTubeNavigator()
     LaunchedEffect(navigator, navRequests) { navRequests.collect { navigator.open(it) } }
+
+    val snackbarHostState = remember { SnackbarHostState() }
+    val resolvingLink by links.resolving.collectAsStateWithLifecycle()
+    LinkEffects(links, navigator, snackbarHostState)
 
     // The Multiroom sheet is a ModalBottomSheet with its own window, so it is hosted here over
     // whichever screen opened it rather than as a back-stack entry; it handles back itself.
@@ -118,6 +129,19 @@ fun TubeApp(
                     onSelectTab = navigator::selectTab,
                     onOpenPlayer = openPlayer,
                 )
+            }
+        },
+        snackbarHost = {
+            // Full-screen routes have no shell bar to sit on, and this Scaffold reserves no
+            // insets: lift the messages above the system navigation bar there.
+            val lift = if (navigator.top is Route.TabRoot) {
+                Modifier
+            } else {
+                Modifier.navigationBarsPadding()
+            }
+            Column(lift) {
+                if (resolvingLink) LinkProgress()
+                SnackbarHost(snackbarHostState)
             }
         },
     ) { padding ->

@@ -136,7 +136,7 @@ dependencies {
     implementation(libs.androidx.navigation3.runtime)
     implementation(libs.androidx.navigation3.ui)
     implementation(libs.androidx.lifecycle.viewmodel.navigation3)
-    // Station snapshots: the saved queue of a station you left, as JSON in Room.
+    // The liked-songs backup file (data/backup/): versioned JSON export and import.
     implementation(libs.kotlinx.serialization.json)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)

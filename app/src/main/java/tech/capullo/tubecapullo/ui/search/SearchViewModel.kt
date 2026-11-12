@@ -16,6 +16,7 @@ import tech.capullo.tubecapullo.data.youtube.YouTubeExtractorClient
 import tech.capullo.tubecapullo.data.youtube.YouTubeUrls
 import tech.capullo.tubecapullo.data.youtube.YtCollection
 import tech.capullo.tubecapullo.data.youtube.YtVideo
+import tech.capullo.tubecapullo.links.PlaylistLinkRequests
 import tech.capullo.tubecapullo.player.PlaybackCoordinator
 import tech.capullo.tubecapullo.station.PlaySource
 import tech.capullo.tubecapullo.station.StationEngine
@@ -46,6 +47,7 @@ class SearchViewModel @Inject constructor(
     private val extractor: YouTubeExtractorClient,
     private val player: PlaybackCoordinator,
     private val stationEngine: StationEngine,
+    playlistLinks: PlaylistLinkRequests,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SearchUiState())
@@ -63,6 +65,13 @@ class SearchViewModel @Inject constructor(
         // Service-side events (skipped tracks, station ran dry) surface as toasts. Retry policy
         // moved into PlaybackService with the station loop - the station owns it now.
         viewModelScope.launch { player.events.collect { _toast.tryEmit(it) } }
+        // A shared or opened playlist link (links/LinksViewModel) lists here as if pasted.
+        viewModelScope.launch {
+            playlistLinks.requests.collect { url ->
+                onQueryChange(url)
+                submit()
+            }
+        }
     }
 
     fun onQueryChange(query: String) {

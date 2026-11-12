@@ -4,19 +4,24 @@ An Android app that turns one phone into a YouTube radio station for the whole r
 
 The phone plays YouTube audio and broadcasts it in sync over the LAN with
 [Snapcast](https://github.com/badaix/snapcast). Other phones, Raspberry Pis and web browsers listen
-as clients. You pick one song. The app extends it into an endless station:
+as clients. You pick one song. The app extends it into an endless radio:
 
-- **♥ Like** steers the station toward that track's neighbourhood.
-- **✕ Skip** steers away from it.
-- **⌕ Search** jumps somewhere new.
+- The radio plays the song's YouTube Mix and its top related videos, in pairs: one song of each,
+  each list in YouTube's order. When the queue runs low, the radio continues with the pairs of
+  the last song played.
+- **♥ Like** saves the song. It also blends in 2 songs like it (one of its Mix, one related)
+  after the current song, in a radio or a list (Settings can change the count, or switch to
+  "Save only" or "Switch now").
+- **Next** goes to the next song. A skip is not a signal.
+- **⌕ Search** starts somewhere new.
 
 Part of the [capullo-tech](https://github.com/capullo-tech) family (RadioCapullo, telecloud-radio).
 
 ## Status
 
-Early. The five bootstrap milestones (skeleton → playback → station → Snapcast → taste) work on a
-real device. The taste weights are first guesses and need tuning from real listening.
-`HANDOFF-bootstrap.md` has the full record and a testing guide.
+Early (v0.2). Playback, the radio, lists, Snapcast, links and the likes backup work on a real
+device. The radio constants are first guesses; `docs/probes/radio-criteria.md` gives the pass
+criteria for a listening test. `HANDOFF-bootstrap.md` has the bootstrap record.
 
 ## Build
 
@@ -55,14 +60,14 @@ preview over the old one, like an OTA update.
 1. Start a station on the phone. The app shows a **Broadcasting** URL.
 2. Open that URL in a browser on the same Wi-Fi, or point any `snapclient` at the phone.
 
-All listeners stay in sync. The browser player's Next button counts as a skip.
+All listeners stay in sync. The browser player's Next button goes to the next song.
 
 ## How it works
 
 ```
-ui/        SearchScreen, now playing (like / skip / search)
-station/   StationEngine  - candidate pool from YouTube Mix + related videos,
-                            reweighted locally by like / skip / play-through
+ui/        Home, Search, Library, Settings, Player, Up next
+station/   StationEngine  - radios as chained pairs of YouTube Mix and related videos
+                            (Pairs.kt), Liked radio, playlists, channels and Liked
            StationLoop    - advances the queue
 player/    ExoPlayer → PCM → snapfifo   (PlaybackService = foreground media service)
 snapcast/  SnapcastManager - runs snapserver on the phone

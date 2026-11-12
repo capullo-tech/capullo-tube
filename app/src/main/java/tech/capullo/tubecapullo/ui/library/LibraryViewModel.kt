@@ -1,5 +1,6 @@
 package tech.capullo.tubecapullo.ui.library
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -8,6 +9,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import tech.capullo.tubecapullo.data.backup.BackupMessage
+import tech.capullo.tubecapullo.data.backup.LikedBackup
 import tech.capullo.tubecapullo.data.history.LikedAlbums
 import tech.capullo.tubecapullo.data.history.LikedTracks
 import tech.capullo.tubecapullo.data.history.PlayHistory
@@ -38,6 +41,7 @@ internal fun historyRows(history: List<YtVideo>, albumIds: Set<String>): List<Li
 class LibraryViewModel @Inject constructor(
     private val player: PlaybackCoordinator,
     private val stationEngine: StationEngine,
+    private val backup: LikedBackup,
     likedTracks: LikedTracks,
     likedAlbums: LikedAlbums,
     playHistory: PlayHistory,
@@ -95,4 +99,16 @@ class LibraryViewModel @Inject constructor(
 
     /** Only called from the Albums list: removes the album; the row then drops out of it. */
     fun unlikeAlbum(album: YtVideo) = stationEngine.toggleAlbumLike(album)
+
+    /** The likes export or import in flight, or null. It outlives this screen (app scope). */
+    val backupProgress = backup.progress
+
+    /** The last export or import result, until [backupMessageShown]. */
+    val backupMessage = backup.message
+
+    fun exportLiked(uri: Uri) = backup.export(uri)
+
+    fun importLiked(uri: Uri) = backup.import(uri)
+
+    fun backupMessageShown(message: BackupMessage) = backup.messageShown(message)
 }

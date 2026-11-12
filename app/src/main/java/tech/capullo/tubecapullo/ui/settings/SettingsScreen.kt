@@ -1,5 +1,11 @@
 package tech.capullo.tubecapullo.ui.settings
 
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
@@ -17,15 +23,18 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -48,6 +57,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -69,6 +79,9 @@ fun SettingsScreen(
     val fullAlbums by viewModel.fullAlbums.collectAsStateWithLifecycle()
     val likeMode by viewModel.likeMode.collectAsStateWithLifecycle()
     val songsPerLike by viewModel.songsPerLike.collectAsStateWithLifecycle()
+    val openYouTubeLinks by viewModel.openYouTubeLinks.collectAsStateWithLifecycle()
+    val askForSharedLinks by viewModel.askForSharedLinks.collectAsStateWithLifecycle()
+    val context = LocalContext.current
     // Saveable: an open dialog stays open across rotation (CONTRIBUTING §3).
     var showChartsDialog by rememberSaveable { mutableStateOf(false) }
     var showLikeModeDialog by rememberSaveable { mutableStateOf(false) }
@@ -170,6 +183,57 @@ fun SettingsScreen(
                 moreLabel = "Two songs more",
                 onValueChange = viewModel::setSongsPerLike,
             )
+            HorizontalDivider()
+            SectionHeader("Links")
+            ListItem(
+                leadingContent = { Icon(Icons.Default.Link, contentDescription = null) },
+                headlineContent = { Text("Open YouTube links in CapulloTube") },
+                supportingContent = {
+                    Text(
+                        "If YouTube or another app also opens these links, Android lets you " +
+                            "choose in App info > Open by default.",
+                    )
+                },
+                trailingContent = { Switch(checked = openYouTubeLinks, onCheckedChange = null) },
+                modifier = Modifier.toggleable(
+                    value = openYouTubeLinks,
+                    role = Role.Switch,
+                    onValueChange = viewModel::setOpenYouTubeLinks,
+                ),
+            )
+            // Hidden, not disabled, while the app takes no links: there is nothing to choose.
+            if (openYouTubeLinks) {
+                ListItem(
+                    leadingContent = {
+                        Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null)
+                    },
+                    headlineContent = { Text("Open by default") },
+                    supportingContent = { Text("Choose which app opens YouTube links") },
+                    modifier = Modifier.clickable(
+                        onClickLabel = "Open Android's Open by default settings",
+                        onClick = { openByDefaultSettings(context) },
+                    ),
+                )
+            }
+            ListItem(
+                leadingContent = { Icon(Icons.Default.TouchApp, contentDescription = null) },
+                headlineContent = { Text("Ask what to do with shared links") },
+                supportingContent = {
+                    Text(
+                        if (askForSharedLinks) {
+                            "Choose Play now, Play next or Like for each link"
+                        } else {
+                            "A link plays now, or plays next when something is playing"
+                        },
+                    )
+                },
+                trailingContent = { Switch(checked = askForSharedLinks, onCheckedChange = null) },
+                modifier = Modifier.toggleable(
+                    value = askForSharedLinks,
+                    role = Role.Switch,
+                    onValueChange = viewModel::setAskForSharedLinks,
+                ),
+            )
             // Hidden, not disabled, in release builds (CONTRIBUTING §3).
             if (viewModel.isDebuggable) {
                 HorizontalDivider()
@@ -269,6 +333,26 @@ private fun SectionHeader(title: String) {
         color = MaterialTheme.colorScheme.primary,
         modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp),
     )
+}
+
+/**
+ * Android's "Open by default" page for this app, where the user picks which supported links it
+ * opens and settles a tie with YouTube. The page exists from API 31; before that, and on builds
+ * that leave it out, App info is the nearest screen and links to the same choice.
+ */
+private fun openByDefaultSettings(context: Context) {
+    val packageUri = Uri.fromParts("package", context.packageName, null)
+    val appInfo = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, packageUri)
+    val openByDefault = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        Intent(Settings.ACTION_APP_OPEN_BY_DEFAULT_SETTINGS, packageUri)
+    } else {
+        appInfo
+    }
+    try {
+        context.startActivity(openByDefault)
+    } catch (e: ActivityNotFoundException) {
+        context.startActivity(appInfo)
+    }
 }
 
 /**
