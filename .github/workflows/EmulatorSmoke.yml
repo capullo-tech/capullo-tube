@@ -94,24 +94,23 @@ jobs:
         # Quoted: the 37 leg's resolved string substitutes through the same env.
         api-level: ['28', '29', '30', '31', '32', '33', '34', '35', '36', '37']
         include:
-          # The 37.0 image is the matrix's slowest cold boot (newest guest, biggest system):
-          # on the default 2 vCPU / 2GB AVD it sat in "adb: device offline" past the whole
-          # 15-minute boot budget. Give this leg the runner's full 4 vCPU / 4GB and twice the
-          # budget - the rest boot in ~2 minutes on the defaults.
+          # The 37.0 google_apis image is unusable for CI on this emulator/swiftshader stack:
+          # surfaceflinger SIGABRTs in its RegionSampling thread, cascade-killing SystemUI and
+          # the launcher (DEAD_OBJECT loops), am start's resolver and the accessibility layer -
+          # nothing a gate can wait out. The aosp_atd (Automated Test Device) image - Google's
+          # stripped-down, instrumentation-first system, no launcher/Monet sampling - is the
+          # documented home for exactly this use. It also gets the runner's full 4 vCPU / 4GB:
+          # its first boot on 2 vCPU / 2GB never came up past "device offline".
           - api-level: '37'
+            target: 'aosp_atd'
             cores: '4'
             ram-size: '4096M'
             boot-timeout: '1800'
-            # ...and its first boot churns system processes for minutes (SystemUI and the
-            # launcher crash-loop on DEAD_OBJECT gesture-monitor surfaces well past
-            # boot_completed; am start gets transient Error-type-3s against a package that
-            # dumpsys shows fully registered moments later). A warm reboot sidesteps the
-            # churn: first boot flushes dexopt/GMS init, second boot is calm.
-            warm-reboot: 'true'
     env:
       # For 37, the build leg's resolved platform minor ("37.x") replaces the literal: the
       # catalog has no android-37, only minor-versioned 37.0/37.1/... platforms and images.
       ANDROID_API: ${{ matrix.api-level == '37' && needs.build.outputs.api37 || matrix.api-level }}
+      ANDROID_TARGET: ${{ matrix.target || 'google_apis' }}
       EMU_CORES: ${{ matrix.cores || '2' }}
       EMU_RAM: ${{ matrix.ram-size || '2048M' }}
       BOOT_TIMEOUT: ${{ matrix.boot-timeout || '900' }}
@@ -151,9 +150,9 @@ jobs:
         run: |
           set -eu
           yes | sdkmanager --licenses > /dev/null || true
-          sdkmanager --install "system-images;android-$ANDROID_API;google_apis;x86_64" > /dev/null
+          sdkmanager --install "system-images;android-$ANDROID_API;$ANDROID_TARGET;x86_64" > /dev/null
           echo no | avdmanager create avd --force -n smoke \
-            --package "system-images;android-$ANDROID_API;google_apis;x86_64"
+            --package "system-images;android-$ANDROID_API;$ANDROID_TARGET;x86_64"
           # Visible confirmation - a create that silently lands nowhere dies here, not three
           # steps later in a confusing boot failure.
           avdmanager list avd | grep -A2 'Name: smoke'
@@ -232,16 +231,24 @@ jobs:
           sleep 20
           # Launcher stability gate, now meaningful (post-unlock): any process still dying at
           # this point would still tear the UiAutomation connection down mid-test ("System has
-          # crashed"). Wait until the launcher pid holds steady across checks.
-          last=""; stable=0
+          # crashed"). Wait until the launcher pid holds steady across checks - an empty pid
+          # three checks in a row means no launcher at all (aosp_atd), stable by definition.
+          last=""; stable=0; empty=0
           for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24; do
             cur=$(adb shell pidof com.google.android.apps.nexuslauncher 2>/dev/null | tr -d '\r' || true)
-            if [ -n "$cur" ] && [ "$cur" = "$last" ]; then stable=$((stable+1)); else stable=0; fi
+            if [ -z "$cur" ]; then
+              empty=$((empty+1))
+              if [ "$empty" -ge 3 ]; then break; fi
+            elif [ "$cur" = "$last" ]; then
+              stable=$((stable+1))
+              if [ "$stable" -ge 3 ]; then break; fi
+            else
+              stable=0
+            fi
             last="$cur"
-            if [ "$stable" -ge 3 ]; then break; fi
             sleep 5
           done
-          echo "Launcher settled (pid $last, stability $stable/3)."
+          echo "Launcher settled (pid $last, stability $stable/3, empty $empty)."
           # Post-boot settle, best-effort on purpose: a just-booted guest can refuse the input
           # service for a few seconds (the unlock keyevent is what killed the action-based
           # runs) and none of it is required for the smoke test to be meaningful.
