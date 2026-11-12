@@ -4,17 +4,21 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -24,6 +28,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
@@ -92,6 +97,38 @@ internal fun LyricsCard(
     }
 }
 
+/**
+ * The default at the Player's bottom when a song has lyrics: a slim tab, the top edge of the
+ * lyrics drawer, so the listener knows lyrics exist without them taking the screen. A tap or a
+ * drag up opens the drawer. Settings > Lyrics card shows [LyricsCard] instead.
+ */
+@Composable
+internal fun LyricsTab(onOpen: () -> Unit, modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClickLabel = "Show lyrics", onClick = onOpen)
+            .swipeUp(onOpen),
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        tonalElevation = 1.dp,
+    ) {
+        // The surface runs under the navigation bar to the screen's edge; its content stays
+        // above it. The label sits where the open drawer's title is (owner review 2026-11-12:
+        // no handle, title on the left).
+        Box(
+            Modifier
+                .navigationBarsPadding()
+                .height(Dimens.PLAYER_LYRICS_TAB_HEIGHT)
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            Text("Lyrics", style = MaterialTheme.typography.titleMedium)
+        }
+    }
+}
+
 @Composable
 private fun CardLine(text: String, current: Boolean) {
     Text(
@@ -109,8 +146,8 @@ private fun CardLine(text: String, current: Boolean) {
 }
 
 /**
- * The lyrics drawer: every line, in a [PlayerDrawer] (the Queue sheet's two steps and height
- * cap). Synced lyrics highlight the current line and scroll to it until the listener drags the
+ * The lyrics drawer: every line, in a [PlayerDrawer] (the Queue sheet's height cap; one step
+ * and no handle). Synced lyrics highlight the current line and scroll to it until the listener drags the
  * list; a tap on a synced line seeks there. The source shows under the title. [lyrics] null:
  * the next track's lookup runs, and the drawer stays open for its lyrics.
  */
@@ -135,16 +172,23 @@ internal fun LyricsSheet(
             listState.animateScrollToItem((current - LINES_ABOVE_CURRENT).coerceAtLeast(0))
         }
     }
-    PlayerDrawer(onDismiss = onDismiss) {
+    PlayerDrawer(onDismiss = onDismiss, showHandle = false, twoSteps = false) {
         Column {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+            Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 8.dp)) {
                 Text("Lyrics", style = MaterialTheme.typography.titleLarge)
+                // Title and source on separate lines: a long title must not hide the source.
                 Text(
-                    "$songTitle · ${lyrics?.let(::sourceLabel) ?: "Looking for lyrics…"}",
+                    songTitle,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    lyrics?.let(::sourceLabel) ?: "Looking for lyrics…",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
                 )
             }
             LazyColumn(state = listState, contentPadding = PaddingValues(bottom = 16.dp)) {

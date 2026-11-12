@@ -141,10 +141,12 @@ Pass criteria go to `docs/probes/radio-criteria.md` before the first listening t
 
 ## Lyrics (owner decisions 2026-11-12)
 
-- When a song has lyrics, a card under the Player's control rows shows the current line. The
-  Player moves up to give the card a fixed place. A song without lyrics has no card.
-- A tap or a drag up on the card opens the lyrics drawer. The drawer has the two steps and the
-  height cap of the Queue. Synced lyrics show the current line in color and follow the song
+- When a song has lyrics, a slim Lyrics tab (the top edge of the lyrics drawer) sits at the
+  Player's bottom. Its place is kept for songs without lyrics too, so the Player never moves
+  between songs. Settings > Lyrics card (default off) shows a card with the current line
+  instead; a song without lyrics then shows no card, and the art takes the room.
+- A tap or a drag up on the tab or the card opens the lyrics drawer, in one step at the Queue's
+  capped height, with no handle, so no line sits behind the navigation bar. Synced lyrics show the current line in color and follow the song
   until you scroll. A tap on a synced line plays from that line. A small label names the source:
   "Lyrics by LRCLIB" or "From the video description".
 - Sources, in this order:

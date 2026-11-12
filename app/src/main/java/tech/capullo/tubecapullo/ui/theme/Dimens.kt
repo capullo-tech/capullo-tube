@@ -130,6 +130,12 @@ object Dimens {
      *  content moves up. */
     val PLAYER_LYRICS_CARD_HEIGHT = 64.dp
 
+    /** The slim lyrics tab at the Player's bottom (the default; Settings > Lyrics card off): one
+     *  label line, no handle (owner review 2026-11-12: slimmer). Judgement, not measured: below
+     *  Material's 48 dp touch-target height, which the tab's full width makes up for; any lower
+     *  and titleMedium (24 sp line) loses its margin. */
+    val PLAYER_LYRICS_TAB_HEIGHT = 36.dp
+
     // Search (SearchScreen.kt).
 
     /** Gap between the four filter chips. Was 8 dp; at 6 dp each chip on a 360 dp screen gets

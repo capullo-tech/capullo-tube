@@ -22,6 +22,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import tech.capullo.tubecapullo.data.lyrics.LyricsRepository
 import tech.capullo.tubecapullo.data.lyrics.LyricsState
+import tech.capullo.tubecapullo.data.settings.AppSettings
 import tech.capullo.tubecapullo.data.youtube.YouTubeExtractorClient
 import tech.capullo.tubecapullo.data.youtube.YtVideo
 import tech.capullo.tubecapullo.player.PlaybackCoordinator
@@ -43,6 +44,7 @@ class PlayerViewModel @Inject constructor(
     private val snapcastManager: SnapcastManager,
     private val extractor: YouTubeExtractorClient,
     lyricsRepository: LyricsRepository,
+    appSettings: AppSettings,
 ) : ViewModel() {
 
     val playerState = player.state
@@ -95,6 +97,9 @@ class PlayerViewModel @Inject constructor(
         .drop(1)
         .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PlayerLyrics.None)
+
+    /** Card (current line) or slim tab: Settings > Lyrics card. */
+    val lyricsCard = appSettings.lyricsCard
 
     fun togglePlayPause() = player.togglePlayPause()
     fun next() = player.next()

@@ -6,8 +6,10 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -15,6 +17,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.unit.dp
 import tech.capullo.tubecapullo.ui.theme.Dimens
 
 /**
@@ -31,7 +34,12 @@ import tech.capullo.tubecapullo.ui.theme.Dimens
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PlayerDrawer(onDismiss: () -> Unit, content: @Composable BoxScope.() -> Unit) {
+fun PlayerDrawer(
+    onDismiss: () -> Unit,
+    showHandle: Boolean = true,
+    twoSteps: Boolean = true,
+    content: @Composable BoxScope.() -> Unit,
+) {
     val windowHeight = with(LocalDensity.current) {
         LocalWindowInfo.current.containerSize.height.toDp()
     }
@@ -39,10 +47,22 @@ fun PlayerDrawer(onDismiss: () -> Unit, content: @Composable BoxScope.() -> Unit
     val maxSheetHeight = (windowHeight - statusBar) * Dimens.PLAYER_DRAWER_MAX_HEIGHT_FRACTION
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false),
+        // At the half step the sheet's bottom is off screen, so its last rows sit behind the
+        // navigation bar; one step (the lyrics drawer, owner report 2026-11-12) keeps every
+        // line above it.
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = !twoSteps),
         modifier = Modifier.padding(horizontal = Dimens.PLAYER_DRAWER_SIDE_MARGIN),
+        // Without a handle (the lyrics drawer, owner review 2026-11-12) its space goes to the
+        // content; the sheet still drags by its content.
+        dragHandle = if (showHandle) ({ BottomSheetDefaults.DragHandle() }) else null,
     ) {
-        val maxContentHeight = maxSheetHeight - Dimens.PLAYER_DRAWER_HANDLE_SPACE
-        Box(Modifier.fillMaxWidth().heightIn(max = maxContentHeight), content = content)
+        val handleSpace = if (showHandle) Dimens.PLAYER_DRAWER_HANDLE_SPACE else 0.dp
+        val maxContentHeight = maxSheetHeight - handleSpace
+        // The sheet runs under the navigation bar; its content ends above it, so the last
+        // lines are never behind the system buttons (owner report 2026-11-12).
+        Box(
+            Modifier.fillMaxWidth().heightIn(max = maxContentHeight).navigationBarsPadding(),
+            content = content,
+        )
     }
 }

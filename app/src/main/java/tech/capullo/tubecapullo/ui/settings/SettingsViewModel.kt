@@ -85,6 +85,11 @@ class SettingsViewModel @Inject constructor(
 
     fun setFullAlbums(enabled: Boolean) = appSettings.setFullAlbums(enabled)
 
+    /** Whether the Player shows the lyrics card instead of the slim lyrics tab. */
+    val lyricsCard: StateFlow<Boolean> = appSettings.lyricsCard
+
+    fun setLyricsCard(enabled: Boolean) = appSettings.setLyricsCard(enabled)
+
     /** What a like does to the queue (any source but Liked). */
     val likeMode: StateFlow<LikeMode> = appSettings.likeMode
 
