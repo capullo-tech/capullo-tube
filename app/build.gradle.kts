@@ -14,9 +14,12 @@ android {
 
     defaultConfig {
         applicationId = "tech.capullo.tubecapullo"
-        // minSdk 26 per CONTRIBUTING §1 - and it's what lets us skip telecloud's core-library
-        // desugaring: NewPipeExtractor's java.nio.file use is native on API 26+ (TC desugars only
-        // because it is minSdk 24; see its pins.versions.toml).
+        // minSdk 26 per CONTRIBUTING §1. NewPipeExtractor's java.nio.file use is native on
+        // API 26+, but its java.util.stream use is NOT all native: Collectors.toUnmodifiableList
+        // (JDK 10) only exists on Android from API 33, and the trending kiosk died with
+        // NoSuchMethodError on API 28-32 until desugaring was enabled (2026-11-11 smoke matrix,
+        // docs/probes/desugar-api28-32-criteria.md). TC desugars for the same reason plus nio
+        // (it is minSdk 24); we desugar for the stream additions only.
         minSdk = 26
         targetSdk = 36
         versionCode = 1
@@ -55,6 +58,9 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // Backports the JDK 9-11 java.util.stream additions (e.g. Collectors.toUnmodifiableList)
+        // onto API < 33 for NewPipeExtractor; see the minSdk comment above.
+        isCoreLibraryDesugaringEnabled = true
     }
     // compilerOptions, NOT jvmToolchain(17): mirrors telecloud/RadioCapullo (Kotlin 2.3 / AGP 9.x DSL).
     kotlin {
@@ -107,6 +113,8 @@ ksp {
 }
 
 dependencies {
+    // See compileOptions.isCoreLibraryDesugaringEnabled - stream backport for API < 33.
+    coreLibraryDesugaring(pins.desugar.jdk.libs)
     // The snapcast delivery engine's transport classes + capullo-audio-contracts (re-exported as
     // api). Pulled in at M1 on purpose: it validates the jitpack pin early and lands the contracts
     // jar in the Gradle cache so the SPI signatures can be read before M4 (HANDOFF-bootstrap §7).
