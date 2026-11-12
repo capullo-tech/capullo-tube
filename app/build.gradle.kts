@@ -4,7 +4,7 @@ plugins {
     alias(libs.plugins.android.application)
     // No kotlin.android: AGP 9.0+ ships built-in Kotlin (see RadioCapullo).
     alias(libs.plugins.kotlin.compose)
-    // Station snapshots (station/StationSnapshot.kt) are @Serializable and stored as JSON.
+    // Navigation3 back-stack keys are @Serializable so the stacks survive process death.
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
@@ -131,6 +131,11 @@ dependencies {
     implementation(libs.hilt.android)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
+    // Navigation3: tab back stacks + full-screen routes (ui/nav/). Same setup as RadioCapullo.
+    // kotlinx-serialization-core (for the @Serializable keys) arrives as navigation3-runtime's api.
+    implementation(libs.androidx.navigation3.runtime)
+    implementation(libs.androidx.navigation3.ui)
+    implementation(libs.androidx.lifecycle.viewmodel.navigation3)
     // Station snapshots: the saved queue of a station you left, as JSON in Room.
     implementation(libs.kotlinx.serialization.json)
     implementation(platform(libs.androidx.compose.bom))
@@ -155,9 +160,9 @@ dependencies {
     // for the player-JS deobfuscation.
     implementation(pins.newpipe.extractor)
     implementation(pins.okhttp) // backs the extractor's blocking Downloader SPI (see data/youtube/)
-    implementation(pins.coil.compose) // home card art (search rows stay icon-only; see ResultRow)
+    implementation(pins.coil.compose) // card and row art; Search song rows stay icon-only
 
-    // Play history ("Because you played" on Home). Versions come from the shared catalog,
+    // Play history ("Listen again" on Home). Versions come from the shared catalog,
     // same as telecloud's Room setup.
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)

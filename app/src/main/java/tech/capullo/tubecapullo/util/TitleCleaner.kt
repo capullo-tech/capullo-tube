@@ -4,10 +4,11 @@ import java.util.Locale
 
 /**
  * Title cleanup: strips the packaging uploaders wrap around a song title, so rows and the Player
- * show the song. The raw title stays the record everywhere (station, likes, history). Its one
- * matching use is [key], the same-song rules of every fetch from a song (owner decision
+ * show the song. The raw title stays the record everywhere (station, likes, history). Its
+ * matching uses are [key], the same-song rules of every fetch from a song (owner decision
  * 2026-11-12, "Pairs": a related upload of the seed's song is dropped, and of two tracks with one
- * title only the most viewed is queued). It is never used for taste.
+ * title only the most viewed is queued), and [albumKey], the same-album rule of Home's Full
+ * albums row. It is never used for taste.
  *
  * Three rules, in order:
  * 1. A bracketed group - `(...)`, `[...]` or `【...】` - goes when EVERY word in it is packaging
@@ -24,7 +25,7 @@ import java.util.Locale
 object TitleCleaner {
 
     fun clean(title: String, uploader: String?): String {
-        val unwrapped = tidy(stripNoiseGroups(title).substringBefore('|'))
+        val unwrapped = tidy(stripGroups(title) { it in NOISE_WORDS }.substringBefore('|'))
         return stripUploaderPrefix(unwrapped, uploader).ifBlank { title }
     }
 
@@ -33,26 +34,60 @@ object TitleCleaner {
      *  digit (an emoji-only title), so such titles never match each other. */
     fun key(title: String, uploader: String?): String? = nameKey(clean(title, uploader)).ifEmpty { null }
 
-    private fun stripNoiseGroups(title: String): String {
+    /**
+     * The album a full-album upload holds: two uploads with the same album key are one album for
+     * Home's Full albums row (owner report 2026-11-12: "Hybrid Theory" showed twice). It is [key]
+     * after two more rules:
+     * 1. Album packaging goes. A bracketed group goes when every word in it is packaging
+     *    ([NOISE_WORDS], [ALBUM_WORDS], a year 19xx/20xx or an ordinal such as "20th"):
+     *    "(Full Album)", "[FULL ALBUM]", "(20th Anniversary Edition)", "(Remastered 2009)". Outside
+     *    brackets, [ALBUM_PHRASE] goes: "- Full Album", "Álbum Completo", a trailing "HD", a year.
+     *    A group with any other word stays: "(Live at Wembley)" is a different record.
+     * 2. A leading "Artist - " goes when it names the [uploader] or one of [artists] (compared as
+     *    rule 3 of the class), so a fan channel's "LINKIN PARK - HYBRID THEORY" matches the
+     *    artist's own "Hybrid Theory".
+     * When the packaging is all there is, the raw title is used. A year that IS the album name
+     * goes too, so two year-named albums of one artist ("1989", "1999") share a key.
+     */
+    fun albumKey(title: String, uploader: String?, artists: Collection<String>): String? {
+        val bare = tidy(ALBUM_PHRASE.replace(stripGroups(title, ::isAlbumPackaging), " "))
+            .takeIf { text -> text.any { it.isLetterOrDigit() } } ?: title
+        val names = (listOfNotNull(uploader) + artists).map(::artistKey)
+            .filterTo(HashSet()) { it.isNotEmpty() }
+        return nameKey(stripArtistPrefix(clean(bare, null), names)).ifEmpty { null }
+    }
+
+    /** The innermost bracketed groups whose every word is [packaging] go, until none is left. */
+    private fun stripGroups(title: String, packaging: (String) -> Boolean): String {
         var text = title
         // GROUP only matches innermost groups, so loop: "(Official Video (HD))" clears in two
         // passes. Each change replaces a 2+ char group with one space, so the loop terminates.
         while (true) {
-            val next = GROUP.replace(text) { if (isNoise(it.groupValues[1])) " " else it.value }
+            val next = GROUP.replace(text) {
+                if (isPackaging(it.groupValues[1], packaging)) " " else it.value
+            }
             if (next == text) return text
             text = next
         }
     }
 
-    private fun isNoise(group: String): Boolean {
+    private fun isPackaging(group: String, packaging: (String) -> Boolean): Boolean {
         val words = WORD.findAll(group.lowercase(Locale.ROOT)).map { it.value }.toList()
-        return words.isNotEmpty() && words.all { it in NOISE_WORDS }
+        return words.isNotEmpty() && words.all(packaging)
     }
+
+    private fun isAlbumPackaging(word: String): Boolean = word in NOISE_WORDS || word in ALBUM_WORDS || YEAR.matches(word) || ORDINAL.matches(word)
 
     private fun stripUploaderPrefix(title: String, uploader: String?): String {
         val artist = uploader?.let { artistKey(it) }?.takeIf { it.isNotEmpty() } ?: return title
+        return stripArtistPrefix(title, setOf(artist))
+    }
+
+    /** [title] without a leading "Artist - " whose artist's [nameKey] is in [artists]. */
+    private fun stripArtistPrefix(title: String, artists: Set<String>): String {
+        if (artists.isEmpty()) return title
         val match = ARTIST_PREFIX.find(title) ?: return title
-        return if (nameKey(match.groupValues[1]) == artist) match.groupValues[2] else title
+        return if (nameKey(match.groupValues[1]) in artists) match.groupValues[2] else title
     }
 
     /** The uploader as a bare artist name: "Daft Punk - Topic" and "DaftPunkVEVO" both give
@@ -98,6 +133,41 @@ object TitleCleaner {
         "hq",
         "4k",
     )
+
+    /**
+     * Words that only package a full-album upload, for [albumKey]'s groups (with [NOISE_WORDS],
+     * a year and an ordinal). Unlike a song's, an album's remaster or anniversary edition is the
+     * same album for the row: the listener wants one card for it. GUESS (owner report
+     * 2026-11-12): the owner's list, read off real titles, not measured over a corpus. Adding a
+     * word merges more uploads into one card; a missing word leaves duplicates.
+     */
+    private val ALBUM_WORDS = setOf(
+        "full",
+        "album",
+        "albums",
+        "álbum",
+        "completo",
+        "complete",
+        "anniversary",
+        "edition",
+        "remaster",
+        "remastered",
+        "deluxe",
+        "playlist",
+    )
+
+    /** Album packaging outside brackets, for [albumKey]: "Hybrid Theory - Full Album",
+     *  "Álbum Completo", a trailing "HD", a year. Whole words only. GUESS, as [ALBUM_WORDS]. */
+    private val ALBUM_PHRASE = Regex(
+        """(?<![\p{L}\p{N}])(full\s+album|[aá]lbum\s+completo|remaster(ed)?|deluxe(\s+edition)?""" +
+            """|hd|hq|4k|playlist|(19|20)\d\d)(?![\p{L}\p{N}])""",
+        RegexOption.IGNORE_CASE,
+    )
+
+    private val YEAR = Regex("""(19|20)\d\d""")
+
+    /** "20th", "1st": the number of an anniversary edition. */
+    private val ORDINAL = Regex("""\d+(st|nd|rd|th)""")
 
     /** An innermost bracketed group; group 1 is its content. */
     private val GROUP = Regex("""[(\[【]([^()\[\]【】]*)[)\]】]""")

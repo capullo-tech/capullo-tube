@@ -2,6 +2,7 @@ package tech.capullo.tubecapullo.util
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -156,5 +157,43 @@ class TitleCleanerTest {
         // The probe's mathematical-bold "𝐏𝐥𝐚𝐲𝐥𝐢𝐬𝐭" titles are surrogate pairs, not letters.
         assertNull(TitleCleaner.key("𝐏𝐥𝐚𝐲𝐥𝐢𝐬𝐭", "a"))
         assertNull(TitleCleaner.key("✨ ❤️ ✨", "a"))
+    }
+
+    private val linkinPark = listOf("Linkin Park")
+
+    @Test
+    fun `the album key matches one album's uploads, not the artist's other albums`() {
+        val official = TitleCleaner.albumKey("Linkin Park - Hybrid Theory (Full Album)", "Linkin Park", linkinPark)
+        // A fan channel's upload: its "LINKIN PARK - " prefix names a liked artist, not the uploader.
+        val fan = TitleCleaner.albumKey("LINKIN PARK - HYBRID THEORY [FULL ALBUM] HD", "Rock Classics", linkinPark)
+        val reissue = TitleCleaner.albumKey(
+            "Hybrid Theory (20th Anniversary Edition) - Full Album",
+            "Linkin Park - Topic",
+            linkinPark,
+        )
+        val meteora = TitleCleaner.albumKey("Linkin Park - Meteora (Full Album)", "Linkin Park", linkinPark)
+
+        assertNotNull(official)
+        assertEquals(official, fan)
+        assertEquals(official, reissue)
+        assertNotEquals(official, meteora)
+    }
+
+    @Test
+    fun `the album key drops Spanish packaging, remasters and years, not a live recording`() {
+        val album = TitleCleaner.albumKey("Soda Stereo - Canción Animal (Álbum Completo)", "Soda Stereo", emptyList())
+        val remaster = TitleCleaner.albumKey("Canción Animal - Album Completo 1990 Remastered", "Soda Stereo", emptyList())
+        val live = TitleCleaner.albumKey("Canción Animal (En Vivo) - Álbum Completo", "Soda Stereo", emptyList())
+
+        assertEquals(album, remaster)
+        assertNotEquals(album, live)
+    }
+
+    @Test
+    fun `the album key keeps a prefix that names neither the uploader nor a liked artist`() {
+        val official = TitleCleaner.albumKey("Hybrid Theory (Full Album)", "Linkin Park", linkinPark)
+        val unknownArtist = TitleCleaner.albumKey("Linkin Park - Hybrid Theory (Full Album)", "Rock Classics", emptyList())
+
+        assertNotEquals(official, unknownArtist)
     }
 }

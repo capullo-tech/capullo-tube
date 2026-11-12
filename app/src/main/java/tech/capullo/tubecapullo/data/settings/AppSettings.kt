@@ -28,7 +28,8 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
     /**
      * The Trending charts Home shows, one row each, in this order: ISO 3166-1 alpha-2 codes picked
      * from [tech.capullo.tubecapullo.data.youtube.YouTubeExtractorClient.supportedRegions], at
-     * most [MAX_TRENDING_ROWS]. Empty means one row for the device locale's country.
+     * most [MAX_TRENDING_ROWS]. Empty means one row for the device default:
+     * [tech.capullo.tubecapullo.data.youtube.defaultChartRegion].
      */
     val chartRegions: StateFlow<List<String>> = _chartRegions.asStateFlow()
 
