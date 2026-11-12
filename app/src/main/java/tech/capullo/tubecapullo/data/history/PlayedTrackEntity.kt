@@ -4,10 +4,11 @@ import androidx.room.Entity
 import androidx.room.PrimaryKey
 
 /**
- * One row per video ever played, updated in place on replays - the "Because you played" home
- * section's source (M-B). [playCount] ranks replays first; [lastPlayedAtEpochMs] breaks ties and
- * keeps a single-play song visible. Metadata mirrors [tech.capullo.tubecapullo.data.youtube.YtVideo]
- * so cards render without a network call.
+ * One row per video ever played, updated in place on replays - the source of Home's Listen again
+ * row and the Library's History list (most recent [lastPlayedAtEpochMs] first). [playCount] counts
+ * every counted play; Listen again's "played 3+ times" rule reads it.
+ * Metadata mirrors [tech.capullo.tubecapullo.data.youtube.YtVideo] so cards render without a
+ * network call.
  */
 @Entity(tableName = "played_track")
 data class PlayedTrackEntity(

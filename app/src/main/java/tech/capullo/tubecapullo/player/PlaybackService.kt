@@ -3,6 +3,8 @@ package tech.capullo.tubecapullo.player
 import android.app.PendingIntent
 import android.content.Intent
 import android.net.Uri
+import android.os.SystemClock
+import android.util.Log
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.ForwardingPlayer
@@ -31,15 +33,23 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import tech.capullo.audio.contracts.NowPlaying
 import tech.capullo.audio.contracts.PlaybackController
 import tech.capullo.audio.player.FifoAudioBufferSink
 import tech.capullo.tubecapullo.MainActivity
 import tech.capullo.tubecapullo.data.youtube.YouTubeExtractorClient
 import tech.capullo.tubecapullo.snapcast.SnapcastManager
+import tech.capullo.tubecapullo.station.RepeatMode
 import tech.capullo.tubecapullo.station.StationEngine
 import tech.capullo.tubecapullo.station.StationLoop
+import tech.capullo.tubecapullo.util.TitleCleaner
+import java.io.FileDescriptor
+import java.io.PrintWriter
 import javax.inject.Inject
 
 /**
@@ -74,6 +84,17 @@ class PlaybackService : MediaSessionService() {
      *  same track means it's genuinely unplayable → skip. */
     private var retriedVideoId: String? = null
 
+    /** Serializes user skips and Previous: each Next or Previous is its own step, in order,
+     *  without blocking commands. */
+    private val skipMutex = Mutex()
+
+    /** Stall watchdog state: last (position, buffered) seen and since when it has not moved. */
+    private var stallProgress: Pair<Long, Long>? = null
+    private var stallSinceMs = 0L
+
+    /** ExoPlayer's state as of the last tick, for dump() (which runs off the Main thread). */
+    @Volatile private var playerSnapshot = "not started"
+
     private var mediaSession: MediaSession? = null
     private var player: ExoPlayer? = null
     private var fifoSink: FifoAudioBufferSink? = null
@@ -94,9 +115,7 @@ class PlaybackService : MediaSessionService() {
 
         override fun next() = runOnMain { serviceScope.launch { skipCurrent() } }
 
-        // The station never goes back (played ids are burned); previous restarts the track,
-        // which is also what radio listeners usually mean by it.
-        override fun previous() = runOnMain { player?.seekTo(0) }
+        override fun previous() = runOnMain { serviceScope.launch { skipMutex.withLock { goBack() } } }
         override fun seekTo(positionMs: Long) {}
     }
 
@@ -198,6 +217,12 @@ class PlaybackService : MediaSessionService() {
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
+                Log.i(
+                    STATION_TAG,
+                    "player state=${stateName(playbackState)} " +
+                        "id=${coordinator.state.value.video?.videoId ?: "-"} " +
+                        "playWhenReady=${exo.playWhenReady}",
+                )
                 coordinator.updateState {
                     it.copy(
                         isBuffering = playbackState == Player.STATE_BUFFERING,
@@ -207,56 +232,56 @@ class PlaybackService : MediaSessionService() {
                 if (playbackState == Player.STATE_ENDED) {
                     // The station queue is finite-and-growing (isRotating = false), so track end
                     // means advance - mirroring the engine loop's auto-advance semantics. Natural
-                    // end is NOT a skip: no taste signal here.
+                    // end is NOT a skip: no `skip` log line.
                     serviceScope.launch { loop?.advance() }
                 }
             }
 
             override fun onPlayerError(error: PlaybackException) {
-                val video = coordinator.state.value.video ?: return
-                // The usual cause is a stream URL that expired early: invalidate + one re-resolve.
-                // A second failure on the same track is a real skip.
-                extractor.invalidate(video.videoId)
-                serviceScope.launch {
-                    if (retriedVideoId != video.videoId) {
-                        retriedVideoId = video.videoId
-                        loop?.replayCurrent()
-                    } else {
-                        coordinator.postEvent("Can't play · ${video.title}")
-                        loop?.advance()
-                    }
-                }
+                Log.w(
+                    STATION_TAG,
+                    "player error id=${coordinator.state.value.video?.videoId ?: "-"} " +
+                        "code=${error.errorCodeName} msg=\"${error.message}\"",
+                )
+                recoverStream("error")
             }
         })
-
         // The station queue lives in StationEngine (one MediaItem at a time), so ExoPlayer never
-        // has a next item and would disable the command - breaking Bluetooth/lock-screen skip.
-        // Force the commands available and route them through the loop (telecloud's fix).
+        // has a next or previous item and would disable those commands - breaking Bluetooth and
+        // lock-screen skip and back. Force them available and route them through the station
+        // (telecloud's fix for Next; Previous the same way, owner decision 2026-11-12).
         val forwardingPlayer = object : ForwardingPlayer(exo) {
             override fun getAvailableCommands(): Player.Commands = super.getAvailableCommands()
                 .buildUpon()
-                .add(Player.COMMAND_SEEK_TO_NEXT)
-                .add(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
+                .addAll(*FORCED_COMMANDS)
                 .build()
 
-            override fun isCommandAvailable(command: Int): Boolean = command == Player.COMMAND_SEEK_TO_NEXT ||
-                command == Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM ||
-                super.isCommandAvailable(command)
+            override fun isCommandAvailable(command: Int): Boolean = command in FORCED_COMMANDS || super.isCommandAvailable(command)
 
             override fun seekToNext() {
-                serviceScope.launch { skipCurrent() }
+                serviceScope.launch { skipMutex.withLock { skipCurrent() } }
             }
 
             override fun seekToNextMediaItem() {
-                serviceScope.launch { skipCurrent() }
+                serviceScope.launch { skipMutex.withLock { skipCurrent() } }
+            }
+
+            override fun seekToPrevious() {
+                serviceScope.launch { skipMutex.withLock { goBack() } }
+            }
+
+            override fun seekToPreviousMediaItem() {
+                serviceScope.launch { skipMutex.withLock { goBack() } }
             }
         }
 
+        // Notification / lock-screen tap opens the Player. FLAG_UPDATE_CURRENT: extras are not
+        // part of a PendingIntent's identity, so an older one without the extra would be reused.
         val sessionActivity = PendingIntent.getActivity(
             this,
             0,
-            Intent(this, MainActivity::class.java),
-            PendingIntent.FLAG_IMMUTABLE,
+            Intent(this, MainActivity::class.java).putExtra(EXTRA_OPEN_PLAYER, true),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         mediaSession = MediaSession.Builder(this, forwardingPlayer)
             .setSessionActivity(sessionActivity)
@@ -288,7 +313,9 @@ class PlaybackService : MediaSessionService() {
         stationLoop.onTrackChanged = { index ->
             val video = stationEngine.videoAt(index)
             coordinator.updateState { it.copy(video = video, isBuffering = true, durationMs = 0) }
-            coordinator.updatePosition(0)
+            // A Continue resume starts its track where it was left; every other start plays from 0.
+            val startAt = stationEngine.startPositionFor(index)
+            coordinator.updatePosition(startAt ?: 0)
             // Update the session metadata too, so the notification / lock screen track the station.
             exo.currentMediaItem?.let { item ->
                 exo.replaceMediaItem(
@@ -296,7 +323,8 @@ class PlaybackService : MediaSessionService() {
                     item.buildUpon()
                         .setMediaMetadata(
                             MediaMetadata.Builder()
-                                .setTitle(video?.title)
+                                // Display only: the raw title stays the record everywhere else.
+                                .setTitle(video?.let { TitleCleaner.clean(it.title, it.uploader) })
                                 .setArtist(video?.uploader)
                                 .setArtworkUri(video?.thumbnailUrl?.let(Uri::parse))
                                 .build(),
@@ -304,20 +332,80 @@ class PlaybackService : MediaSessionService() {
                         .build(),
                 )
             }
+            // After the metadata swap, so the seek lands on the item that plays.
+            startAt?.let { exo.seekTo(it) }
             publishNowPlaying()
         }
+        stationLoop.onResolveFailed = { index, id, error ->
+            val title = stationEngine.videoAt(index)?.title
+            Log.w(
+                STATION_TAG,
+                "resolve id=$id index=$index result=skipped error=\"${error.message}\"",
+            )
+            coordinator.postEvent("Can't play ${title ?: id}: ${error.message ?: "unknown error"}")
+        }
         stationLoop.onQueueExhausted = {
-            coordinator.postEvent("Station ran dry - pick a new seed")
+            // Not "ran dry" yet: a Mix chain may still be landing. Stop the loading spinner, say
+            // what is happening, and let the state collector below resume the loop.
+            Log.i(STATION_TAG, "loop waiting at=${stationLoop.waitingAt}")
+            coordinator.updateState { it.copy(isBuffering = false) }
+            coordinator.postEvent("Looking for the next track…")
+        }
+        // Resume a waiting loop as soon as the engine grows the queue (a chain, a pin, a like).
+        serviceScope.launch {
+            stationEngine.state.collect {
+                if (stationLoop.waitingAt != null && stationLoop.resumeIfWaiting()) {
+                    Log.i(STATION_TAG, "loop resumed index=${stationLoop.currentIndex}")
+                }
+            }
         }
 
-        // UI → service: station seeds (replay=1 covers the cold-start race) and transport commands.
-        serviceScope.launch {
-            coordinator.seeds.collect { seed ->
+        // UI → service: play sources (replay=1 covers the cold-start race) and transport commands.
+        // The engine calls back once a source has actually replaced the station - Liked with no
+        // likes stays idle, and a playlist or channel switches only once its list has landed - so
+        // the loop restarts exactly then. The callback may arrive on IO: hop to Main.
+        stationEngine.onStationStarted = {
+            serviceScope.launch {
                 retriedVideoId = null
-                coordinator.updateState { PlaybackCoordinator.State(video = seed, isBuffering = true) }
-                stationEngine.startStation(seed)
+                coordinator.updateState {
+                    PlaybackCoordinator.State(video = stationEngine.videoAt(0), isBuffering = true)
+                }
                 stationLoop.start()
             }
+        }
+        serviceScope.launch {
+            coordinator.starts.collect { request ->
+                when (request) {
+                    is PlaybackCoordinator.StartRequest.Source -> stationEngine.start(request.source)
+                    is PlaybackCoordinator.StartRequest.Resume -> stationEngine.resume(request.stationId)
+                }
+            }
+        }
+        // Up next taps: the engine moves the track up, the loop advances to it. Under the skip
+        // mutex, so a jump right after a Next lands after it and reads the station that Next
+        // left.
+        serviceScope.launch {
+            coordinator.jumps.collect { jump ->
+                serviceScope.launch {
+                    skipMutex.withLock {
+                        val index = stationEngine.jumpTo(jump.video, jump.again) ?: return@withLock
+                        retriedVideoId = null
+                        loop?.advanceTo(index)
+                    }
+                }
+            }
+        }
+        // Repeat one: ExoPlayer loops the item itself, so it never reaches STATE_ENDED and the
+        // loop never advances on its own. Next still moves on: every user next goes through
+        // skipCurrent -> loop.advance, which replaces the item rather than asking ExoPlayer for
+        // its next one, and the mode stays on to loop the new track.
+        serviceScope.launch {
+            stationEngine.state
+                .map { it.repeat == RepeatMode.ONE }
+                .distinctUntilChanged()
+                .collect { one ->
+                    exo.repeatMode = if (one) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+                }
         }
         launchPlayerTickers(exo)
         serviceScope.launch {
@@ -331,8 +419,12 @@ class PlaybackService : MediaSessionService() {
                             exo.playWhenReady = !exo.playWhenReady
                         }
                     }
-                    PlaybackCoordinator.Command.NEXT -> skipCurrent()
-                    PlaybackCoordinator.Command.PREVIOUS -> exo.seekTo(0)
+                    // Launched, not awaited: a slow resolve must not hold up play/pause behind
+                    // it. The mutex keeps two quick Nexts as two skips, in order.
+                    PlaybackCoordinator.Command.NEXT ->
+                        serviceScope.launch { skipMutex.withLock { skipCurrent() } }
+                    PlaybackCoordinator.Command.PREVIOUS ->
+                        serviceScope.launch { skipMutex.withLock { goBack() } }
                     PlaybackCoordinator.Command.STOP -> {
                         exo.stop()
                         coordinator.updateState { PlaybackCoordinator.State() }
@@ -348,17 +440,114 @@ class PlaybackService : MediaSessionService() {
         // (cheap: one property read), switch to an isPlaying-gated loop if battery ever shows it.
         serviceScope.launch {
             while (true) {
-                coordinator.updatePosition(exo.currentPosition)
+                val position = exo.currentPosition
+                coordinator.updatePosition(position)
+                // Item 12: the engine counts the play once the playhead passes its threshold.
+                coordinator.state.value.video?.let {
+                    stationEngine.onProgress(it.videoId, position, currentDurationMs())
+                }
+                watchForStall(exo, position)
+                playerSnapshot = "state=${stateName(exo.playbackState)} " +
+                    "playWhenReady=${exo.playWhenReady} isPlaying=${exo.isPlaying} " +
+                    "isLoading=${exo.isLoading} position=$position " +
+                    "buffered=${exo.bufferedPosition} " +
+                    "error=${exo.playerError?.errorCodeName ?: "-"} " +
+                    "loop=${loop?.currentIndex} waitingAt=${loop?.waitingAt ?: "-"}"
                 delay(POSITION_TICK_MS)
             }
         }
     }
 
-    /** The one user-initiated-next path (bar button, lock screen/BT, web player): note the skip
-     *  for taste, then advance. Natural track end bypasses this on purpose. */
+    /**
+     * A stream that should be playing but makes no progress is treated like a player error. Seen
+     * 2026-11-11: after a skip the new googlevideo load opened a socket and then nothing - no
+     * error, no audio - and the station sat silent until the owner gave up. ExoPlayer's own retry
+     * policy can take a minute or more to surface such a load as an error.
+     */
+    private fun watchForStall(exo: ExoPlayer, position: Long) {
+        val wantsToPlay = exo.playWhenReady &&
+            (exo.playbackState == Player.STATE_BUFFERING || exo.playbackState == Player.STATE_READY)
+        val progress = position to exo.bufferedPosition
+        if (!wantsToPlay || exo.isPlaying || progress != stallProgress) {
+            stallProgress = progress
+            stallSinceMs = SystemClock.elapsedRealtime()
+            return
+        }
+        val stalledMs = SystemClock.elapsedRealtime() - stallSinceMs
+        if (stalledMs < STALL_TIMEOUT_MS) return
+        Log.w(
+            STATION_TAG,
+            "player stall id=${coordinator.state.value.video?.videoId ?: "-"} " +
+                "state=${stateName(exo.playbackState)} position=$position " +
+                "buffered=${exo.bufferedPosition} stalledMs=$stalledMs",
+        )
+        stallSinceMs = SystemClock.elapsedRealtime() // one recovery per timeout window
+        recoverStream("stall")
+    }
+
+    /** A failed or stalled stream: the usual cause is a stream URL gone bad, so invalidate it and
+     *  re-resolve once; a second failure on the same track is a real skip. */
+    private fun recoverStream(reason: String) {
+        val video = coordinator.state.value.video ?: return
+        extractor.invalidate(video.videoId)
+        serviceScope.launch {
+            if (retriedVideoId != video.videoId) {
+                retriedVideoId = video.videoId
+                Log.i(STATION_TAG, "recover id=${video.videoId} reason=$reason action=re-resolve")
+                loop?.replayCurrent()
+            } else {
+                Log.i(STATION_TAG, "recover id=${video.videoId} reason=$reason action=skip")
+                coordinator.postEvent("Can't play · ${video.title}")
+                loop?.advance()
+            }
+        }
+    }
+
+    /** The one user-initiated-next path (bar button, lock screen/BT, web player). In album mode
+     *  with chapters it seeks to the next chapter ([StationEngine.nextChapter] logs it); on the
+     *  last chapter, and anywhere else, a skip only advances: it carries no signal and changes no
+     *  station state. Natural track end bypasses this, so the `skip` line counts only the
+     *  listener's Nexts. */
     private suspend fun skipCurrent() {
-        coordinator.state.value.video?.let { stationEngine.noteSkip(it.videoId) }
+        val position = player?.currentPosition ?: 0
+        stationEngine.nextChapter(position)?.let { start ->
+            player?.seekTo(start)
+            return
+        }
+        val video = coordinator.state.value.video
+        Log.i(
+            STATION_TAG,
+            "skip id=${video?.videoId ?: "-"} pos=$position dur=${currentDurationMs()}",
+        )
         loop?.advance()
+    }
+
+    /** The one Previous path (Player button, cover swipe, notification, lock screen, Bluetooth,
+     *  web player). In album mode with chapters the chapter decides first
+     *  ([StationEngine.previousChapter]: restart it or go to the one before). Else the engine
+     *  decides by the playhead ([StationEngine.previous], which logs the `previous` line):
+     *  restart this track, or advance the loop to the song or the restored station's track it
+     *  put at the returned index. Not a skip. */
+    private suspend fun goBack() {
+        val exo = player ?: return
+        stationEngine.previousChapter(exo.currentPosition)?.let { start ->
+            exo.seekTo(start)
+            return
+        }
+        val index = stationEngine.previous(exo.currentPosition)
+        if (index == null) {
+            exo.seekTo(0)
+            return
+        }
+        retriedVideoId = null
+        loop?.advanceTo(index)
+    }
+
+    /** The player's track length, or the video's own while the player doesn't know it yet. */
+    private fun currentDurationMs(): Long {
+        val playerDuration = player?.duration ?: C.TIME_UNSET
+        if (playerDuration != C.TIME_UNSET && playerDuration > 0) return playerDuration
+        return (coordinator.state.value.video?.durationSeconds ?: 0) * 1000
     }
 
     private fun buildSnapNowPlaying(): NowPlaying {
@@ -366,7 +555,7 @@ class PlaybackService : MediaSessionService() {
         return NowPlaying(
             title = video?.title ?: "",
             artist = video?.uploader ?: "",
-            album = "TubeCapullo",
+            album = "CapulloTube",
             durationMs = (video?.durationSeconds ?: 0) * 1000,
             isPlaying = playerIsPlaying,
         )
@@ -387,7 +576,22 @@ class PlaybackService : MediaSessionService() {
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo) = mediaSession
 
+    /** `adb shell dumpsys activity service tech.capullo.tubecapullo/.player.PlaybackService`
+     *  prints the station's full state (PLAN.md, Debugging). */
+    override fun dump(fd: FileDescriptor?, writer: PrintWriter?, args: Array<out String>?) {
+        if (writer == null) return
+        stationEngine.dump(writer)
+        // The player half of the picture: a station can look healthy while ExoPlayer is idle,
+        // buffering forever or erroring. ExoPlayer may only be read on Main, so the position
+        // ticker keeps this snapshot (at most POSITION_TICK_MS old).
+        writer.println("player: $playerSnapshot")
+        writer.flush()
+    }
+
     override fun onDestroy() {
+        // The playing station's place, for Continue: the last write may be up to 10 s old.
+        stationEngine.persistNow()
+        stationEngine.onStationStarted = null
         serviceScope.cancel()
         snapcastManager.stopBroadcast()
         fifoSink?.close()
@@ -400,12 +604,42 @@ class PlaybackService : MediaSessionService() {
         super.onDestroy()
     }
 
-    private companion object {
-        const val POSITION_TICK_MS = 500L
+    companion object {
+        /** Boolean extra on the notification's session-activity intent: MainActivity opens the
+         *  Player when it is set. */
+        const val EXTRA_OPEN_PLAYER = "tech.capullo.tubecapullo.OPEN_PLAYER"
+
+        /** Loop events share the engine's log tag so one `logcat -s TubeStation` shows the whole
+         *  station. Same string as StationEngine.TAG and DebugCommands.TAG. */
+        private const val STATION_TAG = "TubeStation"
+
+        private const val POSITION_TICK_MS = 500L
+
+        /** Next and Previous, which the one-item ExoPlayer would otherwise disable. */
+        private val FORCED_COMMANDS = intArrayOf(
+            Player.COMMAND_SEEK_TO_NEXT,
+            Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM,
+            Player.COMMAND_SEEK_TO_PREVIOUS,
+            Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM,
+        )
+
+        /** No playhead and no buffer progress for this long while meant to play = stalled.
+         *  GUESS: 15 s - above a slow but healthy start (googlevideo first bytes are usually
+         *  under 2 s on the rig's Wi-Fi), well under the minute+ ExoPlayer's retries can take
+         *  to give up. Unmeasured. */
+        private const val STALL_TIMEOUT_MS = 15_000L
+
+        private fun stateName(state: Int): String = when (state) {
+            Player.STATE_IDLE -> "IDLE"
+            Player.STATE_BUFFERING -> "BUFFERING"
+            Player.STATE_READY -> "READY"
+            Player.STATE_ENDED -> "ENDED"
+            else -> "UNKNOWN($state)"
+        }
 
         // Matches what the YouTube extractor sends (TubeCapulloDownloader.USER_AGENT mirrors this;
         // both comments name each other because the values must move together).
-        const val STREAM_USER_AGENT =
+        private const val STREAM_USER_AGENT =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:129.0) Gecko/20100101 Firefox/129.0"
     }
 }

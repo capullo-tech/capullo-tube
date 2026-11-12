@@ -55,7 +55,7 @@ class PlayerViewModel @Inject constructor(
     fun seekTo(positionMs: Long) = player.seekTo(positionMs)
 
     fun toggleLike() {
-        playerState.value.video?.let { stationEngine.toggleLike(it.videoId) }
+        playerState.value.video?.let { stationEngine.toggleLike(it) }
     }
 
     fun setClientVolume(clientId: String, muted: Boolean, percent: Int) = snapcastManager.adjustClientVolume(clientId, percent, muted)

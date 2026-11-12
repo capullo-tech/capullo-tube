@@ -310,6 +310,6 @@ class SnapcastManager @Inject constructor(
         private const val TAG = "SnapcastManager"
 
         /** The Snapcast stream `name=` identity for this app (web player + snapclients + NSD). */
-        private const val STREAM_NAME = "TubeCapullo"
+        private const val STREAM_NAME = "CapulloTube"
     }
 }

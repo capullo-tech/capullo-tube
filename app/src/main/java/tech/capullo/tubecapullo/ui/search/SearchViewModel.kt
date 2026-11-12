@@ -20,6 +20,7 @@ import tech.capullo.tubecapullo.data.youtube.YtVideo
 import tech.capullo.tubecapullo.player.PlaybackCoordinator
 import tech.capullo.tubecapullo.player.PlaybackService
 import tech.capullo.tubecapullo.snapcast.SnapcastManager
+import tech.capullo.tubecapullo.station.PlaySource
 import tech.capullo.tubecapullo.station.StationEngine
 import javax.inject.Inject
 
@@ -81,7 +82,7 @@ class SearchViewModel @Inject constructor(
             _uiState.value = _uiState.value.copy(isSearching = true, error = null)
             runCatching {
                 val results = when {
-                    YouTubeUrls.isPlaylist(query) -> extractor.playlist(query)
+                    YouTubeUrls.isPlaylist(query) -> extractor.playlistInfo(query).videos
                     YouTubeUrls.parseVideoId(query) != null ->
                         listOf(extractor.video(YouTubeUrls.parseVideoId(query)!!))
                     else -> extractor.search(query)
@@ -106,7 +107,7 @@ class SearchViewModel @Inject constructor(
         // promotes itself once playback starts. A plain start from a foreground app is allowed and
         // has no deadline; the coordinator's replay=1 bridges the service's cold-start race.
         appContext.startService(Intent(appContext, PlaybackService::class.java))
-        player.startStation(video)
+        player.start(PlaySource.SongRadio(video))
     }
 
     fun togglePlayPause() = player.togglePlayPause()
@@ -115,7 +116,7 @@ class SearchViewModel @Inject constructor(
 
     /** Like/unlike the playing track - boosts its neighbourhood and re-seeds a mix from it. */
     fun toggleLike() {
-        playerState.value.video?.let { stationEngine.toggleLike(it.videoId) }
+        playerState.value.video?.let { stationEngine.toggleLike(it) }
     }
 
     // YouTubeError already carries listener-readable text; anything else is a surprise, so say so

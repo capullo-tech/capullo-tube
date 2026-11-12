@@ -72,7 +72,10 @@ object YouTubeUrls {
     fun playlistUrl(playlistId: String): String = "https://www.youtube.com/playlist?list=$playlistId"
 
     /** The Mix ("my radio") playlist ID YouTube derives from a single video. */
-    fun mixPlaylistId(videoId: String): String = "RD$videoId"
+    fun mixPlaylistId(videoId: String): String = "$MIX_PREFIX$videoId"
+
+    /** True for a Mix playlist ID, whose pages cycle instead of ending. */
+    fun isMixPlaylistId(playlistId: String): Boolean = playlistId.startsWith(MIX_PREFIX)
 
     /**
      * The URL to fetch a video's Mix from. The probe (run 2026-08-18) showed BOTH this
@@ -89,8 +92,11 @@ object YouTubeUrls {
      */
     fun streamExpiryEpochSeconds(url: String): Long? = split(url)?.query?.get("expire")?.toLongOrNull()
 
+    // YouTube's prefix for the Mix playlists it generates from a video.
+    private const val MIX_PREFIX = "RD"
+
     // User playlists, uploads, liked, mixes, and the album lists YouTube Music hands out.
-    private val PLAYLIST_PREFIXES = listOf("PL", "UU", "LL", "RD", "OLAK5uy_", "FL", "SP")
+    private val PLAYLIST_PREFIXES = listOf("PL", "UU", "LL", MIX_PREFIX, "OLAK5uy_", "FL", "SP")
 
     // A bare ID with no URL around it is ambiguous - "dQw4w9WgXcQ" is a valid video ID and also
     // matches the loose playlist pattern. Only treat it as a playlist if it carries a known prefix.
