@@ -244,6 +244,10 @@ jobs:
           # is refused outright (netd logs DnsTlsSocket errno=111) with no usable fallback -
           # DNS dies and the trending fetch with it. Harmless where DNS already works.
           adb shell settings put global private_dns_mode off >/dev/null 2>&1 || true
+          # Connectivity probe into the log: distinguishes "guest cannot reach YouTube at all"
+          # from "the app cannot extract" when a content leg goes red.
+          echo 'Network probe (ping www.youtube.com):'
+          adb shell ping -c 1 www.youtube.com 2>&1 | head -2 || true
           adb shell settings put global window_animation_scale 0.0 >/dev/null 2>&1 || true
           adb shell settings put global transition_animation_scale 0.0 >/dev/null 2>&1 || true
           adb shell settings put global animator_duration_scale 0.0 >/dev/null 2>&1 || true
@@ -310,6 +314,7 @@ jobs:
           mkdir -p evidence
           timeout 30 adb pull /sdcard/smoke-home.png evidence/ >/dev/null 2>&1 || true
           timeout 30 adb pull /sdcard/smoke-content.png evidence/ >/dev/null 2>&1 || true
+          timeout 30 adb pull /sdcard/smoke-content-dump.xml evidence/ >/dev/null 2>&1 || true
       - name: Upload smoke evidence
         if: always()
         uses: actions/upload-artifact@v4

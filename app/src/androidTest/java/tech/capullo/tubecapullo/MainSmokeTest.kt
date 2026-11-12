@@ -66,7 +66,8 @@ class MainSmokeTest {
         )
         if (!trendingLanded) {
             // Preserve what the page DID show (error banner, empty content) before failing -
-            // "content never loaded" without a screenshot is a debugging dead end.
+            // "content never loaded" without a view dump is a debugging dead end.
+            shell("uiautomator dump /sdcard/smoke-content-dump.xml")
             shell("screencap -p /sdcard/smoke-content.png")
         }
         check(trendingLanded) { "home rendered but the trending section never landed in 90s" }
@@ -75,6 +76,9 @@ class MainSmokeTest {
             30_000,
         )
         if (!cardsLanded) {
+            // The header can land while the fetch failed (error banner + empty row) - the
+            // dump says WHICH error the user would have seen.
+            shell("uiautomator dump /sdcard/smoke-content-dump.xml")
             shell("screencap -p /sdcard/smoke-content.png")
         }
         check(cardsLanded) { "trending section landed but no song card appeared in 30s" }
