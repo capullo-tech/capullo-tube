@@ -76,7 +76,7 @@ object Dimens {
     /** Space between a section header and its cards. */
     val HOME_SECTION_HEADER_BOTTOM = 8.dp
 
-    // Content list rows: Search, Library and Up next (ui/shared/CompactListItem.kt).
+    // Content list rows: Search, Library and the Queue sheet (ui/shared/CompactListItem.kt).
 
     /** Space above and below a row's content. Material's ListItem uses 8 dp plus a 72 dp floor
      *  for two lines; with this a one-line-title row is 48 + 2x6 = 60 dp. */
@@ -124,7 +124,7 @@ object Dimens {
      *  1.5 dp more for its label. Smaller and the chips start to read as one bar. */
     val SEARCH_CHIP_SPACING = 6.dp
 
-    // Up next sheet (UpNextSheet.kt). Owner review 2026-11-11: the sheet may expand upwards but
+    // Queue sheet (UpNextSheet.kt). Owner review 2026-11-11: the sheet may expand upwards but
     // stays a drawer, never full screen.
 
     /** The expanded sheet's maximum height, as a fraction of the window height below the status
@@ -132,7 +132,25 @@ object Dimens {
      *  screen); lower and fewer queue rows fit. */
     const val UP_NEXT_MAX_HEIGHT_FRACTION = 0.85f
 
+    /** Height of M3's default drag handle above the sheet's content (22 dp vertical padding x 2
+     *  + 4 dp bar = 48 dp, ModalBottomSheet's BottomSheetDefaults.DragHandle). The content cap is
+     *  the sheet cap minus this, so the whole sheet stays within UP_NEXT_MAX_HEIGHT_FRACTION. */
+    val UP_NEXT_HANDLE_SPACE = 48.dp
+
     /** Gap between the sheet and each side of the screen, so it reads as a floating drawer.
      *  The sheet's bottom stays on the screen edge, so its bottom corners stay square. */
     val UP_NEXT_SHEET_SIDE_MARGIN = 8.dp
+
+    /** Alpha of a played row's art and text in the Queue (owner decision 2026-11-12: played
+     *  rows dimmed). GUESS: chosen without a device check. Lower and a played title gets hard
+     *  to read in daylight; higher and played rows no longer read apart from upcoming ones. The
+     *  row's buttons keep full alpha: they still act. */
+    const val UP_NEXT_PLAYED_ALPHA = 0.5f
+
+    /** The round badge that carries the GraphicEq mark over the current row's art, inside
+     *  [LIST_ART_SIZE]. A filled primary circle keeps the mark legible on any thumbnail without
+     *  a scrim over the whole art. GUESS: chosen by eye from the 48 dp art and the 20 dp glyph
+     *  ([LIST_ART_NOTE_SIZE]) it holds; smaller and the glyph touches the edge, larger and it
+     *  hides the art. */
+    val UP_NEXT_PLAYING_BADGE_SIZE = 28.dp
 }

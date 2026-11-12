@@ -22,10 +22,13 @@
              listeners fetch the web player over plain http. Nothing leaves the LAN in cleartext. -->
 
 
+        <!-- Portrait only (owner decision 2026-11-12). Android 16+ may ignore the lock on large
+             screens (tablets, foldables); that is accepted (MainActivity KDoc). -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:launchMode="singleTop">
+            android:launchMode="singleTop"
+            android:screenOrientation="portrait">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

@@ -152,8 +152,8 @@ the fallback search. The mean and the spread (min, median, max) per seed.
 - **Pass:** in album mode with chapters, Next seeks to the next chapter's start; on the last
   chapter, Next ends the album. Previous past 3 s into a chapter (`PREVIOUS_RESTART_MS`) restarts
   that chapter; at or under 3 s it goes to the previous chapter's start; on the first chapter it
-  acts as Previous on a song (the station's previous song, or the station before). Up next lists
-  the chapters after the playing one.
+  acts as Previous on a song (the station's previous song, or the station before). The Queue
+  sheet lists all the chapters in order: the played ones dimmed, the playing one highlighted.
 - **Pass:** an album without chapters plays as one track: Next ends it, and Previous acts as on a
   song.
 - **Pass:** the album's end rolls into a radio from the album. The title becomes

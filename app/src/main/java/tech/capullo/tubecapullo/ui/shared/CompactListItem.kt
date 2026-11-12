@@ -20,11 +20,12 @@ import androidx.compose.ui.semantics.semantics
 import tech.capullo.tubecapullo.ui.theme.Dimens
 
 /**
- * Material's ListItem at the compact density (Search, Library and Up next rows): the same slots,
+ * Material's ListItem at the compact density (Search, Library and Queue rows): the same slots,
  * colors and merged semantics, but [Dimens] paddings instead of ListItem's fixed 8 dp and its
  * 72 dp two-line floor, a titleSmall headline (ListItem's is bodyLarge) and a bodySmall supporting
  * line (ListItem's is bodyMedium). Everything is centred vertically. The container is opaque,
- * ListItem's surface color, so a swipe background never shows through a row.
+ * ListItem's surface color by default, so a swipe background never shows through a row; a
+ * highlighted row (the Queue's current song) passes its own opaque [containerColor].
  */
 @Composable
 fun CompactListItem(
@@ -34,12 +35,13 @@ fun CompactListItem(
     leadingContent: (@Composable () -> Unit)? = null,
     trailingContent: (@Composable () -> Unit)? = null,
     headlineColor: Color = MaterialTheme.colorScheme.onSurface,
+    containerColor: Color = ListItemDefaults.containerColor,
 ) {
     val secondaryColor = MaterialTheme.colorScheme.onSurfaceVariant
     Surface(
         // One focusable node per row, as ListItem does.
         modifier = Modifier.semantics(mergeDescendants = true) {}.then(modifier),
-        color = ListItemDefaults.containerColor,
+        color = containerColor,
         contentColor = headlineColor,
     ) {
         Row(

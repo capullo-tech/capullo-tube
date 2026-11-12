@@ -24,7 +24,8 @@ default and one probe run (`related-quality-results.md`). Nothing here is measur
   added per like (`songs-per-like=`), the last chain seed, the Previous state (`back:` line), the
   pair rule (`pairs:` line) and the constants.
 - `adb logcat -s TubeHome`: one `moreLike` line per "More like" row.
-- The Up next sheet: Earlier, Now, Up next. Each row says where it came from.
+- The Queue sheet: one list of the played tracks, the current track and the upcoming tracks.
+  Each upcoming row says where it came from.
 
 ## Constants and settings under test
 
@@ -90,7 +91,7 @@ and look for `empty=mix`. If neither shows, mark the case as not run.
 - **Pass (`empty=related`):** the line shows `mix=+a related=+0 empty=related` with a > 0. The
   upcoming tracks of that chain are all `prov=MIX from=<seed>`, in Mix order.
 - **Pass (`empty=mix`):** the line shows `mix=+0 related=+b empty=mix` with b > 0. The tracks are
-  all `prov=RELATED from=<seed>`. Up next says "Related to <song>".
+  all `prov=RELATED from=<seed>`. The Queue sheet says "Related to <song>".
 - **Fail:** an `empty=` field on a line where both counts are above 0, or a missing `empty=`
   field where one count is 0 and the other is not.
 - **Inconclusive:** both lists come back empty (`mix=+0 related=+0`).
@@ -240,8 +241,10 @@ and a Bluetooth device.
   - Press 1 logs `previous action=restore-station from=channel to=song id=<R3>`. R3 plays from
     the start. The Player title is "Radio · <R>". The upcoming list starts with U, in the same
     order.
-  - Press 2 logs `previous action=song id=<R2>`. R2 plays. Up next starts with R3, then U.
-  - Press 3 logs `previous action=song id=<R1>`. Up next starts with R2, R3, then U.
+  - Press 2 logs `previous action=song id=<R2>`. R2 plays. The upcoming rows of the Queue sheet
+    start with R3, then U.
+  - Press 3 logs `previous action=song id=<R1>`. The upcoming rows of the Queue sheet start with
+    R2, R3, then U.
   - Press 4 logs `previous action=restart`. R1 plays from the start.
   - Previous past 3 s logs `previous action=restart` and the same track plays from the start.
   - In a second run, press Next after press 2. R3 plays. The next Next plays the first track
@@ -261,8 +264,8 @@ and a Bluetooth device.
   5 `action=restore-station` lines, newest station first, then `action=restart`. The first
   station does not come back.
 - **Fail:** a Previous that skips forward, a restored station with a different upcoming list,
-  list place, repeat or shuffle, a song lost from Up next after a step back, or a Previous that
-  shows no `previous` log line.
+  list place, repeat or shuffle, a song lost from the upcoming list after a step back, or a
+  Previous that shows no `previous` log line.
 - **Inconclusive:** a `resolve ... result=skipped` line during the procedure. The loop then
   plays the track after the one Previous chose.
 
@@ -319,7 +322,7 @@ lines in `adb logcat -s TubeHome`.
 
 ## 17. The views line
 
-Procedure: open Home, Search (Songs) and the Up next sheet of a radio.
+Procedure: open Home, Search (Songs) and the Queue sheet of a radio.
 
 - **Pass:** a card or row with a known view count or year shows a line after the channel line:
   "1.2M views · 2019", "34K views", or the year alone. Related rows and search results show it.

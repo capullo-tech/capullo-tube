@@ -9,7 +9,3 @@ import java.util.Locale
 fun countryName(code: String): String = runCatching {
     Locale.Builder().setRegion(code).build().displayCountry
 }.getOrNull()?.takeIf { it.isNotBlank() } ?: code
-
-/** The device locale's country in the user's language: the country a chart with no chosen
- *  region follows. Null when the locale names no country. */
-fun deviceCountryName(): String? = Locale.getDefault().displayCountry.takeIf { it.isNotBlank() }
