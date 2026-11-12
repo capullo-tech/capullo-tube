@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
+import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface PlayHistoryDao {
@@ -13,9 +14,9 @@ interface PlayHistoryDao {
     suspend fun byId(videoId: String): PlayedTrackEntity?
 
     /**
-     * First play inserts (count 1); a replay increments the count and refreshes the metadata
-     * (title/uploader/art can change upstream). NOT @Upsert: REPLACE would silently reset
-     * [PlayedTrackEntity.playCount] and lose exactly the signal this table exists for.
+     * One counted play: first play inserts (count 1); a replay increments the count and refreshes
+     * the metadata (title/uploader/art can change upstream). NOT @Upsert: REPLACE would silently
+     * reset [PlayedTrackEntity.playCount].
      */
     @Transaction
     suspend fun record(entity: PlayedTrackEntity) {
@@ -42,9 +43,16 @@ interface PlayHistoryDao {
     @Update
     suspend fun update(entity: PlayedTrackEntity)
 
-    /** Replays rank first, recency breaks ties among single plays. */
+    /** Most recently played first, as a live query: Room re-emits after every record. */
+    @Query("SELECT * FROM played_track ORDER BY lastPlayedAtEpochMs DESC LIMIT :limit")
+    fun observeRecent(limit: Int): Flow<List<PlayedTrackEntity>>
+
+    /** Listen again's pool, as a live query: songs played at least [minPlays] times, and every
+     *  liked song or album that has played at all (its last play decides whether it is old). */
     @Query(
-        "SELECT * FROM played_track ORDER BY playCount DESC, lastPlayedAtEpochMs DESC LIMIT :limit",
+        "SELECT * FROM played_track WHERE playCount >= :minPlays " +
+            "OR videoId IN (SELECT videoId FROM liked_track) " +
+            "OR videoId IN (SELECT videoId FROM liked_album)",
     )
-    suspend fun mostPlayed(limit: Int): List<PlayedTrackEntity>
+    fun observeListenAgainPool(minPlays: Int): Flow<List<PlayedTrackEntity>>
 }

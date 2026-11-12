@@ -4,10 +4,8 @@ import androidx.room.Entity
 import androidx.room.PrimaryKey
 
 /**
- * A liked track (M-C: likes survive restarts). Persisting the uploader matters as much as the id:
- * [tech.capullo.tubecapullo.station.StationEngine]'s uploader nudge steers on likedUploaders, and
- * ids alone would drop that half of the taste signal on hydration. The rest of the metadata is
- * carried so a future "From your likes" home row is one query away.
+ * A liked track (M-C: likes survive restarts). The metadata is carried with the id so Liked,
+ * Liked radio and the Library render and play a like without a network call.
  */
 @Entity(tableName = "liked_track")
 data class LikedTrackEntity(

@@ -22,7 +22,7 @@ data class AudioCandidate(
  * Opus at a given bitrate sounds better than AAC, so on pure audio quality WebM/Opus wins and
  * `preferM4a = false` is the streaming default. The M4A preference exists for callers that cache
  * to disk and read the file afterwards: telecloud's metadata/analysis pipeline (jaudiotagger,
- * `MediaExtractor`) parses M4A and cannot parse WebM/Opus. TubeCapullo has no such pipeline yet -
+ * `MediaExtractor`) parses M4A and cannot parse WebM/Opus. CapulloTube has no such pipeline yet -
  * the parameter is kept because the disk cache planned for the station's prefetch (M4) will face
  * the same choice, and the selector is shared logic, not app policy.
  */

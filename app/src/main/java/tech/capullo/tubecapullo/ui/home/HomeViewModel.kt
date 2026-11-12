@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import tech.capullo.tubecapullo.data.history.PlayHistory
 import tech.capullo.tubecapullo.data.youtube.YouTubeError
@@ -19,6 +20,7 @@ import tech.capullo.tubecapullo.data.youtube.YtVideo
 import tech.capullo.tubecapullo.player.PlaybackCoordinator
 import tech.capullo.tubecapullo.player.PlaybackService
 import tech.capullo.tubecapullo.snapcast.SnapcastManager
+import tech.capullo.tubecapullo.station.PlaySource
 import tech.capullo.tubecapullo.station.StationEngine
 import javax.inject.Inject
 
@@ -70,15 +72,15 @@ class HomeViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(isLoading = true, error = null)
         viewModelScope.launch {
             val trending = runCatching {
-                extractor.trendingMusic()
+                extractor.trendingMusic(region = null)
             }.onFailure {
                 // A newer load cancelled this one: not an error (same rule as SearchViewModel).
                 if (it is CancellationException) throw it
                 _uiState.value = _uiState.value.copy(error = it.readable())
             }.getOrDefault(emptyList())
             // History failing must not take the trending cards down with it: an empty list just
-            // hides the section (see PlayHistory.mostPlayed - it already collapses to empty).
-            val history = runCatching { playHistory.mostPlayed() }.getOrDefault(emptyList())
+            // hides the section (see PlayHistory.observeRecent).
+            val history = runCatching { playHistory.observeRecent().first() }.getOrDefault(emptyList())
             _uiState.value = _uiState.value.copy(
                 trending = trending,
                 history = history,
@@ -91,7 +93,7 @@ class HomeViewModel @Inject constructor(
      *  two in step (plain startService, not startForegroundService - see that copy's comment). */
     fun play(video: YtVideo) {
         appContext.startService(Intent(appContext, PlaybackService::class.java))
-        player.startStation(video)
+        player.start(PlaySource.SongRadio(video))
     }
 
     fun togglePlayPause() = player.togglePlayPause()
@@ -100,7 +102,7 @@ class HomeViewModel @Inject constructor(
 
     /** Like/unlike the playing track - boosts its neighbourhood and re-seeds a mix from it. */
     fun toggleLike() {
-        playerState.value.video?.let { stationEngine.toggleLike(it.videoId) }
+        playerState.value.video?.let { stationEngine.toggleLike(it) }
     }
 
     // Same translation as SearchViewModel.readable - YouTubeError already carries

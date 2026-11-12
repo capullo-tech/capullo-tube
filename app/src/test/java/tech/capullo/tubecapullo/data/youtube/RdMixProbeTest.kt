@@ -28,7 +28,7 @@ class RdMixProbeTest {
     @Before
     fun setUp() {
         assumeTrue("set YT_SMOKE=1 to run the RD probe", System.getenv("YT_SMOKE") == "1")
-        client = YouTubeExtractorClient(TubeCapulloDownloader())
+        client = probeClient()
     }
 
     @Test
@@ -58,7 +58,7 @@ class RdMixProbeTest {
     fun `q3 mix vs related overlap - measurement only`() = runBlocking {
         seeds.forEach { seed ->
             val mix = client.mix(seed).map { it.videoId }.toSet()
-            val related = client.relatedStreams(seed, limit = 50).map { it.videoId }.toSet()
+            val related = client.relatedStreams(seed).videos.map { it.videoId }.toSet()
             val overlap = if (minOf(mix.size, related.size) == 0) {
                 0.0
             } else {
@@ -78,7 +78,7 @@ class RdMixProbeTest {
         println("PROBE q4 seed=$seed seedInOwnMix=${mix.any { it.videoId == seed }} count=${mix.size}")
 
         // Does the bare playlist?list=RD<seed> form work too? mixUrl assumes it doesn't have to.
-        val bare = runCatching { client.playlist(YouTubeUrls.mixPlaylistId(seed)) }
+        val bare = runCatching { client.playlistInfo(YouTubeUrls.mixPlaylistId(seed)).videos }
         println(
             "PROBE q4 bareForm=" +
                 bare.fold({ "OK count=${it.size}" }, { "THREW ${it.message}" }),

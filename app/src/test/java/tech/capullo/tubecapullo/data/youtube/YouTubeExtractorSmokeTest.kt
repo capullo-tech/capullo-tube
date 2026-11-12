@@ -30,7 +30,7 @@ class YouTubeExtractorSmokeTest {
     @Before
     fun setUp() {
         assumeTrue("set YT_SMOKE=1 to run the network smoke test", System.getenv("YT_SMOKE") == "1")
-        client = YouTubeExtractorClient(TubeCapulloDownloader())
+        client = probeClient()
     }
 
     @Test
@@ -67,7 +67,7 @@ class YouTubeExtractorSmokeTest {
     @Test
     fun `related streams returns neighbours`() = runBlocking {
         // The station's cheap feed (HANDOFF-bootstrap §5). Mix behaviour has its own probe.
-        val related = client.relatedStreams("dQw4w9WgXcQ", limit = 10)
+        val related = client.relatedStreams("dQw4w9WgXcQ").videos
         assertTrue("expected related videos", related.isNotEmpty())
         related.forEach { assertEquals("id should be 11 chars: ${it.videoId}", 11, it.videoId.length) }
     }

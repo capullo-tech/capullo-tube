@@ -4,6 +4,8 @@ plugins {
     alias(libs.plugins.android.application)
     // No kotlin.android: AGP 9.0+ ships built-in Kotlin (see RadioCapullo).
     alias(libs.plugins.kotlin.compose)
+    // Station snapshots (station/StationSnapshot.kt) are @Serializable and stored as JSON.
+    alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
 }
@@ -19,8 +21,8 @@ android {
         // because it is minSdk 24; see its pins.versions.toml).
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1"
+        versionCode = 2
+        versionName = "0.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -120,6 +122,8 @@ dependencies {
     implementation(libs.hilt.android)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
+    // Station snapshots: the saved queue of a station you left, as JSON in Room.
+    implementation(libs.kotlinx.serialization.json)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)
@@ -152,6 +156,7 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(pins.mockk) // fakes YouTubeExtractorClient (concrete class) in station tests
+    testImplementation(pins.sqlite.jdbc) // MigrationTest: the Room migrations on a real SQLite
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
