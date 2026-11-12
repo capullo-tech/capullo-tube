@@ -12,6 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import tech.capullo.tubecapullo.data.history.LikedAlbumDao
 import tech.capullo.tubecapullo.data.history.LikedTrackDao
+import tech.capullo.tubecapullo.data.history.LyricsDao
 import tech.capullo.tubecapullo.data.history.PlayHistoryDao
 import tech.capullo.tubecapullo.data.history.StationSnapshotDao
 import tech.capullo.tubecapullo.data.history.TubeCapulloDatabase
@@ -36,8 +37,8 @@ object AppModule {
 
     /** Play-history store. One file, no singleton guard needed - Hilt scopes the instance.
      *  MIGRATION_1_2 adds liked_track, MIGRATION_2_3 adds play_event, MIGRATION_3_4 drops it,
-     *  MIGRATION_4_5 adds liked_album and station_snapshot; none touches played_track (M-B rows
-     *  survive) or, after it exists, liked_track. */
+     *  MIGRATION_4_5 adds liked_album and station_snapshot, MIGRATION_5_6 adds lyrics; none
+     *  touches played_track (M-B rows survive) or, after it exists, liked_track. */
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): TubeCapulloDatabase = Room.databaseBuilder(context, TubeCapulloDatabase::class.java, "tubecapullo.db")
@@ -46,6 +47,7 @@ object AppModule {
             TubeCapulloDatabase.MIGRATION_2_3,
             TubeCapulloDatabase.MIGRATION_3_4,
             TubeCapulloDatabase.MIGRATION_4_5,
+            TubeCapulloDatabase.MIGRATION_5_6,
         )
         .build()
 
@@ -64,4 +66,8 @@ object AppModule {
     @Provides
     @Singleton
     fun provideStationSnapshotDao(db: TubeCapulloDatabase): StationSnapshotDao = db.stationSnapshotDao()
+
+    @Provides
+    @Singleton
+    fun provideLyricsDao(db: TubeCapulloDatabase): LyricsDao = db.lyricsDao()
 }

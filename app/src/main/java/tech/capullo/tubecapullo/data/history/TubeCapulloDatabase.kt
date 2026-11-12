@@ -5,16 +5,17 @@ import androidx.room.RoomDatabase
 
 /** v2: + liked_track (M-C). v3: + play_event (item 13, fatigue). v4: - play_event (the radio no
  *  longer reads history). v5: + liked_album, + station_snapshot (Home v2: album likes, Continue
- *  and Previous across restarts). Each migration's CREATE TABLE matches the exported schema JSON
- *  so Room's runtime table check passes. */
+ *  and Previous across restarts). v6: + lyrics (the lyrics cache). Each migration's CREATE TABLE
+ *  matches the exported schema JSON so Room's runtime table check passes. */
 @Database(
     entities = [
         PlayedTrackEntity::class,
         LikedTrackEntity::class,
         LikedAlbumEntity::class,
         StationSnapshotEntity::class,
+        LyricsEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = true,
 )
 abstract class TubeCapulloDatabase : RoomDatabase() {
@@ -25,6 +26,8 @@ abstract class TubeCapulloDatabase : RoomDatabase() {
     abstract fun likedAlbumDao(): LikedAlbumDao
 
     abstract fun stationSnapshotDao(): StationSnapshotDao
+
+    abstract fun lyricsDao(): LyricsDao
 
     companion object {
         /** CREATE TABLE copied verbatim from the exported 2.json (Room validates table info at
@@ -83,6 +86,20 @@ abstract class TubeCapulloDatabase : RoomDatabase() {
                     "CREATE TABLE IF NOT EXISTS `station_snapshot` (`id` INTEGER NOT NULL, " +
                         "`savedAtEpochMs` INTEGER NOT NULL, `state` TEXT NOT NULL, " +
                         "PRIMARY KEY(`id`))",
+                )
+            }
+        }
+
+        /**
+         * Adds lyrics (the v6 schema, 6.json, CREATE TABLE copied verbatim); every other table
+         * and its rows are untouched. MigrationTest runs it on a real SQLite.
+         */
+        val MIGRATION_5_6 = object : androidx.room.migration.Migration(5, 6) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `lyrics` (`videoId` TEXT NOT NULL, " +
+                        "`kind` TEXT NOT NULL, `source` TEXT, `text` TEXT, " +
+                        "`fetchedAtEpochMs` INTEGER NOT NULL, PRIMARY KEY(`videoId`))",
                 )
             }
         }

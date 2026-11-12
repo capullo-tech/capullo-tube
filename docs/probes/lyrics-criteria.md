@@ -116,6 +116,44 @@ Population: every video of the songs. The probe fetches each description once (N
 - **Yield (a measurement, not a gate):** how many LRCLIB misses the description fills, next to
   the first run's 7 of 15 with 12 or more short lines.
 
+## 3b. The tightened detector (added after the second run, before the third)
+
+Written 2026-11-12, AFTER the second run and BEFORE the third. Sections 1 to 3 are not
+changed. The second run failed section 3: 2 of the 31 accepted blocks were wrong, a credits
+list of names and the second song of a medley (`lyrics-results.md`). By section 3, the
+description source does not ship until the rule is tightened and measured again.
+
+The tightened rule. Each change answers one of the two wrong blocks:
+
+- **Chorus:** two lines that follow each other twice, in the same order (blank lines skipped).
+  One repeated line is not enough. The credits list repeated one name, never two in a row.
+- **Two songs:** when a second block passes and shares no line with the longest one, the
+  detector returns nothing. The medley's description held three songs' lyrics.
+- A heading line ("Lyrics", "Lyrics for ...", "歌詞") and a line with no letter ("-----") do not
+  break a block and are not returned. This changes only what the card shows, not which blocks
+  pass.
+
+The third run measures two populations:
+
+- **A, the same 113 videos.** The fix was made from these, so A can show only that the two
+  wrong blocks are gone and how many right blocks the fix costs. A is not a precision estimate.
+- **B, held out:** the related videos that NewPipe lists for the 10 liked songs at the time of
+  the run, songs only (60 s to 15 min, the radio's window), without the videos of A. The fix
+  never saw them. Each accepted block of B is checked as in section 3: the share of its lines in
+  LRCLIB's lyrics for that video (the app's parser and lookup) when LRCLIB has them, else read by
+  hand.
+
+A block is right when it is the lyrics of the video's song. A heading or one stray line in it
+does not make it wrong. Credits, a tracklist, links, prose, another song, or one song of a
+medley make it wrong.
+
+- **Pass:** in B, 90 % or more of the accepted blocks are right (at most 1 wrong with fewer than
+  10 blocks), and in A no wrong block is left.
+- **Fail:** in B, more than 10 % of the accepted blocks are wrong. The description source does
+  not ship.
+- **Inconclusive:** B has fewer than 3 accepted blocks. The source ships, and the results file
+  says that the precision is unmeasured.
+
 ## 4. The app (unit tests; device check by the owner)
 
 - **Pass (unit tests):** the parser shapes above and the first-run hit shapes; LRC parse

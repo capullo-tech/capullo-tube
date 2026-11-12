@@ -8,7 +8,9 @@ import java.util.Locale
  * matching uses are [key], the same-song rules of every fetch from a song (owner decision
  * 2026-11-12, "Pairs": a related upload of the seed's song is dropped, and of two tracks with one
  * title only the most viewed is queued), and [albumKey], the same-album rule of Home's Full
- * albums row. It is never used for taste.
+ * albums row. The lyrics query (data/lyrics/LyricsQuery.kt) reads its artist and song with
+ * [clean], [stripTaggedGroups], [splitAtDash], [artistName] and [sameArtist]. It is never used
+ * for taste.
  *
  * Three rules, in order:
  * 1. A bracketed group - `(...)`, `[...]` or `【...】` - goes when EVERY word in it is packaging
@@ -25,8 +27,49 @@ import java.util.Locale
 object TitleCleaner {
 
     fun clean(title: String, uploader: String?): String {
-        val unwrapped = tidy(stripGroups(title) { it in NOISE_WORDS }.substringBefore('|'))
+        val unwrapped = stripGroups(title) { words -> words.all { it in NOISE_WORDS } }
+            .substringBefore('|')
+            .let(::tidy)
         return stripUploaderPrefix(unwrapped, uploader).ifBlank { title }
+    }
+
+    /**
+     * [text] without each bracketed group that holds at least ONE packaging word: a
+     * [NOISE_WORDS] word, or a word [isPackaging] accepts. Looser than [clean]'s rule 1, which
+     * keeps a group with any other word in it. For a lookup by name (the lyrics query): there a
+     * kept "(Official Video - Live from the Tour)" costs the match, and a lost version marker
+     * costs little because the lookup also checks the duration.
+     */
+    fun stripTaggedGroups(text: String, isPackaging: (String) -> Boolean): String {
+        val stripped = stripGroups(text) { words ->
+            words.any { it in NOISE_WORDS || isPackaging(it) }
+        }
+        return tidy(stripped)
+    }
+
+    /** "Artist - Song" split at the first spaced dash ([ARTIST_PREFIX]): the two sides, or null
+     *  when the title has no such dash. Which side is the artist is the caller's call. */
+    fun splitAtDash(title: String): Pair<String, String>? {
+        val match = ARTIST_PREFIX.find(title) ?: return null
+        return match.groupValues[1] to match.groupValues[2]
+    }
+
+    /** The uploader as an artist name: without YouTube's " - Topic" suffix and a label's
+     *  trailing "VEVO" ("HarlemYuVEVO" gives "HarlemYu"). Case and spaces stay. */
+    fun artistName(uploader: String): String {
+        val name = uploader.trim().removeSuffix(TOPIC_SUFFIX)
+        val vevo = name.length > VEVO_SUFFIX.length && name.endsWith(VEVO_SUFFIX, ignoreCase = true)
+        return if (vevo) {
+            name.dropLast(VEVO_SUFFIX.length)
+        } else {
+            name
+        }
+    }
+
+    /** [name] names [uploader], compared as rule 3 compares an "Artist - " prefix. */
+    fun sameArtist(name: String, uploader: String?): Boolean {
+        val key = nameKey(name)
+        return uploader != null && key.isNotEmpty() && key == artistKey(uploader)
     }
 
     /** [clean]'s result compared without case, spaces or punctuation: two uploads with the same
@@ -50,30 +93,30 @@ object TitleCleaner {
      * goes too, so two year-named albums of one artist ("1989", "1999") share a key.
      */
     fun albumKey(title: String, uploader: String?, artists: Collection<String>): String? {
-        val bare = tidy(ALBUM_PHRASE.replace(stripGroups(title, ::isAlbumPackaging), " "))
+        val unpackaged = stripGroups(title) { it.all(::isAlbumPackaging) }
+        val bare = tidy(ALBUM_PHRASE.replace(unpackaged, " "))
             .takeIf { text -> text.any { it.isLetterOrDigit() } } ?: title
         val names = (listOfNotNull(uploader) + artists).map(::artistKey)
             .filterTo(HashSet()) { it.isNotEmpty() }
         return nameKey(stripArtistPrefix(clean(bare, null), names)).ifEmpty { null }
     }
 
-    /** The innermost bracketed groups whose every word is [packaging] go, until none is left. */
-    private fun stripGroups(title: String, packaging: (String) -> Boolean): String {
+    /** The innermost bracketed groups whose words [drop] accepts go, until none is left. A group
+     *  with no word at all ("( )", an emoji) stays. */
+    private fun stripGroups(title: String, drop: (List<String>) -> Boolean): String {
         var text = title
         // GROUP only matches innermost groups, so loop: "(Official Video (HD))" clears in two
         // passes. Each change replaces a 2+ char group with one space, so the loop terminates.
         while (true) {
             val next = GROUP.replace(text) {
-                if (isPackaging(it.groupValues[1], packaging)) " " else it.value
+                val words = WORD.findAll(it.groupValues[1].lowercase(Locale.ROOT))
+                    .map { word -> word.value }
+                    .toList()
+                if (words.isNotEmpty() && drop(words)) " " else it.value
             }
             if (next == text) return text
             text = next
         }
-    }
-
-    private fun isPackaging(group: String, packaging: (String) -> Boolean): Boolean {
-        val words = WORD.findAll(group.lowercase(Locale.ROOT)).map { it.value }.toList()
-        return words.isNotEmpty() && words.all(packaging)
     }
 
     private fun isAlbumPackaging(word: String): Boolean = word in NOISE_WORDS || word in ALBUM_WORDS || YEAR.matches(word) || ORDINAL.matches(word)

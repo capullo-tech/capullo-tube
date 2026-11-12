@@ -160,6 +160,10 @@ dependencies {
     // for the player-JS deobfuscation.
     implementation(pins.newpipe.extractor)
     implementation(pins.okhttp) // backs the extractor's blocking Downloader SPI (see data/youtube/)
+    // LRCLIB lyrics lookups (data/lyrics/). Ktor is the approved HTTP client (CONTRIBUTING §2);
+    // the okhttp above is only the extractor's blocking SPI.
+    implementation(libs.ktor.client.core)
+    implementation(libs.ktor.client.okhttp)
     implementation(pins.coil.compose) // card and row art; Search song rows stay icon-only
 
     // Play history ("Listen again" on Home). Versions come from the shared catalog,
