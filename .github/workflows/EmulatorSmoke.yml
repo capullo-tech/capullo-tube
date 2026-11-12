@@ -163,6 +163,7 @@ jobs:
           set -eu
           nohup emulator -avd smoke -port 5554 -no-window -gpu swiftshader_indirect -noaudio \
             -no-boot-anim -no-snapshot -no-metrics -camera-back none -camera-front none \
+            -dns-server 8.8.8.8 \
             > /tmp/emulator.log 2>&1 &
           deadline=$(( $(date +%s) + BOOT_TIMEOUT ))
           until [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; do
@@ -238,6 +239,11 @@ jobs:
           # runs) and none of it is required for the smoke test to be meaningful.
           for _ in 1 2 3 4 5; do adb shell input keyevent 82 >/dev/null 2>&1 && break; sleep 3; done
           adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
+          # Private DNS off, on every leg: the content assertion needs the guest to resolve
+          # YouTube, and on the API 28-32 images DNS-over-TLS to the runner-provided resolver
+          # is refused outright (netd logs DnsTlsSocket errno=111) with no usable fallback -
+          # DNS dies and the trending fetch with it. Harmless where DNS already works.
+          adb shell settings put global private_dns_mode off >/dev/null 2>&1 || true
           adb shell settings put global window_animation_scale 0.0 >/dev/null 2>&1 || true
           adb shell settings put global transition_animation_scale 0.0 >/dev/null 2>&1 || true
           adb shell settings put global animator_duration_scale 0.0 >/dev/null 2>&1 || true
