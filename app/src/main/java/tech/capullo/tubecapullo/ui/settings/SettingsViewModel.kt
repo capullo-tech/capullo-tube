@@ -10,6 +10,7 @@ import tech.capullo.tubecapullo.data.settings.AppSettings
 import tech.capullo.tubecapullo.data.settings.LikeMode
 import tech.capullo.tubecapullo.data.youtube.YouTubeExtractorClient
 import tech.capullo.tubecapullo.data.youtube.defaultChartRegion
+import tech.capullo.tubecapullo.links.YouTubeLinkAlias
 import tech.capullo.tubecapullo.util.countryName
 import java.text.Collator
 import java.util.Locale
@@ -38,6 +39,7 @@ class SettingsViewModel @Inject constructor(
     @ApplicationContext context: Context,
     private val appSettings: AppSettings,
     extractor: YouTubeExtractorClient,
+    private val linkAlias: YouTubeLinkAlias,
 ) : ViewModel() {
 
     /** The chosen Trending charts in row order; empty follows the device locale. */
@@ -92,4 +94,14 @@ class SettingsViewModel @Inject constructor(
     val songsPerLike: StateFlow<Int> = appSettings.songsPerLike
 
     fun setSongsPerLike(songs: Int) = appSettings.setSongsPerLike(songs)
+
+    /** Whether Android may open tapped YouTube links in the app (the link alias's state). */
+    val openYouTubeLinks: StateFlow<Boolean> = linkAlias.enabled
+
+    fun setOpenYouTubeLinks(enabled: Boolean) = linkAlias.setEnabled(enabled)
+
+    /** Whether a shared or opened video link asks before it plays. */
+    val askForSharedLinks: StateFlow<Boolean> = appSettings.askForSharedLinks
+
+    fun setAskForSharedLinks(enabled: Boolean) = appSettings.setAskForSharedLinks(enabled)
 }
