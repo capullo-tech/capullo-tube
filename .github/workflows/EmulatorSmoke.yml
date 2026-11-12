@@ -292,14 +292,33 @@ jobs:
             echo "::error::smoke instrumentation failed on API ${{ matrix.api-level }} (transcript above)"
             exit 1
           fi
-          adb emu kill >/dev/null 2>&1 || true
-      - name: Capture failure evidence (screenshot, view dump, logcat)
-        # Steps default to success()-only; failure evidence must run exactly when things broke.
-        # timeout on every adb: with the emulator dead, adb blocks indefinitely on device wait.
+      # The proof the smoke test passed, from every leg: screenshots taken IN-TEST (the
+      # instrumentation finishes the activity when the test method ends, so a post-hoc
+      # capture would only show the launcher). One artifact per leg, green or red - the
+      # 'did the main page really load content' question is answered by opening a file, not
+      # re-running a matrix. 14-day retention: public repos get artifact storage free, but
+      # ten artifacts per push should not accumulate for the default 90 days either.
+      - name: Collect in-test smoke evidence
+        if: always()
+        run: |
+          mkdir -p evidence
+          timeout 30 adb pull /sdcard/smoke-home.png evidence/ >/dev/null 2>&1 || true
+          timeout 30 adb pull /sdcard/smoke-content.png evidence/ >/dev/null 2>&1 || true
+      - name: Upload smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-evidence-api${{ matrix.api-level }}-${{ github.run_id }}
+          path: evidence/
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Capture failure evidence (logcat, dumpsys, view dump)
+        # Steps default to success()-only; failure evidence must run exactly when things
+        # broke. timeout on every adb: with the emulator dead, adb blocks indefinitely on
+        # device wait.
         if: failure()
         run: |
           mkdir -p evidence
-          timeout 30 adb exec-out screencap -p > evidence/screen.png 2>/dev/null || true
           timeout 30 adb shell uiautomator dump /sdcard/smoke-dump.xml >/dev/null 2>&1 || true
           timeout 30 adb pull /sdcard/smoke-dump.xml evidence/ >/dev/null 2>&1 || true
           timeout 30 adb shell dumpsys package tech.capullo.tubecapullo > evidence/dumpsys-package.txt 2>/dev/null || true

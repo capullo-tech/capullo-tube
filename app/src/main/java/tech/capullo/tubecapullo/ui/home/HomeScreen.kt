@@ -40,6 +40,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -199,7 +201,11 @@ private fun MusicCard(video: YtVideo, isPlaying: Boolean, onPlay: () -> Unit) {
         Modifier
             .width(160.dp)
             .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onPlay),
+            .clickable(onClick = onPlay)
+            // Stable identity for device-level UI queries (EmulatorSmoke.yml): the card's own
+            // texts are video titles/uploaders, useless as selectors, and testTagsAsResourceId
+            // is off - a semantics description is what UiAutomator's By.desc() can count.
+            .semantics { contentDescription = "music_card" },
     ) {
         Box(
             Modifier
