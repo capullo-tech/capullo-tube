@@ -173,6 +173,9 @@ dependencies {
     testImplementation(pins.sqlite.jdbc) // MigrationTest: the Room migrations on a real SQLite
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
+    // Device-level launch smoke for the emulator matrix (EmulatorSmoke.yml): UiAutomator because
+    // a Compose rule's idle sync never settles under home's infinite loading spinner.
+    androidTestImplementation(pins.androidx.test.uiautomator)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
