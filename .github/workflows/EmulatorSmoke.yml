@@ -151,6 +151,11 @@ jobs:
         run: |
           set -eu
           yes | sdkmanager --licenses > /dev/null || true
+          # The android-23 image (r33) trips avdmanager's dependency check against the
+          # runner's preinstalled local repository: "Error: 'emulator' package must be
+          # installed!" (run 43511588011, leg 23 only - the 28+ images do not). Installing
+          # it explicitly is a no-op where the package already exists.
+          sdkmanager --install emulator > /dev/null
           sdkmanager --install "system-images;android-$ANDROID_API;$ANDROID_TARGET;x86_64" > /dev/null
           echo no | avdmanager create avd --force -n smoke \
             --package "system-images;android-$ANDROID_API;$ANDROID_TARGET;x86_64"
