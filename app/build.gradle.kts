@@ -16,13 +16,15 @@ android {
 
     defaultConfig {
         applicationId = "tech.capullo.tubecapullo"
-        // minSdk 26 per CONTRIBUTING §1. NewPipeExtractor's java.nio.file use is native on
-        // API 26+, but its java.util.stream use is NOT all native: Collectors.toUnmodifiableList
-        // (JDK 10) only exists on Android from API 33, and the trending kiosk died with
-        // NoSuchMethodError on API 28-32 until desugaring was enabled (2026-11-11 smoke matrix,
-        // docs/probes/desugar-api28-32-criteria.md). URLDecoder.decode(String, Charset)
-        // (API 33) needs the _nio flavour too (OnePlus 3, Android 11, 2026-11-12).
-        minSdk = 26
+        // minSdk 23 (Android 6), owner request 2026-11-14; pass criteria in
+        // docs/probes/minsdk-23-criteria.md. NewPipeExtractor needs three backports below the
+        // native API levels, all covered by the _nio desugar flavour (see compileOptions):
+        // java.nio.file (native only from API 26), the JDK 9-11 java.util.stream additions
+        // (Collectors.toUnmodifiableList, native only from API 33 - the trending kiosk died
+        // with NoSuchMethodError on API 28-32 until desugaring, 2026-11-11 smoke matrix,
+        // docs/probes/desugar-api28-32-criteria.md), and URLDecoder.decode(String, Charset)
+        // (API 33; needs the _nio flavour, OnePlus 3, Android 11, 2026-11-12).
+        minSdk = 23
         targetSdk = 36
         versionCode = 2
         versionName = "0.2"
@@ -60,8 +62,9 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
-        // Backports the JDK 9-11 java.util.stream additions (e.g. Collectors.toUnmodifiableList)
-        // onto API < 33 for NewPipeExtractor; see the minSdk comment above.
+        // Backports java.nio.file (API < 26), the JDK 9-11 java.util.stream additions
+        // (e.g. Collectors.toUnmodifiableList, API < 33) and URLDecoder.decode(String, Charset)
+        // for NewPipeExtractor; see the minSdk comment above.
         isCoreLibraryDesugaringEnabled = true
     }
     // compilerOptions, NOT jvmToolchain(17): mirrors telecloud/RadioCapullo (Kotlin 2.3 / AGP 9.x DSL).
@@ -115,8 +118,8 @@ ksp {
 }
 
 dependencies {
-    // See compileOptions.isCoreLibraryDesugaringEnabled - stream and URLDecoder backports for
-    // API < 33 (the _nio flavour; see pins.versions.toml).
+    // See compileOptions.isCoreLibraryDesugaringEnabled - the _nio flavour backports nio,
+    // stream and URLDecoder for NewPipeExtractor below their native API levels.
     coreLibraryDesugaring(pins.desugar.jdk.libs.nio)
     // The snapcast delivery engine's transport classes + capullo-audio-contracts (re-exported as
     // api). Pulled in at M1 on purpose: it validates the jitpack pin early and lands the contracts

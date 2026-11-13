@@ -64,7 +64,7 @@ Format before you commit:
 ./gradlew spotlessApply
 ```
 
-Toolchain: minSdk 26, compile/target 36, JVM target 17.
+Toolchain: minSdk 23, compile/target 36, JVM target 17.
 
 ## 2. Approved libraries
 

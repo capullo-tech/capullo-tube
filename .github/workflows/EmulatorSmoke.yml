@@ -251,7 +251,7 @@ jobs:
           adb shell settings put global window_animation_scale 0.0 >/dev/null 2>&1 || true
           adb shell settings put global transition_animation_scale 0.0 >/dev/null 2>&1 || true
           adb shell settings put global animator_duration_scale 0.0 >/dev/null 2>&1 || true
-      - name: Install APKs, run the launch smoke test
+      - name: Install APKs, run the launch + playback smoke tests
         run: |
           set -euo pipefail
           # -g pre-grants POST_NOTIFICATIONS on API 33+, so the first frame is the app and not
@@ -287,7 +287,8 @@ jobs:
             sleep 3
           done
           adb shell pm path tech.capullo.tubecapullo | grep -q apk
-          adb shell am instrument -w -e class tech.capullo.tubecapullo.MainSmokeTest \
+          adb shell am instrument -w \
+            -e class tech.capullo.tubecapullo.MainSmokeTest,tech.capullo.tubecapullo.PlaybackSmokeTest \
             tech.capullo.tubecapullo.test/androidx.test.runner.AndroidJUnitRunner \
             2>&1 | tee "$RUNNER_TEMP/instrument.log"
           # A missing OK marker means adb died mid-run or the run never finished; failure
@@ -305,7 +306,7 @@ jobs:
       # The proof the smoke test passed, from every leg: screenshots taken IN-TEST (the
       # instrumentation finishes the activity when the test method ends, so a post-hoc
       # capture would only show the launcher). One artifact per leg, green or red - the
-      # 'did the main page really load content' question is answered by opening a file, not
+      # 'did the page load content and play a song' question is answered by opening a file, not
       # re-running a matrix. 14-day retention: public repos get artifact storage free, but
       # ten artifacts per push should not accumulate for the default 90 days either.
       - name: Collect in-test smoke evidence
@@ -314,6 +315,7 @@ jobs:
           mkdir -p evidence
           timeout 30 adb pull /sdcard/smoke-home.png evidence/ >/dev/null 2>&1 || true
           timeout 30 adb pull /sdcard/smoke-content.png evidence/ >/dev/null 2>&1 || true
+          timeout 30 adb pull /sdcard/smoke-playback.png evidence/ >/dev/null 2>&1 || true
       - name: Upload smoke evidence
         if: always()
         uses: actions/upload-artifact@v4
