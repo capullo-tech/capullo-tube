@@ -1,5 +1,8 @@
 package tech.capullo.tubecapullo.station
 
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -109,5 +112,59 @@ class StationLoopTest {
         loop.start()
 
         assertEquals(listOf(1), changes)
+    }
+
+    @Test
+    fun `a seed that fails before its refill lands resumes when the queue grows`() = runTest {
+        // Owner report 2026-11-11: the seed failed, the queue held nothing else yet, and the
+        // station sat on "loading" after the refill arrived.
+        val source = FakeSource(listOf("seedseedsee"), unresolvable = setOf("seedseedsee"))
+        val playback = RecordingPlayback()
+        val loop = StationLoop(source, playback)
+        val failed = mutableListOf<String>()
+        loop.onResolveFailed = { _, id, _ -> failed += id }
+
+        loop.start()
+        assertEquals(1, loop.waitingAt)
+        assertEquals(listOf("seedseedsee"), failed)
+        assertTrue(playback.played.isEmpty())
+
+        assertEquals(false, loop.resumeIfWaiting()) // nothing new yet
+        source.queueIds += "refillrefil"
+        assertEquals(true, loop.resumeIfWaiting())
+
+        assertEquals(listOf("https://example/refillrefil"), playback.played)
+        assertEquals(1, loop.currentIndex)
+        assertEquals(null, loop.waitingAt)
+    }
+
+    @Test
+    fun `a resolve that returns after a newer request does not play`() = runTest {
+        // Two taps in a row: the first resolve is slow and must not override the second.
+        val gate = CompletableDeferred<Unit>()
+        val source = object : MediaSourceProvider {
+            val ids = mutableListOf("slowslowslo")
+            override fun queue(): PlaybackQueue = object : PlaybackQueue {
+                override val size: Int get() = ids.size
+                override val currentIndex: Int = 0
+                override val isRotating: Boolean = false
+                override fun idAt(index: Int): String? = ids.getOrNull(index)
+            }
+            override suspend fun mediaRequestFor(id: String): MediaRequest {
+                if (id == "slowslowslo") gate.await()
+                return MediaRequest("https://example/$id", "audio/mp4")
+            }
+        }
+        val playback = RecordingPlayback()
+        val loop = StationLoop(source, playback)
+
+        val first = launch { loop.start() }
+        runCurrent()
+        source.ids[0] = "fastfastfas"
+        loop.start()
+        gate.complete(Unit)
+        first.join()
+
+        assertEquals(listOf("https://example/fastfastfas"), playback.played)
     }
 }

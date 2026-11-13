@@ -2,11 +2,12 @@
 # single-app deps. Everything else (toolchain, BOM-managed Compose, lifecycle, Hilt, ktor,
 # coroutines, junit) comes from the shared `libs` catalog (build-conventions).
 [versions]
-# capullo-audio - immutable jitpack commit. 92d1b63 = tip of fix/web-player-background (web player
-# background fix + cloudflared 2026.8.3), the same code the local ../capullo-audio composite build
-# uses, so friends' jitpack builds match the owner's. HANDOFF-bootstrap's notes on
+# capullo-audio - immutable jitpack commit. 1c866cf = capullo-audio main (2026-11-11), the same pin
+# telecloud-radio and quantumcast use, and the commit the local ../capullo-audio composite build is
+# on, so jitpack builds match the owner's. Moved from 92d1b63, which lacked the pause gate, focus
+# recovery and the cloudflared mirror fallback (its 2026.8.3 was pruned from Termux). Notes on
 # SnapserverProcess/SnapcontrolPlugin/QueuePlaybackLoop were read at the older cd1e595.
-capulloAudio = "92d1b632b18d54154eec44b56994a97efb4150c2"
+capulloAudio = "1c866cf801a902c112be88310a229da12b9dde70"
 # NOTE: no lib-snapcast-android pin here, on purpose. The native .so binaries arrive transitively
 # via capullo-audio, which owns the pin. telecloud's pins.versions.toml documents what a direct pin
 # cost them: a version mismatch let Gradle pick the lexically-higher hash and package a STALE .so
@@ -23,20 +24,24 @@ okhttp = "4.12.0"
 # Async image loading for the home recommendation cards' art (Coil 2.x, mavenCentral; single-repo
 # dep per CONTRIBUTING §2 - promote to the shared catalog if a second capullo app adopts it).
 coil = "2.7.0"
-# Core-library desugaring: NewPipeExtractor calls java.util.stream.Collectors.toUnmodifiableList,
-# which Android only ships from API 33 - without the backport, every extraction on API <= 32 dies
-# with NoSuchMethodError (caught into the home error banner; found by the EmulatorSmoke matrix as
-# "trending section lands with zero cards" on exactly the 28-32 legs). Standard variant, not
-# _nio: the extractor's java.nio.file use is native on our minSdk 26.
-desugarJdkLibs = "2.1.5"
 # material-icons core/extended ship separately from the Compose BOM (last released 1.7.x line).
 composeIcons = "1.7.8"
 mockk = "1.14.6"
+# Test only: a desktop SQLite for MigrationTest, which runs the Room migrations on a real database
+# on the JVM (Room's MigrationTestHelper needs a device). The version room-compiler already
+# resolves for its query checks, so it is in every build's cache.
+sqliteJdbc = "3.41.2.2"
 hiltNavigationCompose = "1.3.0"
 # Device-level launch smoke test for the CI emulator matrix (.github/workflows/EmulatorSmoke.yml).
 # Chosen over a Compose test rule on purpose: the rule's idle sync never settles under the home
 # screen's infinite loading spinner - see MainSmokeTest's kdoc for the full story.
 uiautomator = "2.3.0"
+# D8 core-library desugaring backport for NewPipeExtractor on Android < API 33: the
+# java.util.stream JDK 9-11 additions (Collectors.toUnmodifiableList) and
+# URLDecoder.decode(String, Charset). The _nio flavour: with plain desugar_jdk_libs the
+# URLDecoder call still crashed every video lookup on Android 11 (OnePlus 3, 2026-11-12);
+# with _nio it plays.
+desugarJdkLibs = "2.1.5"
 
 [libraries]
 # jitpack multi-module coords: capullo-audio-ui is ONLY at the nested group
@@ -52,7 +57,12 @@ androidx-compose-material-icons-extended = { group = "androidx.compose.material"
 newpipe-extractor = { module = "com.github.teamnewpipe:NewPipeExtractor", version.ref = "newpipeExtractor" }
 okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
 coil-compose = { module = "io.coil-kt:coil-compose", version.ref = "coil" }
-desugar-jdk-libs = { module = "com.android.tools:desugar_jdk_libs", version.ref = "desugarJdkLibs" }
-mockk = { group = "io.mockk", name = "mockk", version.ref = "mockk" }
 androidx-test-uiautomator = { group = "androidx.test.uiautomator", name = "uiautomator", version.ref = "uiautomator" }
+# Device-level launch smoke test for the CI emulator matrix (.github/workflows/EmulatorSmoke.yml).
+# Chosen over a Compose test rule on purpose: the rule's idle sync never settles under the home
+# screen's infinite loading spinner - see MainSmokeTest's kdoc for the full story.
+uiautomator = "2.3.0"
+mockk = { group = "io.mockk", name = "mockk", version.ref = "mockk" }
+sqlite-jdbc = { module = "org.xerial:sqlite-jdbc", version.ref = "sqliteJdbc" }
 androidx-hilt-lifecycle-viewmodel-compose = { module = "androidx.hilt:hilt-lifecycle-viewmodel-compose", version.ref = "hiltNavigationCompose" }
+desugar-jdk-libs-nio = { module = "com.android.tools:desugar_jdk_libs_nio", version.ref = "desugarJdkLibs" }

@@ -1,11 +1,8 @@
 package tech.capullo.tubecapullo.ui.search
 
-import android.content.Context
-import android.content.Intent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -13,43 +10,51 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import tech.capullo.tubecapullo.data.youtube.CollectionKind
 import tech.capullo.tubecapullo.data.youtube.YouTubeError
 import tech.capullo.tubecapullo.data.youtube.YouTubeExtractorClient
 import tech.capullo.tubecapullo.data.youtube.YouTubeUrls
+import tech.capullo.tubecapullo.data.youtube.YtCollection
 import tech.capullo.tubecapullo.data.youtube.YtVideo
+import tech.capullo.tubecapullo.links.PlaylistLinkRequests
 import tech.capullo.tubecapullo.player.PlaybackCoordinator
-import tech.capullo.tubecapullo.player.PlaybackService
-import tech.capullo.tubecapullo.snapcast.SnapcastManager
+import tech.capullo.tubecapullo.station.PlaySource
 import tech.capullo.tubecapullo.station.StationEngine
+import tech.capullo.tubecapullo.ui.upnext.UpNextText
 import javax.inject.Inject
 
 data class SearchUiState(
     val query: String = "",
+    /** The chip. Lives in the ViewModel: it survives rotation and resets to Songs when the app
+     *  starts again. */
+    val filter: SearchFilter = SearchFilter.SONGS,
+    /** Song rows: a Songs search, or a pasted link. */
     val results: List<YtVideo> = emptyList(),
+    /** Playlist, album or channel rows from the other filters; [collectionKind] says which. */
+    val collections: List<YtCollection> = emptyList(),
+    /** What [collections] holds, for the row tap; null while the rows are songs. */
+    val collectionKind: CollectionKind? = null,
+    /** The query that produced [results]; [query] is the live text field and may have moved on. */
+    val resultsQuery: String = "",
+    /** Set when [results] are a pasted or shared playlist: the screen offers to play it. */
+    val playlist: PlaySource.Playlist? = null,
     val isSearching: Boolean = false,
     val error: String? = null,
 )
 
 @HiltViewModel
 class SearchViewModel @Inject constructor(
-    @ApplicationContext private val appContext: Context,
     private val extractor: YouTubeExtractorClient,
     private val player: PlaybackCoordinator,
     private val stationEngine: StationEngine,
-    snapcastManager: SnapcastManager,
+    playlistLinks: PlaylistLinkRequests,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SearchUiState())
     val uiState = _uiState.asStateFlow()
 
-    /** The player's state, exposed for the now-playing bar. */
+    /** The player's state, for the "playing" marker on the matching row. */
     val playerState = player.state
-
-    /** Broadcast state (listener list, http port), exposed for the broadcast row. */
-    val snapcastState = snapcastManager.state
-
-    /** Liked ids, for the bar's heart state. */
-    val likedIds = stationEngine.likedIds
 
     private val _toast = MutableSharedFlow<String>(extraBufferCapacity = 4)
     val toast = _toast.asSharedFlow()
@@ -60,34 +65,70 @@ class SearchViewModel @Inject constructor(
         // Service-side events (skipped tracks, station ran dry) surface as toasts. Retry policy
         // moved into PlaybackService with the station loop - the station owns it now.
         viewModelScope.launch { player.events.collect { _toast.tryEmit(it) } }
+        // A shared or opened playlist link (links/LinksViewModel) lists here as if pasted.
+        viewModelScope.launch {
+            playlistLinks.requests.collect { url ->
+                onQueryChange(url)
+                submit()
+            }
+        }
     }
 
     fun onQueryChange(query: String) {
         _uiState.value = _uiState.value.copy(query = query)
     }
 
+    /** A chip tap: the query in the box runs again under [filter]. A link ignores the filter, so
+     *  there is nothing to run again for one. */
+    fun onFilterChange(filter: SearchFilter) {
+        val state = _uiState.value
+        if (filter == state.filter) return
+        _uiState.value = state.copy(filter = filter)
+        val request = searchRequest(state.query, filter)
+        if (request is SearchRequest.Songs || request is SearchRequest.Collections) submit()
+    }
+
     /**
-     * One box, three meanings: a playlist link lists the whole playlist, a video link lists that
-     * one video, anything else is a search. Playlist wins over video for a watch URL carrying
-     * `&list=` - pasting a song "from" a playlist usually means the playlist. (Same contract as
-     * telecloud's search box; here the rows play instead of adding to a station.)
+     * One box, four meanings ([searchRequest]): a playlist link lists the whole playlist, a video
+     * link lists that one video, anything else is a search under the chip's filter - songs, or
+     * playlists, albums or channels. (Same contract as telecloud's search box; here the rows play
+     * instead of adding to a station.)
      */
     fun submit() {
-        val query = _uiState.value.query.trim()
-        if (query.isEmpty()) return
+        val state = _uiState.value
+        val request = searchRequest(state.query, state.filter) ?: return
+        val query = state.query.trim()
 
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isSearching = true, error = null)
             runCatching {
-                val results = when {
-                    YouTubeUrls.isPlaylist(query) -> extractor.playlist(query)
-                    YouTubeUrls.parseVideoId(query) != null ->
-                        listOf(extractor.video(YouTubeUrls.parseVideoId(query)!!))
-                    else -> extractor.search(query)
+                var songs = emptyList<YtVideo>()
+                var collections = emptyList<YtCollection>()
+                var playlist: PlaySource.Playlist? = null
+                when (request) {
+                    is SearchRequest.PlaylistLink -> extractor.playlistInfo(query).let {
+                        songs = it.videos
+                        playlist = PlaySource.Playlist(
+                            YouTubeUrls.playlistUrl(request.playlistId),
+                            it.title,
+                        )
+                    }
+                    is SearchRequest.VideoLink -> songs = listOf(extractor.video(request.videoId))
+                    is SearchRequest.Songs -> songs = extractor.search(request.query)
+                    is SearchRequest.Collections ->
+                        collections = extractor.searchCollections(request.query, request.kind)
                 }
-                _uiState.value = _uiState.value.copy(results = results)
-                if (results.isEmpty()) _toast.tryEmit("Nothing found for \"$query\"")
+                _uiState.value = _uiState.value.copy(
+                    results = songs,
+                    collections = collections,
+                    collectionKind = (request as? SearchRequest.Collections)?.kind,
+                    resultsQuery = query,
+                    playlist = playlist,
+                )
+                if (songs.isEmpty() && collections.isEmpty()) {
+                    _toast.tryEmit("Nothing found for \"$query\"")
+                }
             }.onFailure {
                 // A newer submit cancelled this search: not an error, and the newer job owns the
                 // spinner. runCatching catches CancellationException, so rethrow it here.
@@ -101,21 +142,41 @@ class SearchViewModel @Inject constructor(
     /** Start a station from [video] - the tap-a-row action. Resolution happens in the service's
      *  station loop; the UI just names the seed. */
     fun play(video: YtVideo) {
-        // Plain startService, NOT startForegroundService: the FGS variant demands startForeground()
-        // within 5s, but stream resolution alone can take longer and MediaSessionService only
-        // promotes itself once playback starts. A plain start from a foreground app is allowed and
-        // has no deadline; the coordinator's replay=1 bridges the service's cold-start race.
-        appContext.startService(Intent(appContext, PlaybackService::class.java))
-        player.startStation(video)
+        player.start(PlaySource.SongRadio(video)) // the coordinator starts the service
     }
 
-    fun togglePlayPause() = player.togglePlayPause()
+    /** "Radio from results": the first result plays, the other results follow, then the
+     *  first result's Mix. The engine
+     *  logs the start (`start source=search query=... results=...`). */
+    fun playResultsRadio() {
+        val state = _uiState.value
+        if (state.results.isEmpty()) return
+        player.start(PlaySource.SearchRadio(state.resultsQuery, state.results))
+    }
 
-    fun next() = player.next()
+    /** A playlist, album or channel row's tap: the list plays as itself, in order. The engine
+     *  fetches it and logs the start (`start source=playlist ...` or `source=channel`). */
+    fun playCollection(collection: YtCollection) {
+        val source = when (_uiState.value.collectionKind ?: return) {
+            CollectionKind.CHANNELS ->
+                PlaySource.Channel(collection.url, UpNextText.channelName(collection.title))
+            CollectionKind.PLAYLISTS, CollectionKind.ALBUMS ->
+                PlaySource.Playlist(collection.url, collection.title)
+        }
+        player.start(source)
+    }
 
-    /** Like/unlike the playing track - boosts its neighbourhood and re-seeds a mix from it. */
-    fun toggleLike() {
-        playerState.value.video?.let { stationEngine.toggleLike(it.videoId) }
+    /** The listed playlist as a collection, in order or [shuffle]d. The engine fetches it again
+     *  and logs the start (`start source=playlist ...`). */
+    fun playPlaylist(shuffle: Boolean) {
+        val playlist = _uiState.value.playlist ?: return
+        player.start(playlist.copy(shuffle = shuffle))
+    }
+
+    /** Pin [video] after the playing track - Play next in a row's menu, shown only while a
+     *  station plays. The engine logs the pin (`playNext id=... at=...`). */
+    fun playNext(video: YtVideo) {
+        stationEngine.playNext(video)
     }
 
     // YouTubeError already carries listener-readable text; anything else is a surprise, so say so

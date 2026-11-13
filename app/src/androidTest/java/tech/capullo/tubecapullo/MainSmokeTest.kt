@@ -50,10 +50,10 @@ class MainSmokeTest {
         // Displayed). Present in every home state - spinner, cards, or the retry banner.
         // 30s, not 5: cold Hilt graph + Room open on a swiftshader-rendered emulator is slow.
         val homeRendered = device.wait(
-            Until.hasObject(By.pkg("tech.capullo.tubecapullo").text("TubeCapullo")),
+            Until.hasObject(By.pkg("tech.capullo.tubecapullo").text("CapulloTube")),
             30_000,
         )
-        check(homeRendered) { "home never rendered: TubeCapullo top bar missing after 30s" }
+        check(homeRendered) { "home never rendered: CapulloTube top bar missing after 30s" }
         shell("screencap -p /sdcard/smoke-home.png")
 
         // Bar 2, content: the trending section header, then at least one card. The header
@@ -61,7 +61,7 @@ class MainSmokeTest {
         // section has landed for real. 90s: extraction from a cold guest means first-time
         // Rhino setup + network on an emulated CPU; the fetch itself is ~1s warm.
         val trendingLanded = device.wait(
-            Until.hasObject(By.pkg("tech.capullo.tubecapullo").text("Trending music")),
+            Until.hasObject(By.pkg("tech.capullo.tubecapullo").textStartsWith("Trending in")),
             90_000,
         )
         if (!trendingLanded) {

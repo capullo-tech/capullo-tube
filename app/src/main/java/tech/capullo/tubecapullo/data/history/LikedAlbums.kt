@@ -1,0 +1,81 @@
+package tech.capullo.tubecapullo.data.history
+
+import android.util.Log
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+import tech.capullo.tubecapullo.data.youtube.YtVideo
+import javax.inject.Inject
+import javax.inject.Singleton
+
+/**
+ * Persisted album likes ([LikedAlbumEntity]): Library > Albums, the album heart and Listen again.
+ * The same contract as [LikedTracks]: [set] is fire-and-forget and swallows failures (an album
+ * heart must never break playback), reads collapse to empty, and the backup calls ([entries],
+ * [likedIds], [importAll]) throw so the user hears why. Newest like first everywhere.
+ */
+@Singleton
+class LikedAlbums @Inject constructor(
+    private val dao: LikedAlbumDao,
+    private val scope: CoroutineScope,
+) {
+
+    /** Records [album] as liked, or removes it when [liked] is false. */
+    fun set(album: YtVideo, liked: Boolean) {
+        scope.launch {
+            runCatching {
+                if (liked) dao.insert(album.toEntity(System.currentTimeMillis())) else dao.delete(album.videoId)
+            }.onFailure { Log.w(TAG, "liked-album write failed", it) }
+        }
+    }
+
+    suspend fun all(): List<YtVideo> = runCatching { dao.all().map { it.toYtVideo() } }
+        .onFailure { Log.w(TAG, "liked-album read failed", it) }
+        .getOrDefault(emptyList())
+
+    /** Liked albums with their like dates, re-emitted on every change; a read failure emits one
+     *  empty list and ends the flow. */
+    fun observeEntries(): Flow<List<LikedEntry>> = dao.observe()
+        .map { rows -> rows.map { LikedEntry(it.toYtVideo(), it.likedAtEpochMs) } }
+        .catch {
+            Log.w(TAG, "liked-album observe failed", it)
+            emit(emptyList())
+        }
+
+    /** For a backup export; throws on a read failure. */
+    suspend fun entries(): List<LikedEntry> = dao.all().map { LikedEntry(it.toYtVideo(), it.likedAtEpochMs) }
+
+    /** For an import's "already liked" count; throws on a read failure. */
+    suspend fun likedIds(): Set<String> = dao.ids().toSet()
+
+    /** Imported albums with their like dates, merge only (an existing id keeps its row). Returns
+     *  the albums inserted, in [entries] order. Throws on a write failure. */
+    suspend fun importAll(entries: List<LikedEntry>): List<YtVideo> {
+        if (entries.isEmpty()) return emptyList()
+        val rowIds = dao.insertAllIgnoringExisting(entries.map { it.video.toEntity(it.likedAtEpochMs) })
+        return entries.zip(rowIds).filter { (_, rowId) -> rowId != -1L }.map { it.first.video }
+    }
+
+    private fun YtVideo.toEntity(likedAt: Long) = LikedAlbumEntity(
+        videoId = videoId,
+        title = title,
+        uploader = uploader,
+        durationSeconds = durationSeconds,
+        thumbnailUrl = thumbnailUrl,
+        likedAtEpochMs = likedAt,
+    )
+
+    private fun LikedAlbumEntity.toYtVideo() = YtVideo(
+        videoId = videoId,
+        title = title,
+        uploader = uploader,
+        durationSeconds = durationSeconds,
+        thumbnailUrl = thumbnailUrl,
+    )
+
+    private companion object {
+        const val TAG = "LikedAlbums"
+    }
+}

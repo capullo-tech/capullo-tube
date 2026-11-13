@@ -4,6 +4,8 @@ plugins {
     alias(libs.plugins.android.application)
     // No kotlin.android: AGP 9.0+ ships built-in Kotlin (see RadioCapullo).
     alias(libs.plugins.kotlin.compose)
+    // Navigation3 back-stack keys are @Serializable so the stacks survive process death.
+    alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
 }
@@ -14,15 +16,16 @@ android {
 
     defaultConfig {
         applicationId = "tech.capullo.tubecapullo"
-        // minSdk 26 per CONTRIBUTING §1. NOT sufficient to skip desugaring, as the EmulatorSmoke
-        // matrix proved: NewPipeExtractor also calls Collectors.toUnmodifiableList, which Android
-        // ships only from API 33, so every extraction on API <= 32 died with NoSuchMethodError
-        // (swallowed into the home error banner - "green build, dead trending"). Core-library
-        // desugaring is enabled in compileOptions; java.nio.file stays native on 26+ either way.
+        // minSdk 26 per CONTRIBUTING §1. NewPipeExtractor's java.nio.file use is native on
+        // API 26+, but its java.util.stream use is NOT all native: Collectors.toUnmodifiableList
+        // (JDK 10) only exists on Android from API 33, and the trending kiosk died with
+        // NoSuchMethodError on API 28-32 until desugaring was enabled (2026-11-11 smoke matrix,
+        // docs/probes/desugar-api28-32-criteria.md). URLDecoder.decode(String, Charset)
+        // (API 33) needs the _nio flavour too (OnePlus 3, Android 11, 2026-11-12).
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1"
+        versionCode = 2
+        versionName = "0.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -57,8 +60,8 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
-        // The extractor's java.util.stream use needs the backport on API < 33 - see
-        // pins.versions.toml's desugarJdkLibs entry for the full story.
+        // Backports the JDK 9-11 java.util.stream additions (e.g. Collectors.toUnmodifiableList)
+        // onto API < 33 for NewPipeExtractor; see the minSdk comment above.
         isCoreLibraryDesugaringEnabled = true
     }
     // compilerOptions, NOT jvmToolchain(17): mirrors telecloud/RadioCapullo (Kotlin 2.3 / AGP 9.x DSL).
@@ -112,6 +115,9 @@ ksp {
 }
 
 dependencies {
+    // See compileOptions.isCoreLibraryDesugaringEnabled - stream and URLDecoder backports for
+    // API < 33 (the _nio flavour; see pins.versions.toml).
+    coreLibraryDesugaring(pins.desugar.jdk.libs.nio)
     // The snapcast delivery engine's transport classes + capullo-audio-contracts (re-exported as
     // api). Pulled in at M1 on purpose: it validates the jitpack pin early and lands the contracts
     // jar in the Gradle cache so the SPI signatures can be read before M4 (HANDOFF-bootstrap §7).
@@ -125,6 +131,13 @@ dependencies {
     implementation(libs.hilt.android)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
+    // Navigation3: tab back stacks + full-screen routes (ui/nav/). Same setup as RadioCapullo.
+    // kotlinx-serialization-core (for the @Serializable keys) arrives as navigation3-runtime's api.
+    implementation(libs.androidx.navigation3.runtime)
+    implementation(libs.androidx.navigation3.ui)
+    implementation(libs.androidx.lifecycle.viewmodel.navigation3)
+    // The liked-songs backup file (data/backup/): versioned JSON export and import.
+    implementation(libs.kotlinx.serialization.json)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)
@@ -146,12 +159,10 @@ dependencies {
     // Only the extractor library - the NewPipe *app* is not vendored. Brings Rhino transitively
     // for the player-JS deobfuscation.
     implementation(pins.newpipe.extractor)
-    // Backports the extractor's post-API-33 java.util.stream calls onto minSdk (see pins).
-    coreLibraryDesugaring(pins.desugar.jdk.libs)
     implementation(pins.okhttp) // backs the extractor's blocking Downloader SPI (see data/youtube/)
-    implementation(pins.coil.compose) // home card art (search rows stay icon-only; see ResultRow)
+    implementation(pins.coil.compose) // card and row art; Search song rows stay icon-only
 
-    // Play history ("Because you played" on Home). Versions come from the shared catalog,
+    // Play history ("Listen again" on Home). Versions come from the shared catalog,
     // same as telecloud's Room setup.
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
@@ -159,6 +170,7 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(pins.mockk) // fakes YouTubeExtractorClient (concrete class) in station tests
+    testImplementation(pins.sqlite.jdbc) // MigrationTest: the Room migrations on a real SQLite
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     // Device-level launch smoke for the emulator matrix (EmulatorSmoke.yml): UiAutomator because

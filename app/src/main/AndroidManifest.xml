@@ -22,15 +22,61 @@
              listeners fetch the web player over plain http. Nothing leaves the LAN in cleartext. -->
 
 
+        <!-- Portrait only (owner decision 2026-11-12). The link alias below targets this
+             activity, so it is portrait too. Android 16+ may ignore the lock on large screens
+             (tablets, foldables); that is accepted (MainActivity KDoc). -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:launchMode="singleTop">
+            android:launchMode="singleTop"
+            android:screenOrientation="portrait">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Shares: the share sheet sends a YouTube link as text/plain, often with a title
+                 before it. links/IncomingLinks finds the link. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
         </activity>
+
+        <!-- Tapped YouTube links. An alias rather than a filter on MainActivity, so Settings >
+             "Open YouTube links in CapulloTube" can disable it (links/YouTubeLinkAlias mirrors
+             this name) without touching share. No autoVerify: we cannot verify YouTube's
+             domains, so Android treats these as unverified links that the user turns on or
+             picks in App info > Open by default. -->
+        <activity-alias
+            android:name=".links.OpenYouTubeLink"
+            android:exported="true"
+            android:targetActivity=".MainActivity">
+            <!-- One filter per path rule: <data> parts in a filter combine, so youtu.be (any
+                 path) needs its own filter to escape the youtube.com path list. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="http" />
+                <data android:scheme="https" />
+                <data android:host="youtube.com" />
+                <data android:host="www.youtube.com" />
+                <data android:host="m.youtube.com" />
+                <data android:host="music.youtube.com" />
+                <data android:path="/watch" />
+                <data android:pathPrefix="/shorts/" />
+                <data android:path="/playlist" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="http" />
+                <data android:scheme="https" />
+                <data android:host="youtu.be" />
+            </intent-filter>
+        </activity-alias>
 
         <service
             android:name=".player.PlaybackService"

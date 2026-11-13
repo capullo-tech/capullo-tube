@@ -12,6 +12,53 @@ data class YtVideo(
     /** Seconds. 0 when unknown, and also 0 for live streams, which this source doesn't handle. */
     val durationSeconds: Long,
     val thumbnailUrl: String?,
+    /** The uploader's channel page (`https://www.youtube.com/channel/UC...`), for the Player's
+     *  channel line. Null when the extractor did not give one, and for tracks read back from
+     *  Room (not stored): the channel line then resolves it with [YouTubeExtractorClient.video]. */
+    val uploaderUrl: String? = null,
+    /** Views as YouTube lists them (a search, chart or related list rounds them: "1.2M views"
+     *  reads 1_200_000). -1 when unknown: always for a Mix item (related-quality probe
+     *  2026-11-12, 0 of 300 Mix items carried views) and for tracks read back from Room. */
+    val viewCount: Long = -1,
+    /** The upload year, null when unknown (Mix items and Room tracks, as [viewCount]). A list
+     *  item's date comes from YouTube's "3 years ago" text (90 of 96 related items in the probe
+     *  were approximate), so it can be a year off (our inference from how the extractor parses
+     *  that text); a single video's [YouTubeExtractorClient.video] date is exact. */
+    val uploadYear: Int? = null,
+    /** The uploader carries YouTube's verified check mark. The related gate keeps a verified
+     *  upload whatever its views (station/Pairs.kt). False when unknown. */
+    val uploaderVerified: Boolean = false,
+)
+
+/** [YouTubeExtractorClient.relatedStreams]: the videos YouTube lists next to a seed, and the
+ *  seed's own views from the same fetch (-1 when unknown), which the related gate compares
+ *  them to. */
+data class YtRelated(val seedViews: Long, val videos: List<YtVideo>)
+
+/** One YouTube chapter of a video: its [title] and where it starts in the video, ms. */
+data class YtChapter(val title: String, val startMs: Long)
+
+/** [YouTubeExtractorClient.album]: a long video and its chapters, in order. [chapters] is empty
+ *  when the video has fewer than [MIN_CHAPTERS]: it then plays as one track. */
+data class YtAlbum(val video: YtVideo, val chapters: List<YtChapter>)
+
+/** A titled list of videos: a playlist ([YouTubeExtractorClient.playlistInfo]) or a channel's
+ *  uploads ([YouTubeExtractorClient.channelUploads]), in YouTube's order. */
+data class YtVideoList(val title: String, val videos: List<YtVideo>)
+
+/** What [YouTubeExtractorClient.searchCollections] lists. */
+enum class CollectionKind { PLAYLISTS, ALBUMS, CHANNELS }
+
+/** A playlist, album or channel as a search lists it: what a row shows and what a tap starts. */
+data class YtCollection(
+    /** The playlist (`https://www.youtube.com/playlist?list=...`) or the channel page. */
+    val url: String,
+    val title: String,
+    /** The playlist's owner or the album's artist. Null for a channel, and when not given. */
+    val uploader: String?,
+    val thumbnailUrl: String?,
+    /** Videos in it. Null when YouTube did not say, which the YouTube Music filters never do. */
+    val itemCount: Long?,
 )
 
 /** A resolved, directly-playable audio-only stream. Short-lived - see [expiresAtEpochSeconds]. */
