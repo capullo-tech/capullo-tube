@@ -314,7 +314,6 @@ jobs:
           mkdir -p evidence
           timeout 30 adb pull /sdcard/smoke-home.png evidence/ >/dev/null 2>&1 || true
           timeout 30 adb pull /sdcard/smoke-content.png evidence/ >/dev/null 2>&1 || true
-          timeout 30 adb pull /sdcard/smoke-content-dump.xml evidence/ >/dev/null 2>&1 || true
       - name: Upload smoke evidence
         if: always()
         uses: actions/upload-artifact@v4

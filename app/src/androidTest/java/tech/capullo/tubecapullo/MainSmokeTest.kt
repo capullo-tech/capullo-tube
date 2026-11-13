@@ -66,8 +66,8 @@ class MainSmokeTest {
         )
         if (!trendingLanded) {
             // Preserve what the page DID show (error banner, empty content) before failing -
-            // "content never loaded" without a view dump is a debugging dead end.
-            shell("uiautomator dump /sdcard/smoke-content-dump.xml")
+            // "content never loaded" without the texts is a debugging dead end.
+            println("visible app texts: " + visibleAppTexts(device).joinToString(" | "))
             shell("screencap -p /sdcard/smoke-content.png")
         }
         check(trendingLanded) { "home rendered but the trending section never landed in 90s" }
@@ -77,8 +77,8 @@ class MainSmokeTest {
         )
         if (!cardsLanded) {
             // The header can land while the fetch failed (error banner + empty row) - the
-            // dump says WHICH error the user would have seen.
-            shell("uiautomator dump /sdcard/smoke-content-dump.xml")
+            // visible texts say WHICH error the user would have seen.
+            println("visible app texts: " + visibleAppTexts(device).joinToString(" | "))
             shell("screencap -p /sdcard/smoke-content.png")
         }
         check(cardsLanded) { "trending section landed but no song card appeared in 30s" }
@@ -93,6 +93,12 @@ class MainSmokeTest {
         val windowVanished = device.wait(Until.gone(By.pkg("tech.capullo.tubecapullo")), 2_000)
         check(!windowVanished) { "app window vanished after first frame - launch was not stable" }
     }
+
+    /** All non-blank texts currently visible in the app's windows, for failure transcripts. */
+    private fun visibleAppTexts(device: UiDevice): List<String> =
+        device.findObjects(By.pkg("tech.capullo.tubecapullo"))
+            .mapNotNull { it.text }
+            .filter { it.isNotBlank() }
 
     /**
      * Runs a shell command as the adb CLI would, drained and returned (its output lands in
