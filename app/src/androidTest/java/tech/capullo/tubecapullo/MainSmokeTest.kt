@@ -95,11 +95,9 @@ class MainSmokeTest {
     }
 
     /** All non-blank texts currently visible in the app's windows, for failure transcripts. */
-    private fun visibleAppTexts(device: UiDevice): List<String> {
-        return device.findObjects(By.pkg("tech.capullo.tubecapullo"))
-            .mapNotNull { it.text }
-            .filter { it.isNotBlank() }
-    }
+    private fun visibleAppTexts(device: UiDevice): List<String> = device.findObjects(By.pkg("tech.capullo.tubecapullo"))
+        .mapNotNull { it.text }
+        .filter { it.isNotBlank() }
 
     /**
      * Runs a shell command as the adb CLI would, drained and returned (its output lands in
