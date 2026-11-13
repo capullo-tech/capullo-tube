@@ -72,3 +72,9 @@ WebView (the NewPipe-app approach; Rhino will not satisfy the integrity
 checks). Options: wire that provider in the engine; keep the playback gate on
 hardware and let CI prove load; or run the matrix on a self-hosted runner with
 a residential IP.
+
+## Decision (owner, 2026-11-14)
+
+CI proves load; the playback gate stays on hardware. The CI matrix runs
+MainSmokeTest only; PlaybackSmokeTest joins the matrix invocation when a
+PoTokenProvider lands. The API 23 floor leg lands in the same change.

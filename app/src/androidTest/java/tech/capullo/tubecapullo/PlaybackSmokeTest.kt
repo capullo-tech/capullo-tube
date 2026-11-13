@@ -10,8 +10,12 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Device-level PLAYBACK smoke - the second payload of the CI emulator matrix
- * (.github/workflows/EmulatorSmoke.yml), next to MainSmokeTest's launch+content bars.
+ * Device-level PLAYBACK smoke - the playback payload for hardware runs (the local rig,
+ * ~/android-dev/smoke23-playback.sh), NOT the CI matrix for now: YouTube bot-checks
+ * datacenter IPs, so CI legs cannot resolve a single stream (every queue entry skips with
+ * YouTubeError.BotCheck - docs/probes/minsdk-23-results.md, probe 2026-11-14). When the app
+ * gains a PoTokenProvider, add this class back to the invocation in EmulatorSmoke.yml and
+ * CI proves play end to end.
  *
  * Three bars:
  * 1. LOAD - cold start, home scaffold, the trending kiosk lands a song card (MainSmokeTest's
@@ -142,7 +146,7 @@ class PlaybackSmokeTest {
      *  hit - stream HTTP failures, extractor exceptions, dex and desugar errors. */
     private fun diagnosticLogcat(): String = shell("logcat -d")
         .lineSequence()
-        .filter { DIAGNOSTIC_PATTERN.containsMatchIn(it) }
+        .filter { DIAGNOSTIC_PATTERN.containsMatchIn(it) && !it.contains("UiDevice") }
         .toList()
         .takeLast(60)
         .joinToString("\n")

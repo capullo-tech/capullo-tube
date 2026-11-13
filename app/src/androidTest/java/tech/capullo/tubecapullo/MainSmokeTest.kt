@@ -11,7 +11,7 @@ import org.junit.runner.RunWith
 
 /**
  * Device-level smoke test - the payload of the CI emulator matrix
- * (.github/workflows/EmulatorSmoke.yml, one leg per API level 28-37).
+ * (.github/workflows/EmulatorSmoke.yml, one leg per API level 23-37).
  *
  * Two bars, deliberately:
  * 1. LAUNCH - the app cold-starts and the home scaffold composes (top bar, stable window).
