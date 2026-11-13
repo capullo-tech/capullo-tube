@@ -78,3 +78,11 @@ a residential IP.
 CI proves load; the playback gate stays on hardware. The CI matrix runs
 MainSmokeTest only; PlaybackSmokeTest joins the matrix invocation when a
 PoTokenProvider lands. The API 23 floor leg lands in the same change.
+
+Final CI state (branch `chore/min-sdk-23`, run 43515120237): green on all
+eleven legs, API 23 included - `Smoke API 23` boots the floor guest
+(`device SDK: 23`) and passes `MainSmokeTest` (`OK (1 test)`). Two CI-only
+fixes were needed to make the floor leg run at all: avdmanager needs the
+`emulator` package installed explicitly against the android-23 image (r33
+metadata trips the dependency check), and the 23 guest's adbd emits CRLF, so
+the transcript is CR-stripped before the OK-marker check.
