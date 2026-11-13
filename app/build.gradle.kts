@@ -14,9 +14,11 @@ android {
 
     defaultConfig {
         applicationId = "tech.capullo.tubecapullo"
-        // minSdk 26 per CONTRIBUTING §1 - and it's what lets us skip telecloud's core-library
-        // desugaring: NewPipeExtractor's java.nio.file use is native on API 26+ (TC desugars only
-        // because it is minSdk 24; see its pins.versions.toml).
+        // minSdk 26 per CONTRIBUTING §1. NOT sufficient to skip desugaring, as the EmulatorSmoke
+        // matrix proved: NewPipeExtractor also calls Collectors.toUnmodifiableList, which Android
+        // ships only from API 33, so every extraction on API <= 32 died with NoSuchMethodError
+        // (swallowed into the home error banner - "green build, dead trending"). Core-library
+        // desugaring is enabled in compileOptions; java.nio.file stays native on 26+ either way.
         minSdk = 26
         targetSdk = 36
         versionCode = 1
@@ -55,6 +57,9 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // The extractor's java.util.stream use needs the backport on API < 33 - see
+        // pins.versions.toml's desugarJdkLibs entry for the full story.
+        isCoreLibraryDesugaringEnabled = true
     }
     // compilerOptions, NOT jvmToolchain(17): mirrors telecloud/RadioCapullo (Kotlin 2.3 / AGP 9.x DSL).
     kotlin {
@@ -141,6 +146,8 @@ dependencies {
     // Only the extractor library - the NewPipe *app* is not vendored. Brings Rhino transitively
     // for the player-JS deobfuscation.
     implementation(pins.newpipe.extractor)
+    // Backports the extractor's post-API-33 java.util.stream calls onto minSdk (see pins).
+    coreLibraryDesugaring(pins.desugar.jdk.libs)
     implementation(pins.okhttp) // backs the extractor's blocking Downloader SPI (see data/youtube/)
     implementation(pins.coil.compose) // home card art (search rows stay icon-only; see ResultRow)
 

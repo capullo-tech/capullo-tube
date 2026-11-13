@@ -23,6 +23,12 @@ okhttp = "4.12.0"
 # Async image loading for the home recommendation cards' art (Coil 2.x, mavenCentral; single-repo
 # dep per CONTRIBUTING §2 - promote to the shared catalog if a second capullo app adopts it).
 coil = "2.7.0"
+# Core-library desugaring: NewPipeExtractor calls java.util.stream.Collectors.toUnmodifiableList,
+# which Android only ships from API 33 - without the backport, every extraction on API <= 32 dies
+# with NoSuchMethodError (caught into the home error banner; found by the EmulatorSmoke matrix as
+# "trending section lands with zero cards" on exactly the 28-32 legs). Standard variant, not
+# _nio: the extractor's java.nio.file use is native on our minSdk 26.
+desugarJdkLibs = "2.1.5"
 # material-icons core/extended ship separately from the Compose BOM (last released 1.7.x line).
 composeIcons = "1.7.8"
 mockk = "1.14.6"
@@ -46,6 +52,7 @@ androidx-compose-material-icons-extended = { group = "androidx.compose.material"
 newpipe-extractor = { module = "com.github.teamnewpipe:NewPipeExtractor", version.ref = "newpipeExtractor" }
 okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
 coil-compose = { module = "io.coil-kt:coil-compose", version.ref = "coil" }
+desugar-jdk-libs = { module = "com.android.tools:desugar_jdk_libs", version.ref = "desugarJdkLibs" }
 mockk = { group = "io.mockk", name = "mockk", version.ref = "mockk" }
 androidx-test-uiautomator = { group = "androidx.test.uiautomator", name = "uiautomator", version.ref = "uiautomator" }
 androidx-hilt-lifecycle-viewmodel-compose = { module = "androidx.hilt:hilt-lifecycle-viewmodel-compose", version.ref = "hiltNavigationCompose" }
