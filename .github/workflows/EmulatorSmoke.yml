@@ -298,9 +298,13 @@ jobs:
           # IPs at the player endpoint, so no CI leg can resolve a stream
           # (docs/probes/minsdk-23-results.md). It runs on hardware today and joins this
           # invocation when the app gains a PoTokenProvider.
+          # tr -d '\r': the API 23 guest's adbd emits CRLF, and the OK-marker regex below
+          # anchors end-of-line - "OK (1 test)\r" never matches (run 43513042792, where the
+          # test passed but the marker check false-negatived). Stripping CR is display-safe
+          # and covers the failure-marker greps too.
           adb shell am instrument -w -e class tech.capullo.tubecapullo.MainSmokeTest \
             tech.capullo.tubecapullo.test/androidx.test.runner.AndroidJUnitRunner \
-            2>&1 | tee "$RUNNER_TEMP/instrument.log"
+            2>&1 | tr -d '\r' | tee "$RUNNER_TEMP/instrument.log"
           # A missing OK marker means adb died mid-run or the run never finished; failure
           # markers cover the cases where am instrument exits 0 despite failures. Explicit
           # if-blocks, not bare grep lines: under set -e a trailing "! grep" result is masked
