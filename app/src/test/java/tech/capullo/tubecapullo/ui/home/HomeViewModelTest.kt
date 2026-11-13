@@ -45,14 +45,8 @@ import tech.capullo.tubecapullo.station.Why
 import java.util.Locale
 import kotlin.random.Random
 
-/**
- * Which Home rows reload on which change. The extractor, the stores, the player and the settings
- * are fakes with live flows, so a test changes likes, plays, stations or settings the way the
- * app does and counts the fetches each change costs.
- */
 @OptIn(ExperimentalCoroutinesApi::class)
 class HomeViewModelTest {
-
     private val dispatcher = StandardTestDispatcher()
     private val day = 24 * 60 * 60 * 1000L
     private val likes = MutableStateFlow(listOf(video("like1")))
@@ -69,7 +63,6 @@ class HomeViewModelTest {
     private val playHistory = mockk<PlayHistory>()
     private val snapshots = mockk<StationSnapshots>()
 
-    /** One song played often, last 40 days ago: a Listen again pick by the plays rule. */
     private val pool = MutableStateFlow(listOf(oldPlay("played1")))
     private val playerState = MutableStateFlow(PlaybackCoordinator.State())
 
@@ -119,7 +112,6 @@ class HomeViewModelTest {
         every { extractor.supportedRegions() } returns listOf("JP", "KR", "NI", "NO", "US")
         coEvery { likedTracks.all() } answers { likes.value }
         every { likedTracks.observe() } returns likes
-        // Liked just now: too new for Listen again, so only the plays rule fills it here.
         every { likedTracks.observeEntries() } returns
             likes.map { list -> list.map { LikedEntry(it, System.currentTimeMillis()) } }
         coEvery { likedAlbums.all() } answers { albums.value.map { it.video } }
@@ -168,7 +160,7 @@ class HomeViewModelTest {
         val trending = home.uiState.value.trending
 
         likes.value = listOf(video("like2")) + likes.value
-        advanceTimeBy(300) // inside the debounce window
+        advanceTimeBy(300)
         likes.value = listOf(video("like3")) + likes.value
         advanceUntilIdle()
 
@@ -178,8 +170,6 @@ class HomeViewModelTest {
         )
         assertSame(trending, home.uiState.value.trending)
         coVerify(exactly = 1) { extractor.trendingMusic(any(), any()) }
-        // Two reloads would have fetched like2 twice; the More like and Full albums rows of one
-        // reload share its related list.
         coVerify(exactly = 1) { extractor.relatedStreams("like2") }
         coVerify(exactly = 1) { extractor.mix("like2", any()) }
     }
@@ -225,7 +215,6 @@ class HomeViewModelTest {
     @Test
     fun `a short Full albums row is topped up to FULL_ALBUM_CARDS by the search, one card per album across both`() = runTest(dispatcher) {
         moreLikeRows.value = 0
-        // Related: two uploads of one album and a second album, under the minimum.
         coEvery { extractor.relatedStreams("like1") } returns YtRelated(
             seedViews = -1,
             videos = listOf(
@@ -234,8 +223,6 @@ class HomeViewModelTest {
                 album("r3", "Second Record (Full Album)"),
             ),
         )
-        // Search: the verified upload of the first album, a smaller upload of the second, and
-        // more albums than the row has room for.
         coEvery { extractor.search("Uploader full album", any()) } returns listOf(
             album("s1", "First Record (Remastered 2001) - Full Album", "Uploader", verified = true, views = 1_000),
             album("s2", "Uploader - Second Record (Full Album)", "Uploader", views = 20_000),
@@ -244,7 +231,6 @@ class HomeViewModelTest {
         val home = viewModel()
         advanceUntilIdle()
 
-        // The verified upload takes the first album's place; the second keeps its related upload.
         val expected = listOf("s1", "r3") + (3..FULL_ALBUM_CARDS).map { "s$it" }
         assertEquals(expected, home.uiState.value.fullAlbums.map { it.videoId })
     }
@@ -263,8 +249,6 @@ class HomeViewModelTest {
         )
         coVerify(exactly = 1) { extractor.relatedStreams(any()) }
 
-        // No chosen chart: one row for the device locale's country, or its closest served
-        // neighbour when YouTube Charts does not serve it (Taiwan here), forced like a pick.
         val locale = Locale.getDefault()
         Locale.setDefault(Locale.TAIWAN)
         try {
@@ -285,20 +269,17 @@ class HomeViewModelTest {
         fun continueIds() = home.uiState.value.continueCards.map { it.stationId }
         fun listenAgain() = home.uiState.value.listenAgain?.cards.orEmpty().map { it.videoId }
 
-        // Two stored stations; the newer one plays, so only the older is a card.
         stations.value = listOf(stored(2, "left2"), stored(1, "played1"))
         station.value = StationState(stationId = 2)
         advanceUntilIdle()
         assertEquals(listOf(1L), continueIds())
         assertEquals("a Continue song leaves Listen again", emptyList<String>(), listenAgain())
 
-        // The card's station is left behind by a new one: its song is still a Continue item.
         station.value = StationState(stationId = 3)
         stations.value = listOf(stored(3, "other"), stored(2, "left2"), stored(1, "played1"))
         advanceUntilIdle()
         assertEquals(listOf(2L, 1L), continueIds())
 
-        // Continue cards off: the song comes back to Listen again, unless it plays.
         continueCards.value = 0
         advanceUntilIdle()
         assertEquals(listOf("played1"), listenAgain())

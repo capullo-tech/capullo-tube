@@ -11,25 +11,7 @@ import tech.capullo.tubecapullo.ui.home.hasAlbumTitle
 import java.util.Locale
 import kotlin.math.ceil
 
-/**
- * The Home v2 probe: for liked-style seeds, how many related items are long (25 to 120 minutes),
- * how many look like albums (title or chapters), how many have chapters, and what the fallback
- * search "<artist> full album" adds. Network-gated behind `YT_SMOKE=1`:
- *
- * ```
- * YT_SMOKE=1 ./gradlew :app:testDebugUnitTest --tests '*HomeV2AlbumsProbeTest*'
- * ```
- *
- * **The criteria and the rules that turn the data into constants were written first**, in
- * `docs/probes/home-v2-criteria.md` section 3. Only Q1 asserts. The rest are measurements,
- * printed as `PROBE` lines and recorded in `docs/probes/home-v2-results.md`. It uses the app's
- * own definitions ([YouTubeExtractorClient.relatedStreams], [YouTubeExtractorClient.album],
- * [hasAlbumTitle], [passesRelatedGate]), so it measures what ships. The compilation words are
- * the criteria's own list ([hasCompilationWords]); the album test that shipped does not use them
- * (Q4 kept the chapter test as it is).
- */
 class HomeV2AlbumsProbeTest {
-
     private lateinit var client: YouTubeExtractorClient
 
     @Before
@@ -38,8 +20,6 @@ class HomeV2AlbumsProbeTest {
         client = probeClient()
     }
 
-    /** One long-ish item (15 to 150 min) and its chapters; [chapters] null when the fetch
-     *  failed. */
     private class Item(
         val rank: Int,
         val video: YtVideo,
@@ -57,7 +37,6 @@ class HomeV2AlbumsProbeTest {
         val spec: String,
         val video: YtVideo,
         val relatedCount: Int,
-        /** Rank 1..n of every related item, and its duration. */
         val ranks: List<Pair<Int, Long>>,
         val related: List<Item>,
         val fallbackQuery: String,
@@ -133,7 +112,6 @@ class HomeV2AlbumsProbeTest {
     }
 
     private fun summarise(seeds: List<Seed>) {
-        // Q2: long related items, pooled and per seed, ranks 1-8 and 9+.
         val allRanks = seeds.flatMap { it.ranks }
         fun longShare(ranks: List<Pair<Int, Long>>): String {
             val long = ranks.count { (_, d) -> d in LONG_MIN..LONG_MAX }
@@ -146,7 +124,6 @@ class HomeV2AlbumsProbeTest {
                 "perSeedLong=${seeds.map { s -> s.ranks.count { (_, d) -> d in LONG_MIN..LONG_MAX } }}",
         )
 
-        // Q3: the duration window, from album-titled items 15 to 150 minutes.
         val everything = seeds.flatMap { it.related + it.fallback }
         val population = everything.filter { it.albumTitle }.map { it.minutes }
         val inside = population.count { it * 60 >= LONG_MIN && it * 60 <= LONG_MAX }
@@ -165,7 +142,6 @@ class HomeV2AlbumsProbeTest {
                 "durations=${population.sorted().map(::fmt)}",
         )
 
-        // Q4: album-ness among long items (25 to 120 min), related and fallback.
         val long = everything.filter { it.long && it.chapters != null }
         val titled = long.count { it.albumTitle }
         val chaptered = long.count { it.hasChapters }
@@ -189,7 +165,6 @@ class HomeV2AlbumsProbeTest {
         fun albumLike(item: Item): Boolean = item.albumTitle ||
             (item.hasChapters && !(compilationFilter && item.compilation))
 
-        // Q5: candidates per seed (window, album-ness, gate).
         fun candidates(items: List<Item>) = items.count { it.long && it.gate && albumLike(it) }
         val fromRelated = seeds.map { candidates(it.related) }
         val fromFallback = seeds.map { candidates(it.fallback) }
@@ -210,7 +185,6 @@ class HomeV2AlbumsProbeTest {
         val gatedDropped = seeds.flatMap { it.related }.count { it.long && albumLike(it) && !it.gate }
         println("PROBE q5 relatedAlbumLikeDroppedByGate=$gatedDropped")
 
-        // Q4b: chapter checks per load.
         val unchecked = seeds.map { s -> s.related.count { it.long && it.gate && !it.albumTitle } }
         val uncheckedMedian = percentile(unchecked.map { it.toDouble() }, MEDIAN) ?: 0.0
         val skip = byChaptersOnly * 10 <= allCandidates.size
@@ -221,7 +195,6 @@ class HomeV2AlbumsProbeTest {
                 "FULL_ALBUM_CHAPTER_CHECKS=$checks",
         )
 
-        // Q6: chapter coverage.
         val titledLong = long.filter { it.albumTitle }
         println(
             "PROBE q6 albumTitledWithChapters=${titledLong.count { it.hasChapters }}/" +
@@ -240,8 +213,6 @@ class HomeV2AlbumsProbeTest {
     }
 
     private companion object {
-        /** The seeds of the criteria doc, section 3: search queries whose first video result is
-         *  the seed. */
         val SEEDS = listOf(
             "Radiohead Karma Police",
             "Fleetwood Mac Dreams",
@@ -258,11 +229,9 @@ class HomeV2AlbumsProbeTest {
         const val MIN_RELATED = 15
         const val TOP_K = 8
 
-        /** The PLAN's long window (GUESS) the criteria measure against, seconds. */
         const val LONG_MIN = 25 * 60L
         const val LONG_MAX = 120 * 60L
 
-        /** The wider band whose chapters the probe fetches, seconds. */
         const val WIDE_MIN = 15 * 60L
         const val WIDE_MAX = 150 * 60L
 
@@ -298,7 +267,6 @@ class HomeV2AlbumsProbeTest {
 
         fun fmt(value: Double): String = "%.1f".format(Locale.ROOT, value)
 
-        /** The criteria's "Compilation words". */
         val COMPILATION_WORD = Regex(
             """(?<![\p{L}\p{N}])(mix|playlist|best of|greatest hits|compilation|non-?stop|hours?|top|songs)""" +
                 """(?![\p{L}\p{N}])""",

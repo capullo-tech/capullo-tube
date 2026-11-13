@@ -26,16 +26,6 @@ import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Export and import of the liked songs and liked albums through Storage Access Framework
- * documents.
- *
- * Both run in the app scope, not a screen's: a link import looks up each new song on YouTube one
- * at a time and can take a minute, and leaving the Library must not cancel it halfway. [progress]
- * and [message] carry the state to whatever screen collects them. One operation at a time.
- *
- * Logs one `TubeBackup` line per operation (`adb logcat -s TubeBackup`), key=value.
- */
 @Singleton
 class LikedBackup @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -45,28 +35,22 @@ class LikedBackup @Inject constructor(
     private val stationEngine: StationEngine,
     private val scope: CoroutineScope,
 ) {
-
     private val running = AtomicBoolean(false)
 
     private val _progress = MutableStateFlow<BackupProgress?>(null)
 
-    /** The operation in flight, or null when idle. */
     val progress: StateFlow<BackupProgress?> = _progress.asStateFlow()
 
     private val _message = MutableStateFlow<BackupMessage?>(null)
 
-    /** The last result, until a screen shows it and calls [messageShown]. */
     val message: StateFlow<BackupMessage?> = _message.asStateFlow()
 
     private val messageIds = AtomicLong()
 
-    /** Clears [shown] once a screen has displayed it (a newer message stays). */
     fun messageShown(shown: BackupMessage) {
         _message.update { if (it?.id == shown.id) null else it }
     }
 
-    /** Writes every liked song and album to [uri] (a document the user just created). Ignored
-     *  while busy. */
     fun export(uri: Uri) = launchExclusive(BackupProgress.Exporting) {
         val (entries, albums) = try {
             likedTracks.entries() to likedAlbums.entries()
@@ -95,7 +79,6 @@ class LikedBackup @Inject constructor(
         }
     }
 
-    /** Adds the likes in [uri] (our export, or text with YouTube links). Ignored while busy. */
     fun import(uri: Uri) = launchExclusive(BackupProgress.Reading) {
         val text = try {
             readText(uri)
@@ -123,11 +106,9 @@ class LikedBackup @Inject constructor(
 
     private suspend fun importExport(parsed: LikedImportParse.Export): String {
         val plan = LikedBackupFormat.merge(parsed.entries, likedTracks.likedIds())
-        // Newest first, so the engine's liked order matches the Library's.
         val inserted = likedTracks.importAll(plan.toInsert.sortedByDescending { it.likedAtEpochMs })
         val albumPlan = LikedBackupFormat.merge(parsed.albums, likedAlbums.likedIds())
         val albums = likedAlbums.importAll(albumPlan.toInsert.sortedByDescending { it.likedAtEpochMs })
-        // The race loser (liked in the app meanwhile) counts as already liked.
         val alreadyLiked = plan.alreadyLiked + plan.toInsert.size - inserted.size +
             albumPlan.alreadyLiked + albumPlan.toInsert.size - albums.size
         stationEngine.onLikesImported(inserted)
@@ -157,8 +138,6 @@ class LikedBackup @Inject constructor(
         val resolved = mutableListOf<LikedEntry>()
         var unavailable = 0
         var failed = 0
-        // Sequential on purpose: parallel lookups invite YouTube's rate limit and bot check,
-        // which would then fail the rest of the list as well.
         plan.toResolve.forEachIndexed { index, pending ->
             _progress.value = BackupProgress.Resolving(index + 1, plan.toResolve.size)
             try {
@@ -168,7 +147,7 @@ class LikedBackup @Inject constructor(
                 Log.i(TAG, "import-lookup id=${pending.videoId} result=unavailable reason=${q(e)}")
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: Exception) { // network, rate limit, bot check: worth a retry later
+            } catch (e: Exception) {
                 failed++
                 Log.i(TAG, "import-lookup id=${pending.videoId} result=failed reason=${q(e)}")
             }
@@ -196,7 +175,6 @@ class LikedBackup @Inject constructor(
     private suspend fun readText(uri: Uri): String = withContext(Dispatchers.IO) {
         val input = context.contentResolver.openInputStream(uri)
             ?: throw IOException("the storage app gave no file to read")
-        // Bounded copy (InputStream.readNBytes needs API 33): stop one buffer past the limit.
         val out = ByteArrayOutputStream()
         input.use { stream ->
             val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
@@ -212,8 +190,6 @@ class LikedBackup @Inject constructor(
         out.toByteArray().decodeToString()
     }
 
-    // Runs [block] in the app scope unless another operation is in flight; its return value is
-    // the user-facing result. A Room failure lands here too, with its reason.
     private fun launchExclusive(start: BackupProgress, block: suspend () -> String) {
         if (!running.compareAndSet(false, true)) {
             Log.i(TAG, "busy result=ignored")
@@ -244,25 +220,18 @@ class LikedBackup @Inject constructor(
     private companion object {
         const val TAG = "TubeBackup"
 
-        /** Largest file an import reads. GUESS, not measured: an export is ~350 bytes per like,
-         *  so 8 MB holds ~20k likes, far more than anyone keeps, while still small enough to read
-         *  into memory in one go on a low-end phone. Too low refuses a real library; too high
-         *  lets a wrongly picked video file allocate a large buffer before being refused. */
         const val MAX_IMPORT_BYTES = 8 * 1024 * 1024
 
         const val BYTES_PER_MB = 1024 * 1024
     }
 }
 
-/** A long backup operation in flight. */
 sealed interface BackupProgress {
     data object Exporting : BackupProgress
     data object Reading : BackupProgress
 
-    /** Looking up linked song [current] of [total] on YouTube. */
     data class Resolving(val current: Int, val total: Int) : BackupProgress
     data object Saving : BackupProgress
 }
 
-/** A backup result for the snackbar. [id] tells two equal texts apart. */
 data class BackupMessage(val id: Long, val text: String)

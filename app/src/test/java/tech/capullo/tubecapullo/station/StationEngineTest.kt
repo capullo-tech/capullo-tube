@@ -38,20 +38,15 @@ import tech.capullo.tubecapullo.data.youtube.YtVideo
 import tech.capullo.tubecapullo.data.youtube.YtVideoList
 import kotlin.random.Random
 
-/** Fixed seed: shuffle and Liked radio's like order draw from it. */
 private const val RANDOM_SEED = 7
 
-/** A playlist id of a real id's shape (YouTubeUrls rejects one under 12 characters). */
 private const val PLAYLIST_ID = "PLtestlist000001"
 
-/** android.util.Log is a stub on the JVM, and the engine logs every event. */
 private fun silenceStationLog() {
     mockkStatic(Log::class)
     every { Log.i(any(), any()) } returns 0
 }
 
-/** Settings with live flows, so a test may change a setting mid-station. Defaults as in the
- *  app. */
 private fun fakeSettings(
     mode: MutableStateFlow<LikeMode> = MutableStateFlow(LikeMode.BLEND),
     songs: MutableStateFlow<Int> = MutableStateFlow(AppSettings.DEFAULT_SONGS_PER_LIKE),
@@ -70,7 +65,6 @@ private fun stream(id: String) = YtStream(
     isM4a = true,
 )
 
-/** Walk the station like the loop would: read idAt, report advanced. */
 private fun StationEngine.advanceThrough(count: Int): List<String> {
     val played = mutableListOf<String>()
     var i = 0
@@ -83,7 +77,6 @@ private fun StationEngine.advanceThrough(count: Int): List<String> {
     return played
 }
 
-/** Walk on from queue index [from], like the loop would, Mix fetches landing as they go. */
 private fun TestScope.walkFrom(engine: StationEngine, from: Int, count: Int): List<String> {
     val played = mutableListOf<String>()
     for (i in from until from + count) {
@@ -102,22 +95,12 @@ private fun video(id: String, seconds: Long = 240) = YtVideo(
     thumbnailUrl = null,
 )
 
-/** The fake Mix of [seed]: the seed itself first (the probe's Q4 finding - the engine must drop
- *  it), then [size] tracks whose ids name the seed. */
 private fun fakeMix(seed: String, size: Int = 20) = listOf(video(seed)) + (1..size).map { video("m$it-$seed".take(11)) }
 
-/** The fake related list of [seed]: 12 verified uploads (the gate keeps them), whose ids name
- *  the seed; more than the old top 8, and the engine takes all of them. */
 private fun fakeRelated(seed: String) = (1..12).map { video("r$it-$seed".take(11)).copy(uploaderVerified = true) }
 
-/** The first [n] related tracks of [seed] the engine takes, past nothing: in YouTube's order. */
 private fun relatedHead(seed: String, n: Int = fakeRelated(seed).size) = fakeRelated(seed).take(n).map { it.videoId }
 
-/** Extractor whose Mix and related lists are derived from the seed id. Records every Mix seed
- *  asked for in [mixSeeds]. [related] is empty by default: the related-quality probe found most
- *  seeds give no related track in the length window (docs/probes/related-quality-results.md),
- *  and the Mix then fills every place, so a test about Mix order reads plainly. The pair tests
- *  pass [fakeRelated]. */
 private fun fakeExtractor(
     mixSeeds: MutableList<String> = mutableListOf(),
     mixSize: Int = 20,
@@ -138,15 +121,8 @@ private fun fakeExtractor(
 
 private fun StationEngine.queuedIds() = state.value.queued.map { it.video.videoId }
 
-/**
- * Song and search radio: the seed's pairs (here mostly the Mix alone, the fake related list
- * being empty by default), chained from the last song played below CHAIN_BELOW, one list
- * filling for an empty other, no repeats in a session, the duration window, shuffle, and play
- * counting. The pairs themselves: [StationPairsTest].
- */
 @OptIn(ExperimentalCoroutinesApi::class)
 class StationEngineTest {
-
     private val playHistory = mockk<PlayHistory>(relaxed = true)
     private val likedTracks = mockk<LikedTracks>(relaxed = true)
 
@@ -206,7 +182,6 @@ class StationEngineTest {
         advanceUntilIdle()
         assertEquals(listOf(seed.videoId), mixSeeds)
 
-        // The seed plus mixSize queued: advancing to index i leaves mixSize - i upcoming.
         val chainAt = mixSize - StationEngine.CHAIN_BELOW + 1
         engine.advanceThrough(chainAt)
         advanceUntilIdle()
@@ -260,12 +235,11 @@ class StationEngineTest {
         repeat(60) { i ->
             first += engine.queue().idAt(i) ?: return@repeat
             engine.onQueueAdvanced(i)
-            advanceUntilIdle() // chains land
+            advanceUntilIdle()
         }
         assertEquals("the station ran dry", 60, first.size)
         assertEquals("a played id returned: $first", first.size, first.distinct().size)
 
-        // A new radio whose Mix is entirely played: nothing of it is queued.
         val extractor = fakeExtractor()
         val replayed = first.drop(1).map { video(it) }
         coEvery { extractor.mix("SEEDBxxxxxx", any()) } returns listOf(video("SEEDB")) + replayed
@@ -358,19 +332,19 @@ class StationEngineTest {
     @Test
     fun `a play counts in history only past the threshold, and once`() = runTest(StandardTestDispatcher()) {
         val engine = engine()
-        val seed = video("seed0000000") // 4 minutes: the fixed threshold comes first
+        val seed = video("seed0000000")
         val durationMs = seed.durationSeconds * 1000
         engine.start(PlaySource.SongRadio(seed))
         advanceUntilIdle()
         engine.advanceThrough(1)
 
         engine.onProgress(seed.videoId, StationEngine.PLAY_COUNT_MIN_MS - 1, durationMs)
-        advanceUntilIdle() // the record runs off the loop
+        advanceUntilIdle()
         coVerify(exactly = 0) { playHistory.record(any()) }
 
         engine.onProgress(seed.videoId, StationEngine.PLAY_COUNT_MIN_MS, durationMs)
         engine.onProgress(seed.videoId, StationEngine.PLAY_COUNT_MIN_MS * 2, durationMs)
-        engine.onQueueAdvanced(0) // the loop's stream-URL replay of the same play
+        engine.onQueueAdvanced(0)
         engine.onProgress(seed.videoId, StationEngine.PLAY_COUNT_MIN_MS * 3, durationMs)
         advanceUntilIdle()
         coVerify(exactly = 1) { playHistory.record(match { it.videoId == seed.videoId }) }
@@ -425,17 +399,14 @@ class StationEngineTest {
     }
 }
 
-/** A like in a song radio, by each "When you like a song" setting and Songs added per like. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class StationLikeModeTest {
-
     private val likedTracks = mockk<LikedTracks>(relaxed = true)
     private val likeMode = MutableStateFlow(LikeMode.BLEND)
     private val songs = MutableStateFlow(AppSettings.DEFAULT_SONGS_PER_LIKE)
     private val mixSeeds = mutableListOf<String>()
     private val extractor = fakeExtractor(mixSeeds)
 
-    /** A song radio from SEED with the seed and one Mix track played: the second plays now. */
     private fun TestScope.playing(): StationEngine {
         val engine = StationEngine(
             extractor,
@@ -454,8 +425,6 @@ class StationLikeModeTest {
         return engine
     }
 
-    /** The effects [engine] emits from here on. Collected in the background scope, which
-     *  advanceUntilIdle does not drain: read them after a runCurrent. */
     private fun TestScope.effectsOf(engine: StationEngine): List<LikeEffect> {
         val effects = mutableListOf<LikeEffect>()
         backgroundScope.launch { engine.likeEffects.toList(effects) }
@@ -463,7 +432,6 @@ class StationLikeModeTest {
         return effects
     }
 
-    /** The first [n] tracks of [liked]'s Mix, past its own seed. */
     private fun mixHead(liked: YtVideo, n: Int) = fakeMix(liked.videoId).drop(1).take(n).map { it.videoId }
 
     @Before fun setUp() = silenceStationLog()
@@ -537,7 +505,6 @@ class StationLikeModeTest {
         engine.toggleLike(first)
         advanceUntilIdle()
         val firstMix = mixHead(first, 4)
-        // The first blended track plays; its like blends in around the three left.
         engine.onQueueAdvanced(2)
         val second = engine.state.value.current!!
         assertEquals(firstMix[0], second.videoId)
@@ -615,10 +582,8 @@ class StationLikeModeTest {
     }
 }
 
-/** Liked and Liked radio: rounds of likes, each like followed by N tracks of its own Mix. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class StationLikedRadioTest {
-
     private val likedTracks = mockk<LikedTracks>(relaxed = true)
     private val likeMode = MutableStateFlow(LikeMode.BLEND)
     private val songs = MutableStateFlow(AppSettings.DEFAULT_SONGS_PER_LIKE)
@@ -636,18 +601,17 @@ class StationLikedRadioTest {
             mockk(relaxed = true),
             mockk(relaxed = true),
         )
-        advanceUntilIdle() // hydrate
+        advanceUntilIdle()
         return engine
     }
 
-    /** [picks] tracks of Liked radio from its start, fetches landing as they go. */
     private fun TestScope.walk(engine: StationEngine, picks: Int): List<String> {
         engine.start(PlaySource.LikedRadio)
         advanceUntilIdle()
         return walkFrom(engine, 0, picks)
     }
 
-    private val likes = (1..10).map { video("LIKE$it") } // newest first
+    private val likes = (1..10).map { video("LIKE$it") }
     private val likeIds = likes.map { it.videoId }
     private fun mixHead(likeId: String, n: Int) = fakeMix(likeId).drop(1).take(n).map { it.videoId }
 
@@ -708,7 +672,6 @@ class StationLikedRadioTest {
         val likePlays = played.filter { it in likeIds }
         assertEquals("rest of the round", likeIds - first, likePlays.take(likes.size - 1))
         assertEquals("next round", likeIds, likePlays.drop(likes.size - 1).take(likes.size))
-        // Each like of this round is still followed by its own Mix, in Mix order.
         played.drop(n).chunked(n + 1).take(likes.size - 1).forEach { unit ->
             assertEquals(mixHead(unit.first(), n), unit.drop(1))
         }
@@ -728,7 +691,7 @@ class StationLikedRadioTest {
     fun `a like in liked radio blends N of its Mix in, then the queue resumes`() = runTest(StandardTestDispatcher()) {
         val n = songs.value
         val engine = engine(likes)
-        walk(engine, picks = 2) // a like, then the first track of its Mix
+        walk(engine, picks = 2)
         val liked = engine.state.value.current!!
         assertFalse("precondition: a Mix track plays", liked.videoId in likeIds)
         val before = engine.queuedIds()
@@ -742,7 +705,7 @@ class StationLikedRadioTest {
 
     @Test
     fun `liked unlike removes the track from the queue, and that is all`() = runTest(StandardTestDispatcher()) {
-        val three = likes.take(3) // newest first
+        val three = likes.take(3)
         val engine = engine(three)
         engine.start(PlaySource.Liked(shuffle = false))
         engine.onQueueAdvanced(0)
@@ -780,13 +743,8 @@ class StationLikedRadioTest {
     }
 }
 
-/**
- * Collections: Liked, a playlist and a channel play a finite list in order or shuffled, wrap
- * under repeat ALL, and roll into a radio under repeat OFF. Repeat exists only here.
- */
 @OptIn(ExperimentalCoroutinesApi::class)
 class StationCollectionsTest {
-
     private fun video(id: String, uploader: String = "u") = YtVideo(
         videoId = id.padEnd(11, 'x').take(11),
         title = "t-$id",
@@ -801,11 +759,9 @@ class StationCollectionsTest {
 
     private val playlist = PlaySource.Playlist(YouTubeUrls.playlistUrl(PLAYLIST_ID), "Trip")
 
-    /** [playlist] once its list landed: named by YouTube ([fakeExtractor]'s list title). */
     private val landed = playlist.copy(title = "Road trip")
     private val channel = PlaySource.Channel("https://www.youtube.com/channel/UCx", "Some Channel")
 
-    /** Playlist and channel both list [tracks]; Mix of X yields ids derived from X. */
     private fun fakeExtractor(tracks: List<YtVideo> = ten): YouTubeExtractorClient {
         val extractor = mockk<YouTubeExtractorClient>()
         coEvery { extractor.playlistInfo(any(), any()) } returns YtVideoList("Road trip", tracks)
@@ -836,15 +792,14 @@ class StationCollectionsTest {
         mockk(relaxed = true),
     )
 
-    /** An engine playing [source], its list landed and nothing played yet. */
     private fun TestScope.started(
         source: PlaySource,
         extractor: YouTubeExtractorClient = fakeExtractor(),
     ): StationEngine {
         val engine = engine(extractor)
-        advanceUntilIdle() // likes hydrate
+        advanceUntilIdle()
         engine.start(source)
-        advanceUntilIdle() // the list lands
+        advanceUntilIdle()
         return engine
     }
 
@@ -867,7 +822,6 @@ class StationCollectionsTest {
     @Test
     fun `a playlist YouTube gave no name keeps the title it started with`() = runTest(StandardTestDispatcher()) {
         val extractor = fakeExtractor()
-        // playlistInfo's fallback for a nameless list is the bare id.
         coEvery { extractor.playlistInfo(any(), any()) } returns YtVideoList(PLAYLIST_ID, ten)
 
         val engine = started(playlist, extractor)
@@ -888,7 +842,6 @@ class StationCollectionsTest {
         assertEquals(ten[4], engine.state.value.current)
         assertEquals("the tracks between were passed over", ids(ten.drop(5)), engine.queuedIds())
 
-        // An Earlier row plays again once, then the list goes on from where it was.
         val again = engine.jumpTo(ten[0], again = true)!!
         engine.onQueueAdvanced(again)
         assertEquals(ten[0], engine.state.value.current)
@@ -917,7 +870,6 @@ class StationCollectionsTest {
         assertTrue(engine.state.value.shuffle)
         assertNotEquals("precondition: started shuffled", ids(ten.drop(1)), engine.queuedIds())
         engine.onQueueAdvanced(0)
-        // The list's own last track has nothing after it: step past it if it came up first.
         if (engine.state.value.current == ten.last()) engine.onQueueAdvanced(1)
         val now = engine.state.value.current!!
 
@@ -953,7 +905,7 @@ class StationCollectionsTest {
             val rolled = engine.state.value
             assertEquals(PlaySource.SongRadio(three.last()), rolled.source)
             assertFalse(rolled.isCollection)
-            advanceUntilIdle() // the last track's Mix lands
+            advanceUntilIdle()
             val next = engine.state.value.queued
             assertTrue("$source rolled into nothing", next.isNotEmpty())
             assertTrue(next.all { it.why.fromVideoId == three.last().videoId })
@@ -1011,7 +963,6 @@ class StationCollectionsTest {
         assertEquals(RepeatMode.OFF, state.repeat)
     }
 
-    /** The first [n] tracks of [seed]'s Mix in [fakeExtractor]. */
     private fun mixOf(seed: YtVideo, n: Int) = (1..n).map { video("m$it-${seed.videoId}".take(11)).videoId }
 
     @Test
@@ -1019,7 +970,7 @@ class StationCollectionsTest {
         val n = songs.value
         for (source in listOf(playlist, channel)) {
             val engine = started(source, fakeExtractor(three))
-            engine.cycleRepeat() // ALL
+            engine.cycleRepeat()
             engine.advanceThrough(1)
 
             engine.toggleLike(three[0])
@@ -1054,7 +1005,7 @@ class StationCollectionsTest {
     fun `switch now in a playlist leaves it for a radio from the liked song, which chains`() = runTest(StandardTestDispatcher()) {
         likeMode.value = LikeMode.SWITCH_NOW
         val engine = started(playlist)
-        engine.cycleRepeat() // ALL: the list would otherwise go on forever
+        engine.cycleRepeat()
         engine.advanceThrough(2)
         val liked = ten[1]
 
@@ -1068,7 +1019,6 @@ class StationCollectionsTest {
         assertEquals(liked, state.current)
         assertEquals(mixOf(liked, 10), engine.queuedIds())
 
-        // From here it is a radio: below CHAIN_BELOW the Mix of the last song played follows.
         val played = walkFrom(engine, 2, 10 - StationEngine.CHAIN_BELOW + 1)
         val chained = engine.state.value.queued.filter { it.why.fromVideoId == played.last() }
         assertTrue("no chain after the switch: ${engine.queuedIds()}", chained.isNotEmpty())
@@ -1111,14 +1061,8 @@ class StationCollectionsTest {
     }
 }
 
-/**
- * Previous (owner decision 2026-11-12): a restart past PREVIOUS_RESTART_MS; else the station's
- * previous song again, the current one right after it; from a station's first song the station
- * left by the last station change, as it was, up to STATION_BACK_STACK of them.
- */
 @OptIn(ExperimentalCoroutinesApi::class)
 class StationPreviousTest {
-
     private val likedTracks = mockk<LikedTracks>(relaxed = true)
     private val list = (1..6).map { video("LIST$it") }
     private val likes = (1..6).map { video("LIKE$it") }
@@ -1145,11 +1089,10 @@ class StationPreviousTest {
             mockk(relaxed = true),
             mockk(relaxed = true),
         )
-        advanceUntilIdle() // likes hydrate
+        advanceUntilIdle()
         return engine
     }
 
-    /** A station change: [source] replaces the station and its first track plays. */
     private fun TestScope.change(engine: StationEngine, source: PlaySource) {
         engine.start(source)
         advanceUntilIdle()
@@ -1157,7 +1100,6 @@ class StationPreviousTest {
         advanceUntilIdle()
     }
 
-    /** Previous at a track's start, the loop advancing to what it chose; false for a restart. */
     private fun TestScope.previous(engine: StationEngine): Boolean {
         val at = engine.previous(positionMs = 0) ?: return false
         engine.onQueueAdvanced(at)
@@ -1165,7 +1107,6 @@ class StationPreviousTest {
         return true
     }
 
-    /** [count] Nexts from the playing track. */
     private fun TestScope.next(engine: StationEngine, count: Int): List<String> = walkFrom(engine, engine.queue().currentIndex + 1, count)
 
     private fun StationEngine.currentId() = state.value.current?.videoId
@@ -1222,7 +1163,7 @@ class StationPreviousTest {
         engine.setShuffle(true)
         val upcoming = engine.queuedIds()
 
-        change(engine, channel) // the channel line
+        change(engine, channel)
         assertEquals(channel, engine.state.value.source)
         assertEquals(list.first().videoId, engine.currentId())
 
@@ -1234,7 +1175,6 @@ class StationPreviousTest {
         assertEquals(upcoming, engine.queuedIds().take(upcoming.size))
         assertTrue(state.shuffle)
 
-        // The radio's own history came back with it.
         assertTrue(previous(engine))
         assertEquals(played[1], engine.currentId())
     }
@@ -1261,12 +1201,12 @@ class StationPreviousTest {
     fun `a restored list goes on from its place, in its repeat round`() = runTest(StandardTestDispatcher()) {
         val engine = engine()
         change(engine, playlist)
-        engine.cycleRepeat() // ALL
+        engine.cycleRepeat()
         next(engine, 2)
         val left = list[2]
         assertEquals(left.videoId, engine.currentId())
 
-        change(engine, PlaySource.SongRadio(left)) // Go to radio
+        change(engine, PlaySource.SongRadio(left))
         assertTrue(previous(engine))
 
         val state = engine.state.value
@@ -1287,7 +1227,7 @@ class StationPreviousTest {
         val n = AppSettings.DEFAULT_SONGS_PER_LIKE
         val engine = engine()
         change(engine, PlaySource.LikedRadio)
-        val before = listOf(engine.currentId()!!) + next(engine, n + 1) // a unit, then a like
+        val before = listOf(engine.currentId()!!) + next(engine, n + 1)
         val left = engine.currentId()
         assertTrue("precondition: a like plays", left in likeIds)
         val upcoming = engine.queuedIds()
@@ -1308,14 +1248,8 @@ class StationPreviousTest {
     }
 }
 
-/**
- * Pairs (owner decision 2026-11-12) in the station: a chain, a Blend in like and Liked radio
- * each take a fetch's Mix and related lists in pairs, one of each per pair, each list in its own
- * order. The pure rules (gate, titles, the merge itself): [PairsTest].
- */
 @OptIn(ExperimentalCoroutinesApi::class)
 class StationPairsTest {
-
     private val likedTracks = mockk<LikedTracks>(relaxed = true)
     private val songs = MutableStateFlow(AppSettings.DEFAULT_SONGS_PER_LIKE)
 
@@ -1331,14 +1265,12 @@ class StationPairsTest {
             mockk(relaxed = true),
             mockk(relaxed = true),
         )
-        advanceUntilIdle() // likes hydrate
+        advanceUntilIdle()
         return engine
     }
 
     private fun mixIds(seed: String) = fakeMix(seed).drop(1).map { it.videoId }
 
-    /** [actual] is pairs of [mix] and [related] (one of each, in each list's order), then the
-     *  rest of the longer list; returns which list led each pair. */
     private fun assertPairs(mix: List<String>, related: List<String>, actual: List<String>): List<Boolean> {
         val pairs = minOf(mix.size, related.size)
         val heads = actual.take(pairs * 2).chunked(2).mapIndexed { i, pair ->

@@ -8,9 +8,7 @@ import tech.capullo.tubecapullo.station.PlaySource
 import tech.capullo.tubecapullo.station.Provenance
 import tech.capullo.tubecapullo.station.Why
 
-/** The wording rules the Player title, the Up next why lines and the like chip depend on. */
 class UpNextTextTest {
-
     private fun video(title: String, uploader: String? = "Rick Astley") = YtVideo("dQw4w9WgXcQ", title, uploader, 213, null)
 
     @Test
@@ -54,7 +52,6 @@ class UpNextTextTest {
         assertEquals("From your search", why(Provenance.SEARCH))
         assertEquals("From Discovery", why(Provenance.PLAYLIST, "Discovery"))
         assertEquals("You picked this", why(Provenance.USER))
-        // The seed is the song the listener tapped: their pick too.
         assertEquals("You picked this", why(Provenance.SEED))
         assertEquals(
             "From Daft Punk",

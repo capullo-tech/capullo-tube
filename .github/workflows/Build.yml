@@ -33,10 +33,6 @@ jobs:
           if [ -n "$KEYSTORE_BASE64" ]; then
             echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
           fi
-      # ubuntu-latest ships the Android SDK. No submodules: capullo-audio and the snapcast
-      # binaries resolve from jitpack (settings.gradle.kts). The keystore comes from secrets;
-      # without it the build is still green, just unsigned - Release.yml rejects that case
-      # before anything is published (telecloud-radio's "green but un-installable" lesson).
       - name: Build APK
         env:
           RELEASE_KEYSTORE_FILE: ${{ runner.temp }}/release.keystore

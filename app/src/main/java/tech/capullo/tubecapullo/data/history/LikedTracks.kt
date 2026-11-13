@@ -10,22 +10,11 @@ import tech.capullo.tubecapullo.data.youtube.YtVideo
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Persisted likes (M-C): the heart state, Liked and Liked radio survive restarts.
- *
- * Writes are fire-and-forget from [tech.capullo.tubecapullo.station.StationEngine.toggleLike] -
- * a failed write must never break liking in the station, so [set] swallows and logs. [all]
- * hydrates the engine once at startup; [observe] backs the Library's Liked list. Both order
- * newest like first. [entries], [likedIds] and [importAll] serve the likes backup
- * (data/backup/) and throw, because there the user asked and must hear why it failed.
- */
 @Singleton
 class LikedTracks @Inject constructor(
     private val dao: LikedTrackDao,
     private val scope: CoroutineScope,
 ) {
-
-    /** Records [video] as liked, or removes it when [liked] is false. */
     fun set(video: YtVideo, liked: Boolean) {
         scope.launch {
             runCatching {
@@ -49,14 +38,10 @@ class LikedTracks @Inject constructor(
         }
     }
 
-    /** All liked tracks, newest like first; failures collapse to empty (the session then starts
-     *  with no likes). */
     suspend fun all(): List<YtVideo> = runCatching { dao.all().map { it.toYtVideo() } }
         .onFailure { Log.w(TAG, "liked-track read failed", it) }
         .getOrDefault(emptyList())
 
-    /** Liked tracks, newest like first, re-emitted on every like and unlike. A read failure emits
-     *  one empty list and ends the flow: the Library shows no likes rather than crashing. */
     fun observe(): Flow<List<YtVideo>> = dao.observe()
         .map { rows -> rows.map { it.toYtVideo() } }
         .catch {
@@ -64,7 +49,6 @@ class LikedTracks @Inject constructor(
             emit(emptyList())
         }
 
-    /** [observe] with the like dates, for Listen again's age rule. */
     fun observeEntries(): Flow<List<LikedEntry>> = dao.observe()
         .map { rows -> rows.map { LikedEntry(it.toYtVideo(), it.likedAtEpochMs) } }
         .catch {
@@ -72,19 +56,10 @@ class LikedTracks @Inject constructor(
             emit(emptyList())
         }
 
-    /** All liked tracks with their like dates, newest like first, for a backup export. Throws on
-     *  a read failure: the export must say why, not write an empty file. */
     suspend fun entries(): List<LikedEntry> = dao.all().map { LikedEntry(it.toYtVideo(), it.likedAtEpochMs) }
 
-    /** Every liked id, for an import's "already liked" count. Throws on a read failure. */
     suspend fun likedIds(): Set<String> = dao.ids().toSet()
 
-    /**
-     * Bulk insert of imported likes with their explicit like dates. Merge only: an id that is
-     * already liked keeps its row (likedAt and metadata). Returns the videos actually inserted, in
-     * [entries] order. Throws on a write failure: unlike [set], an import is a user action whose
-     * failure the user must see.
-     */
     suspend fun importAll(entries: List<LikedEntry>): List<YtVideo> {
         if (entries.isEmpty()) return emptyList()
         val rowIds = dao.insertAllIgnoringExisting(
@@ -115,5 +90,4 @@ class LikedTracks @Inject constructor(
     }
 }
 
-/** A liked track with the time it was liked: the unit of a likes backup (export and import). */
 data class LikedEntry(val video: YtVideo, val likedAtEpochMs: Long)

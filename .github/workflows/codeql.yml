@@ -42,8 +42,6 @@ jobs:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
 
-      # Kotlin needs a traced build for CodeQL. --rerun-tasks forces a real
-      # compile so CodeQL traces it even if the Gradle cache is warm.
       - if: matrix.build-mode == 'manual'
         shell: bash
         run: ./gradlew :app:assembleDebug --no-daemon --rerun-tasks

@@ -9,10 +9,7 @@ import tech.capullo.tubecapullo.data.youtube.YtRelated
 import tech.capullo.tubecapullo.data.youtube.YtVideo
 import kotlin.random.Random
 
-/** The rules every fetch from a song shares (owner decision 2026-11-12, "Pairs"): the pair
- *  merge, the related gate, the seed's own song, and one copy per title. */
 class PairsTest {
-
     private fun video(
         id: String,
         title: String = "t-$id",
@@ -30,7 +27,6 @@ class PairsTest {
         uploaderVerified = verified,
     )
 
-    /** A related upload that passes the gate on its check mark. */
     private fun related(id: String, title: String = "t-$id", views: Long = -1) = video(id, title, views = views, verified = true)
 
     private val seed = video("seed")
@@ -83,7 +79,7 @@ class PairsTest {
         assertTrue(passesRelatedGate(video("a", views = share), seedViews))
         assertFalse("under the seed share", passesRelatedGate(video("b", views = share - 1), seedViews))
 
-        val smallSeed = RELATED_MIN_VIEWS // its share is far under the floor
+        val smallSeed = RELATED_MIN_VIEWS
         assertTrue(passesRelatedGate(video("c", views = RELATED_MIN_VIEWS), smallSeed))
         assertFalse(
             "under the floor",
@@ -124,7 +120,7 @@ class PairsTest {
 
     @Test
     fun `of tracks with one title only the most viewed stays, whichever list it is in`() {
-        val mixCopy = video("mixcopy", "Song A (Official Audio)") // a Mix item: views unknown
+        val mixCopy = video("mixcopy", "Song A (Official Audio)")
         val relatedCopy = related("relcopy", "song a [Official Video]", views = 5_000_000)
         val first = video("first", "Song B")
         val tie = video("tie", "Song B!")

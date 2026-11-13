@@ -54,20 +54,8 @@ import tech.capullo.tubecapullo.ui.settings.SettingsScreen
 import tech.capullo.tubecapullo.ui.shared.MultiroomSheet
 import tech.capullo.tubecapullo.ui.theme.Dimens
 
-/**
- * Blur radius on the app behind the Multiroom sheet, matching telecloud and the web player's
- * backdrop blur (value carried over from the Player's own sheet host; chosen by eye there).
- */
 private val MULTIROOM_BACKDROP_BLUR = 12.dp
 
-/**
- * The app root: tab back stacks ([TubeNavigator]) in a NavDisplay, and around the tab roots the
- * shell (now-playing mini-bar, bottom navigation). Full-screen routes draw without
- * the shell. [navRequests] carries routes from outside the composition: notification taps and
- * `--es dbg` commands, forwarded by MainActivity. [links] is the incoming-link handler that
- * MainActivity feeds shares and tapped links to; its progress, dialog and messages show here, over
- * whichever screen is current.
- */
 @Composable
 fun TubeApp(
     navRequests: Flow<Route>,
@@ -81,8 +69,6 @@ fun TubeApp(
     val resolvingLink by links.resolving.collectAsStateWithLifecycle()
     LinkEffects(links, navigator, snackbarHostState)
 
-    // The Multiroom sheet is a ModalBottomSheet with its own window, so it is hosted here over
-    // whichever screen opened it rather than as a back-stack entry; it handles back itself.
     var multiroomOpen by rememberSaveable { mutableStateOf(false) }
     val openMultiroom = { multiroomOpen = true }
     val backdropBlur by animateDpAsState(
@@ -119,7 +105,6 @@ fun TubeApp(
 
     Scaffold(
         modifier = Modifier.blur(backdropBlur),
-        // Insets belong to the screens' own Scaffolds; this one only reserves the shell's height.
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         bottomBar = {
             if (navigator.top is Route.TabRoot) {
@@ -132,8 +117,6 @@ fun TubeApp(
             }
         },
         snackbarHost = {
-            // Full-screen routes have no shell bar to sit on, and this Scaffold reserves no
-            // insets: lift the messages above the system navigation bar there.
             val lift = if (navigator.top is Route.TabRoot) {
                 Modifier
             } else {
@@ -155,18 +138,12 @@ fun TubeApp(
     }
 }
 
-/**
- * Decorates each tab's stack separately, so a tab's saved state and ViewModels are cleared only
- * when its own entries are popped, never when another tab is selected; then concatenates the
- * stacks that are drawn ([TubeNavigator.visibleTabs]).
- */
 @Composable
 private fun rememberTabEntries(
     navigator: TubeNavigator,
     provider: (NavKey) -> NavEntry<NavKey>,
 ): List<NavEntry<NavKey>> {
     val perTab = Tab.entries.associateWith { tab ->
-        // key(): distinct composite keys, so each tab's rememberSaveable state is saved apart.
         key(tab) {
             val saveableState = rememberSaveableStateHolderNavEntryDecorator<NavKey>()
             val viewModels = rememberViewModelStoreNavEntryDecorator<NavKey>()
@@ -204,8 +181,6 @@ private fun ShellBottomBar(
                 onOpen = onOpenPlayer,
             )
         }
-        // NavigationBar has no height parameter: its 80 dp floor gives way to a fixed height,
-        // which must also hold the system inset the bar pads itself by.
         val insets = NavigationBarDefaults.windowInsets
         val inset = insets.asPaddingValues().calculateBottomPadding()
         NavigationBar(
@@ -216,7 +191,6 @@ private fun ShellBottomBar(
                 NavigationBarItem(
                     selected = tab == currentTab,
                     onClick = { onSelectTab(tab) },
-                    // The label names the tab; the icon would only repeat it to a screen reader.
                     icon = {
                         Icon(
                             tab.icon,

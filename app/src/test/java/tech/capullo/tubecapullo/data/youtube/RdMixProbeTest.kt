@@ -6,23 +6,9 @@ import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
 
-/**
- * The RD-mix probe. Network-gated behind `YT_SMOKE=1`, like the smoke test:
- *
- * ```
- * YT_SMOKE=1 ./gradlew :app:testDebugUnitTest --tests '*RdMixProbeTest*'
- * ```
- *
- * **Pass criteria were written first**, in `docs/probes/rd-mix-criteria.md` - read that before
- * this. Only Q1 (does the fetch work) asserts; Q2-Q4 are measurements, printed for the run log and
- * recorded in `docs/probes/rd-mix-results.md` after each run. A measurement that asserts its own
- * expected value stops being a measurement.
- */
 class RdMixProbeTest {
-
     private lateinit var client: YouTubeExtractorClient
 
-    // Two mainstream music videos old enough to have deep mixes (see the criteria doc).
     private val seeds = listOf("dQw4w9WgXcQ", "9bZkp7q19f0")
 
     @Before
@@ -77,7 +63,6 @@ class RdMixProbeTest {
         val mix = client.mix(seed)
         println("PROBE q4 seed=$seed seedInOwnMix=${mix.any { it.videoId == seed }} count=${mix.size}")
 
-        // Does the bare playlist?list=RD<seed> form work too? mixUrl assumes it doesn't have to.
         val bare = runCatching { client.playlistInfo(YouTubeUrls.mixPlaylistId(seed)).videos }
         println(
             "PROBE q4 bareForm=" +

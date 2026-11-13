@@ -20,8 +20,7 @@ Part of the [capullo-tech](https://github.com/capullo-tech) family (RadioCapullo
 ## Status
 
 Early (v0.2). Playback, the radio, lists, Snapcast, links and the likes backup work on a real
-device. The radio constants are first guesses; `docs/probes/radio-criteria.md` gives the pass
-criteria for a listening test. `HANDOFF-bootstrap.md` has the bootstrap record.
+device. The radio constants are first guesses.
 
 ## Build
 
@@ -31,10 +30,10 @@ Point Gradle at your SDK: open the project once in Android Studio (it writes `lo
 or set `ANDROID_HOME`, or create `local.properties` with `sdk.dir=/path/to/Android/Sdk`.
 
 ```bash
-./gradlew :app:assembleDebug        # APK in app/build/outputs/
-./gradlew :app:installDebug         # install on a connected device
-./gradlew :app:testDebugUnitTest    # unit tests
-./gradlew spotlessApply             # format before you commit
+./gradlew :app:assembleDebug
+./gradlew :app:installDebug
+./gradlew :app:testDebugUnitTest
+./gradlew spotlessApply
 ```
 
 The capullo libraries (`capullo-audio`, `build-conventions`, Snapcast binaries) come from
@@ -75,10 +74,6 @@ data/youtube/  NewPipeExtractor client: search, streams, related, Mix
 ```
 
 ## Contributing
-
-Read [`CONTRIBUTING.md`](CONTRIBUTING.md) first. It is binding: approved libraries only,
-Compose/Material3, no hardcoded values, and pass criteria written before any empirical test.
-Then read [`HANDOFF-bootstrap.md`](HANDOFF-bootstrap.md) for the architecture and open questions.
 
 When you report station behaviour, name the tracks: "after liking X it played Y, Z" is useful,
 "it felt off" is not.

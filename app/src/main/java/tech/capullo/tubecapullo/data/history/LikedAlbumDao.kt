@@ -6,10 +6,8 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import kotlinx.coroutines.flow.Flow
 
-/** [LikedTrackDao]'s queries for liked_album: the same order and conflict rules. */
 @Dao
 interface LikedAlbumDao {
-
     @Query("SELECT * FROM liked_album ORDER BY likedAtEpochMs DESC")
     suspend fun all(): List<LikedAlbumEntity>
 

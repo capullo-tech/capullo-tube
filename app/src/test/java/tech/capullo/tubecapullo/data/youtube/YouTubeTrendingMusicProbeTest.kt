@@ -7,22 +7,7 @@ import org.junit.Before
 import org.junit.Test
 import java.util.Locale
 
-/**
- * The trending-music kiosk probe. Network-gated behind `YT_SMOKE=1`, like the smoke test and the
- * RD-mix probe:
- *
- * ```
- * YT_SMOKE=1 ./gradlew :app:testDebugUnitTest --tests '*YouTubeTrendingMusicProbeTest*'
- * ```
- *
- * **Pass criteria were written first**, in `docs/probes/trending-music-criteria.md` - read that
- * before this. Only Q1 (does the fetch work) and Q2 (art availability for art cards) assert;
- * Q3/Q4 are measurements, printed for the run log and recorded in
- * `docs/probes/trending-music-results.md`. A measurement that asserts its own expected value
- * stops being a measurement.
- */
 class YouTubeTrendingMusicProbeTest {
-
     private lateinit var client: YouTubeExtractorClient
 
     @Before

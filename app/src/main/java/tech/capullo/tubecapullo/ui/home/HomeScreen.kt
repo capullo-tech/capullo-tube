@@ -60,23 +60,6 @@ import tech.capullo.tubecapullo.util.countryName
 import tech.capullo.tubecapullo.util.formatDuration
 import tech.capullo.tubecapullo.util.viewsLine
 
-/**
- * Launch screen: recommendation cards, the Jetispot home pattern - sections with a header and a
- * horizontal card row (ui reference: Jetispot's SectionComponentBinder/MediumCard, 16dp content
- * padding; card sizes from the compact density pass in [Dimens]). Tapping a card IS the play
- * action: it seeds a station exactly like a search-row tap and opens the player, so a card needs
- * no separate play button (Jetispot cards navigate; these do not). A long-press opens the song's
- * actions on the card: Play next (only while something plays; there is no station to queue into
- * otherwise) and Go to radio, which also opens the player.
- *
- * Sections, personal before generic ([homeSections], PLAN "Home v2 and albums"): Continue (the
- * stations left unfinished; a tap resumes one where it was), Listen again (older likes, liked
- * albums and songs played often), one "More like" row per recent like (the count is a setting),
- * Full albums (long videos near the likes; a tap plays one as an album), then one row per chosen
- * trending-music chart - the cold-start source (probe: full 30 items, all with art, all in the
- * station's duration window; docs/probes/trending-music-results.md), the only sections on a
- * first launch. Pull down to reload everything.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
@@ -103,7 +86,6 @@ fun HomeScreen(
             viewModel.play(video)
             onOpenPlayer()
         },
-        // Hidden while nothing plays: there is no station to queue into.
         playNext = playNext.takeIf { playingId != null },
     )
 
@@ -121,8 +103,6 @@ fun HomeScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
         if (uiState.isLoading && uiState.sections.isEmpty()) {
-            // First load: nothing to show yet. A reload over existing cards keeps them and shows
-            // the pull-to-refresh indicator instead.
             Box(
                 Modifier
                     .fillMaxSize()
@@ -168,9 +148,6 @@ private fun HomeList(
 ) {
     LazyColumn(Modifier.fillMaxSize()) {
         uiState.error?.let { error ->
-            // Stale cards stay visible under a retry banner; the network error is not a
-            // reason to blank the screen (and BotCheck deserves its distinct wording,
-            // which HomeViewModel.readable already carries).
             item(key = "error") { ErrorBanner(error, onRetry = onRetry) }
         }
         uiState.sections.forEach { section ->
@@ -203,7 +180,6 @@ private fun HomeSection.title(): String = when (this) {
     is HomeSection.Trending -> "Trending in ${countryName(region)}"
 }
 
-/** A row of song cards; the cards in [albumIds] are albums, whose tap is [onPlayAlbum]. */
 @Composable
 private fun CardRow(
     cards: List<YtVideo>,
@@ -230,7 +206,6 @@ private fun CardRow(
     }
 }
 
-/** The Continue row: one card per stored station, newest first. */
 @Composable
 private fun ContinueRow(stations: List<ContinueCard>, onResume: (ContinueCard) -> Unit) {
     LazyRow(
@@ -272,8 +247,6 @@ private fun ContinueRow(stations: List<ContinueCard>, onResume: (ContinueCard) -
     }
 }
 
-/** An album card: a tap plays the video as an album. No song menu: Play next and Go to radio
- *  are song actions. */
 @Composable
 private fun AlbumCard(video: YtVideo, isPlaying: Boolean, onPlay: (YtVideo) -> Unit) {
     Box(
@@ -298,12 +271,6 @@ private fun SectionHeader(title: String) {
     )
 }
 
-/**
- * The Jetispot medium card: square art, cleaned title, uploader, then views and year when known
- * ([viewsLine]). The tonal MusicNote placeholder sits UNDER the Coil image, so a slow load shows
- * the placeholder and not a flicker (Jetispot's PreviewableAsyncImage pattern; the long-press
- * here opens the song's actions, not its preview).
- */
 @Composable
 private fun MusicCard(video: YtVideo, isPlaying: Boolean, actions: SongActions) {
     SongActionsBox(
@@ -312,9 +279,6 @@ private fun MusicCard(video: YtVideo, isPlaying: Boolean, actions: SongActions) 
         modifier = Modifier
             .width(Dimens.HOME_CARD_WIDTH)
             .clip(RoundedCornerShape(Dimens.HOME_CARD_CORNER))
-            // Stable identity for device-level UI queries (EmulatorSmoke.yml): the card's own
-            // texts are video titles/uploaders, useless as selectors, and testTagsAsResourceId
-            // is off - a semantics description is what UiAutomator's By.desc() can count.
             .semantics { contentDescription = "music_card" },
     ) { MusicCardContent(video, isPlaying) }
 }
@@ -351,7 +315,6 @@ private fun MusicCardContent(video: YtVideo, isPlaying: Boolean) {
     }
 }
 
-/** A card's square art over the tonal MusicNote placeholder, with the playing mark. */
 @Composable
 private fun CardArt(thumbnailUrl: String?, isPlaying: Boolean) {
     Box(
@@ -371,7 +334,7 @@ private fun CardArt(thumbnailUrl: String?, isPlaying: Boolean) {
         thumbnailUrl?.let { url ->
             AsyncImage(
                 model = url,
-                contentDescription = null, // decorative; the title text carries the meaning
+                contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
             )

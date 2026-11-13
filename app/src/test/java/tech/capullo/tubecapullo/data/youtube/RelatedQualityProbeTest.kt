@@ -18,37 +18,13 @@ import kotlin.math.floor
 import kotlin.math.log10
 import kotlin.math.pow
 
-/**
- * The related-quality probe: what YouTube's top related items look like (views, verified
- * uploaders, upload dates, same-song uploads), and the related gate's constants derived from
- * that. Network-gated behind `YT_SMOKE=1`, like the RD-mix probe:
- *
- * ```
- * YT_SMOKE=1 ./gradlew :app:testDebugUnitTest --tests '*RelatedQualityProbeTest*'
- * ```
- *
- * **The criteria and the rule that turns the data into constants were written first**, in
- * `docs/probes/related-quality-criteria.md` - read that before this. Only Q1 (every fetch works)
- * asserts. Q2-Q6 are measurements, printed as `PROBE` lines and recorded in
- * `docs/probes/related-quality-results.md`. A measurement that asserts its own expected value
- * stops being a measurement.
- *
- * It reads the extractor's own item types (`StreamInfo`, `StreamInfoItem`) rather than going
- * through [YouTubeExtractorClient.relatedStreams], because it prints fields the app does not
- * keep (the date's approximation flag, YouTube's date text). The list is the same one
- * `relatedStreams` returns: the seed's `StreamInfo` related items that are video streams, in
- * YouTube's order.
- */
 class RelatedQualityProbeTest {
-
     private lateinit var client: YouTubeExtractorClient
 
     @Before
     fun setUp() {
         assumeTrue("set YT_SMOKE=1 to run the probe", System.getenv("YT_SMOKE") == "1")
         client = probeClient()
-        // The client initialises NewPipe on its FIRST call; the direct extractor calls below need
-        // that done.
         runBlocking { client.search(INIT_QUERY, limit = 1) }
     }
 
@@ -67,20 +43,15 @@ class RelatedQualityProbeTest {
             printSeed(seed)
         }
         summarise(seeds)
-        // After the prints, so one failed seed does not hide the other seeds' numbers.
         assertTrue("Q1 FAIL: $q1Failures", q1Failures.isEmpty())
     }
 
-    /** A seed and its fetched lists. */
     private class Seed(
         val spec: String,
         val id: String,
         val info: StreamInfo,
-        /** The related video items, in YouTube's order (ranks 1..n). */
         val related: List<StreamInfoItem>,
-        /** The Mix as the app fetches it (all pages), for the duplicate count. */
         val mix: List<YtVideo>,
-        /** The Mix's first page as extractor items, for the metadata counts. */
         val mixItems: List<StreamInfoItem>,
     ) {
         val views: Long get() = info.viewCount
@@ -169,7 +140,6 @@ class RelatedQualityProbeTest {
             )
         }
 
-        // Q3: the rule fixed in the criteria doc.
         val ratioP10 = percentile(
             verified.filter { (seed, _) -> seed.views > 0 }
                 .map { (seed, item) -> item.viewCount.toDouble() / seed.views },
@@ -189,7 +159,6 @@ class RelatedQualityProbeTest {
                 "RELATED_MIN_VIEWS=${minViews?.toLong()}",
         )
 
-        // Q4: the gate on this run's own data, with the rule's constants and with the guesses.
         val gates = buildList {
             if (fraction != null && minViews != null) {
                 add("rule" to Gate(minViews.toLong(), fraction))
@@ -227,7 +196,6 @@ class RelatedQualityProbeTest {
             )
         }
 
-        // Q5: same-song rules.
         val seedMatches = top.count { (seed, item) -> sameKey(titleKey(item), seed.key) }
         val looseSeedMatches = top.count { (seed, item) ->
             looseKey(item.name.orEmpty()) == looseKey(seed.info.name.orEmpty())
@@ -262,7 +230,6 @@ class RelatedQualityProbeTest {
                 "looseDuplicates=$looseDuplicates/$batch (${share(looseDuplicates, batch)})",
         )
 
-        // Q6: what the display line can show.
         val dated = top.filter { (_, item) -> item.uploadDate != null }
         val approximate = dated.count { (_, item) -> item.uploadDate!!.isApproximation }
         val mixItems = seeds.flatMap { it.mixItems }
@@ -276,7 +243,6 @@ class RelatedQualityProbeTest {
         )
     }
 
-    /** The related gate as the criteria doc states it. */
     private class Gate(val minViews: Long, val fraction: Double) {
         fun keeps(item: StreamInfoItem, seedViews: Long): Boolean {
             if (item.isUploaderVerified) return true
@@ -287,8 +253,6 @@ class RelatedQualityProbeTest {
     }
 
     private companion object {
-        /** The seeds of the criteria doc: three ids of earlier probes, then search queries
-         *  whose first video result is the seed. */
         val SEEDS = listOf(
             "dQw4w9WgXcQ",
             "kJQP7kiw5Fk",
@@ -304,17 +268,13 @@ class RelatedQualityProbeTest {
             "Ichiko Aoba Asleep Among Endives",
         )
 
-        /** The first search initialises NewPipe; any query does. */
         const val INIT_QUERY = "music"
 
-        /** The top-8 cap this run measured (RELATED_TOP_K, removed 2026-11-12 for all related). */
         const val TOP_K = 8
 
-        /** The starting GUESSES the rule replaces. */
         const val GUESS_MIN_VIEWS = 10_000L
         const val GUESS_FRACTION = 0.01
 
-        /** Q3's thresholds and percentile, from the criteria doc. */
         const val MIN_REFERENCE = 20
         const val MIN_SMALL_HALF = 8
         const val P10 = 0.10
@@ -324,11 +284,8 @@ class RelatedQualityProbeTest {
 
         fun titleKey(item: StreamInfoItem): String? = TitleCleaner.key(item.name.orEmpty(), item.uploaderName)
 
-        /** The code's rule: a null key (no letter or digit) never matches. */
         fun sameKey(a: String?, b: String?): Boolean = a != null && a == b
 
-        /** The comparison-only loose key: no bracketed groups, the text after the last spaced
-         *  dash, case-, space- and punctuation-blind. */
         fun looseKey(title: String): String {
             val bare = title.replace(Regex("""[(\[【][^)\]】]*[)\]】]"""), " ").substringBefore('|')
             val song = bare.split(Regex("""\s+[-–—]\s+""")).last()
@@ -341,7 +298,6 @@ class RelatedQualityProbeTest {
             return "$approx$year" + (text?.let { "(\"$it\")" } ?: "")
         }
 
-        /** Nearest-rank percentile; null for no values. */
         fun percentile(values: List<Double>, p: Double): Double? {
             if (values.isEmpty()) return null
             val sorted = values.sorted()
@@ -354,10 +310,8 @@ class RelatedQualityProbeTest {
             return "[min=${fmt(values.min())} p10=${fmt(q[1])} p25=${fmt(q[2])} med=${fmt(q[3])}]"
         }
 
-        /** The largest 1-2-5 step at or below [value] (> 0). */
         fun stepAtOrBelow(value: Double): Double {
             val decade = 10.0.pow(floor(log10(value)))
-            // The tolerance keeps an exact step (0.01) from losing a decade to rounding.
             return listOf(5.0, 2.0, 1.0, 0.5).map { it * decade }.first { it <= value * (1 + 1e-9) }
         }
 

@@ -4,9 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 import tech.capullo.tubecapullo.data.youtube.YtVideo
 
-/** The History tab's rows: a liked album plays as an album again, everything else as a song. */
 class LibraryRowsTest {
-
     private fun video(id: String, seconds: Long) = YtVideo(id, "Title $id", "Uploader", seconds, null)
 
     @Test

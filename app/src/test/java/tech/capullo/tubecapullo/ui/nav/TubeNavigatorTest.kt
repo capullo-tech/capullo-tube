@@ -7,12 +7,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * Back-stack rules from PLAN.md "Navigation (target)": back from a non-Home tab lands on Home,
- * back from Home leaves the app, full-screen routes never duplicate or linger in a hidden tab.
- */
 class TubeNavigatorTest {
-
     private fun navigator() = TubeNavigator(
         stacks = Tab.entries.associateWith { mutableListOf<NavKey>(it.root) },
         currentTab = mutableStateOf(Tab.HOME),

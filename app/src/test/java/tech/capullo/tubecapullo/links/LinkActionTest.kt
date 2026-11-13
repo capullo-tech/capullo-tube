@@ -3,9 +3,7 @@ package tech.capullo.tubecapullo.links
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/** The incoming-link decision table (owner decisions 2026-11-11), row by row. */
 class LinkActionTest {
-
     private val id = "dQw4w9WgXcQ"
     private val video = LinkTarget.Video(id)
     private val listId = "PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf"

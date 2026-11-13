@@ -7,26 +7,12 @@ import kotlinx.serialization.json.Json
 import tech.capullo.tubecapullo.data.youtube.YtChapter
 import tech.capullo.tubecapullo.data.youtube.YtVideo
 
-/**
- * One station as it was: everything [StationEngine] needs to bring it back (PLAN "Previous" rule
- * 3 and "Home v2 and albums", Continue). Room keeps these ([StationSnapshotCodec] is the stored
- * form), so Continue and Previous's station stack outlive the process.
- *
- * Each queue slot is listed once in [slots]; the queue, the history and the rounds refer to it
- * by index, so a restored list finds its place in its round by identity, as the live one does.
- * No stream link is kept: a resumed track resolves a fresh one.
- */
 data class StationSnapshot(
-    /** The station's identity: it stays while the station goes on (a roll-over, a Switch now)
-     *  and comes back with it. */
     val id: Long,
-    /** Newest first in Continue and on the stack; strictly increasing per save. */
     val savedAtEpochMs: Long,
     val source: PlaySource,
     val slots: List<SnapshotSlot>,
-    /** The slot that was playing when the station was saved. */
     val left: Int,
-    /** Its playhead then, ms. Continue resumes here; Previous plays it from the start. */
     val positionMs: Long,
     val upcoming: List<Int>,
     val history: List<Int>,
@@ -42,20 +28,12 @@ data class StationSnapshot(
     val roundPos: Int,
     val nextRound: List<Int>?,
 ) {
-    /** The track that was playing. */
     val leftVideo: YtVideo get() = slots[left].video
 }
 
-/** A queue slot as stored (StationEngine.Slot). */
 data class SnapshotSlot(val video: YtVideo, val why: Why, val pinned: Boolean, val blended: Boolean)
 
-/**
- * The stored form of a [StationSnapshot]: JSON, so a new field needs no table migration. A row
- * that does not decode (a later build's source type, a renamed provenance) reads as null and is
- * skipped; the station is lost, not the app.
- */
 object StationSnapshotCodec {
-
     private val json = Json {
         ignoreUnknownKeys = true
         explicitNulls = false
@@ -214,7 +192,6 @@ private data class SourceDto(
     val video: VideoDto? = null,
     val videos: List<VideoDto> = emptyList(),
     val url: String? = null,
-    /** The search query, the playlist's title or the channel's name. */
     val text: String? = null,
     val shuffle: Boolean = false,
     val chapters: List<ChapterDto> = emptyList(),
