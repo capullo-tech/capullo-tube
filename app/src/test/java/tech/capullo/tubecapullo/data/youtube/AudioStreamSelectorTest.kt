@@ -5,7 +5,6 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class AudioStreamSelectorTest {
-
     private fun candidate(
         itag: Int,
         bitrateKbps: Int,
@@ -22,7 +21,6 @@ class AudioStreamSelectorTest {
         isProgressive = isProgressive,
     )
 
-    // itag 140 = m4a 128k, 251 = opus 160k, 249/250 = opus low. A realistic YouTube offering.
     private val typical = listOf(
         candidate(itag = 249, bitrateKbps = 50, isM4a = false),
         candidate(itag = 250, bitrateKbps = 70, isM4a = false),
@@ -32,8 +30,6 @@ class AudioStreamSelectorTest {
 
     @Test
     fun `prefers m4a over a higher-bitrate opus when caching`() {
-        // Opus 160k beats M4A 128k on quality, but only M4A survives the metadata/analysis
-        // pipeline, so caching must take the M4A.
         assertEquals(140, AudioStreamSelector.select(typical, preferM4a = true)?.itag)
     }
 
@@ -60,7 +56,6 @@ class AudioStreamSelectorTest {
 
     @Test
     fun `skips non-progressive streams`() {
-        // DASH/HLS variants need a manifest; handing one to ExoPlayer as a plain URI fails.
         val streams = listOf(
             candidate(itag = 140, bitrateKbps = 128, isM4a = true, isProgressive = false),
             candidate(itag = 251, bitrateKbps = 160, isM4a = false),

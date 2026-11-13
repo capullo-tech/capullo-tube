@@ -9,9 +9,7 @@ import org.schabi.newpipe.extractor.ServiceList
 import org.schabi.newpipe.extractor.channel.ChannelInfoItem
 import org.schabi.newpipe.extractor.playlist.PlaylistInfoItem
 
-/** Search items as collection rows: the shapes the probe saw from the YouTube Music filters. */
 class YtCollectionMappingTest {
-
     private val youtube = ServiceList.YouTube.serviceId
 
     private fun album(url: String, count: Long, uploader: String? = "Daft Punk") = PlaylistInfoItem(youtube, url, "Discovery").apply {

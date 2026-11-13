@@ -5,10 +5,7 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 import tech.capullo.tubecapullo.data.youtube.YtVideo
 
-/** The views line on cards and rows: YouTube's compact count, the year, and what shows when
- *  either is unknown. */
 class ViewsFormatTest {
-
     private fun video(views: Long, year: Int?) = YtVideo("id", "t", "u", 200, null, viewCount = views, uploadYear = year)
 
     @Test

@@ -3,9 +3,7 @@ package tech.capullo.tubecapullo.data.youtube
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/** The device-default Trending chart: own country, closest served neighbour, then Nicaragua. */
 class DefaultChartRegionTest {
-
     private val supported = setOf("JP", "KR", "ID", "AU", "NI", "US")
 
     @Test
@@ -30,7 +28,6 @@ class DefaultChartRegionTest {
         assertEquals("NI", defaultChartRegion("AQ", supported))
     }
 
-    /** Replaces the US default earlier builds used when the locale named no country. */
     @Test
     fun `no locale country is Nicaragua, not the old US default`() {
         assertEquals("NI", defaultChartRegion(null, supported))
@@ -38,8 +35,6 @@ class DefaultChartRegionTest {
         assertEquals("NI", defaultChartRegion(" ", supported))
     }
 
-    /** A candidate YouTube Charts does not serve is dead weight that hides a typo. The set is
-     *  the extractor's YT_CHARTS_SUPPORTED_COUNTRY_CODES in v0.26.5 (javap, 2026-11-12). */
     @Test
     fun `every table candidate is a chart country, and no table key is one`() {
         val charts = (

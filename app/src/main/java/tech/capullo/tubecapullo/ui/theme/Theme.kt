@@ -22,7 +22,6 @@ private val LightColorScheme = lightColorScheme(
     tertiary = Pink40,
 )
 
-// Dynamic color on API 31+, complete brand schemes below (CONTRIBUTING §3).
 @Composable
 fun TubeCapulloTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),

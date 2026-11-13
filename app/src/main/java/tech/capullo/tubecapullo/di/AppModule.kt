@@ -21,23 +21,14 @@ import kotlin.random.Random
 @Module
 @InstallIn(SingletonComponent::class)
 object AppModule {
-
-    /** App-lifetime IO scope. Injected (rather than created inline) so JVM tests can hand the
-     *  StationEngine a test scope and drive its Mix fetch and prefetch coroutines deterministically. */
     @Provides
     @Singleton
     fun provideAppScope(): CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    /** Station randomness (shuffle, Liked radio's order of likes per round). Injected so JVM
-     *  tests can seed it and assert exact orders. */
     @Provides
     @Singleton
     fun provideRandom(): Random = Random.Default
 
-    /** Play-history store. One file, no singleton guard needed - Hilt scopes the instance.
-     *  MIGRATION_1_2 adds liked_track, MIGRATION_2_3 adds play_event, MIGRATION_3_4 drops it,
-     *  MIGRATION_4_5 adds liked_album and station_snapshot; none touches played_track (M-B rows
-     *  survive) or, after it exists, liked_track. */
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): TubeCapulloDatabase = Room.databaseBuilder(context, TubeCapulloDatabase::class.java, "tubecapullo.db")

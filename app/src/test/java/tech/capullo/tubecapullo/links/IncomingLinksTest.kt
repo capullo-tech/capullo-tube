@@ -3,9 +3,7 @@ package tech.capullo.tubecapullo.links
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/** Finding the link in what share sheets and tapped links actually deliver. */
 class IncomingLinksTest {
-
     private val id = "dQw4w9WgXcQ"
     private val video = LinkTarget.Video(id)
     private val listId = "PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf"
@@ -37,7 +35,6 @@ class IncomingLinksTest {
         assertEquals(video, IncomingLinks.find("(https://youtu.be/$id)."))
         assertEquals(video, IncomingLinks.find("\"https://www.youtube.com/watch?v=$id\","))
         assertEquals(video, IncomingLinks.find("Watch:https://youtu.be/$id!"))
-        // `-` and `_` are id characters: trimming them would corrupt the id.
         assertEquals(
             LinkTarget.Video("abcdefghi_-"),
             IncomingLinks.find("https://youtu.be/abcdefghi_-."),

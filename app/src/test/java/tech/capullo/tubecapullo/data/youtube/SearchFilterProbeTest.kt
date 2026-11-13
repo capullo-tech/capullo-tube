@@ -15,23 +15,7 @@ import org.schabi.newpipe.extractor.localization.Localization
 import org.schabi.newpipe.extractor.search.SearchInfo
 import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory
 
-/**
- * The Search screen's filters against live YouTube. Network-gated behind `YT_SMOKE=1`, like the
- * RD-mix probe:
- *
- * ```
- * YT_SMOKE=1 ./gradlew :app:testDebugUnitTest --tests '*SearchFilterProbeTest*'
- * ```
- *
- * Q1 and Q2 assert that each filter lists rows and that a row's tap target loads. Q3 measures
- * why Channels uses the plain `CHANNELS` filter: how many `MUSIC_ARTISTS` results have a Videos
- * tab. Run 2026-11-11 ("daft punk", en-US): Q1 songs 20 (then `MUSIC_SONGS`; Songs now uses the
- * plain `VIDEOS` search, not re-run since), albums 20, playlists 20, channels 20 rows, none with
- * an item count; Q2 first album 13 tracks, first playlist 10, first channel (the official one)
- * 186 uploads; Q3 0 of 3 `MUSIC_ARTISTS` channels had a Videos tab (all "<Artist> - Topic").
- */
 class SearchFilterProbeTest {
-
     private lateinit var client: YouTubeExtractorClient
 
     @Before
@@ -89,13 +73,10 @@ class SearchFilterProbeTest {
     }
 
     private companion object {
-        /** A catalogue with albums, an official channel and a Topic channel. */
         const val QUERY = "daft punk"
 
-        /** Q1's floor: one page gave 20 rows for every filter on 2026-11-11. */
         const val MIN_ROWS = 5
 
-        /** Channel page fetches in Q3, one request each. */
         const val ARTISTS_CHECKED = 3
     }
 }

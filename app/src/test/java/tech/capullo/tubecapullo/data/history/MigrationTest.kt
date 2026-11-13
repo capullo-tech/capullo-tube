@@ -15,16 +15,7 @@ import java.io.File
 import java.sql.Connection
 import java.sql.DriverManager
 
-/**
- * The v4 to v5 migration on a real SQLite (desktop sqlite-jdbc): a v4 database built from the
- * exported 4.json, with rows in liked_track and played_track, migrated by the app's own
- * [TubeCapulloDatabase.MIGRATION_4_5]. Every row must survive, and every v5 table must have the
- * columns 5.json lists, which is what Room checks when it opens the database (a mismatch crashes
- * the app at first use).
- */
 class MigrationTest {
-
-    /** Gradle runs unit tests in the module directory. */
     private val schemas = File("schemas/tech.capullo.tubecapullo.data.history.TubeCapulloDatabase")
 
     private fun entities(version: Int): List<JsonObject> = Json.parseToJsonElement(File(schemas, "$version.json").readText())
@@ -32,7 +23,6 @@ class MigrationTest {
 
     private fun JsonObject.text(key: String) = getValue(key).jsonPrimitive.content
 
-    /** A [SupportSQLiteDatabase] whose execSQL runs on [connection]: all a migration calls. */
     private fun database(connection: Connection): SupportSQLiteDatabase = mockk {
         every { execSQL(any<String>()) } answers { connection.createStatement().use { it.execute(firstArg()) } }
     }
@@ -85,7 +75,6 @@ class MigrationTest {
                         keys.indexOf(column) + 1,
                     )
                 }.sortedBy { it[0] as String }
-                // PRAGMA table_info: cid, name, type, notnull, dflt_value, pk.
                 val actual = db.rows("PRAGMA table_info(`$table`)")
                     .map { listOf(it[1], it[2], (it[3] as Number).toInt() == 1, (it[5] as Number).toInt()) }
                     .sortedBy { it[0] as String }

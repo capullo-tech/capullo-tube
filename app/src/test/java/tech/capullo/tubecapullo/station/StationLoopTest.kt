@@ -11,13 +11,7 @@ import tech.capullo.audio.contracts.MediaRequest
 import tech.capullo.audio.contracts.MediaSourceProvider
 import tech.capullo.audio.contracts.PlaybackQueue
 
-/**
- * Verifies the three contract obligations StationLoop mirrors from the engine's internal
- * QueuePlaybackLoop (see StationLoop's KDoc). The fake models failure BY CAUSE (an id marked
- * unresolvable always throws), not by call index, so code that cheats the schedule can't pass.
- */
 class StationLoopTest {
-
     private class FakeSource(
         ids: List<String>,
         private val unresolvable: Set<String> = emptySet(),
@@ -69,7 +63,6 @@ class StationLoopTest {
 
         assertEquals(listOf("https://example/good0000000"), playback.played)
         assertEquals(1, loop.currentIndex)
-        // The skipped track must NOT have been reported as advanced-to.
         assertEquals(listOf("resolve:bad00000000", "resolve:good0000000", "advanced:1"), source.calls)
     }
 
@@ -85,7 +78,6 @@ class StationLoopTest {
 
         assertTrue(playback.played.isEmpty())
         assertTrue("exhausted callback must fire", exhausted)
-        // Bounded: each track tried at most once in this pass.
         assertEquals(3, source.calls.count { it.startsWith("resolve:") })
     }
 
@@ -116,8 +108,6 @@ class StationLoopTest {
 
     @Test
     fun `a seed that fails before its refill lands resumes when the queue grows`() = runTest {
-        // Owner report 2026-11-11: the seed failed, the queue held nothing else yet, and the
-        // station sat on "loading" after the refill arrived.
         val source = FakeSource(listOf("seedseedsee"), unresolvable = setOf("seedseedsee"))
         val playback = RecordingPlayback()
         val loop = StationLoop(source, playback)
@@ -129,7 +119,7 @@ class StationLoopTest {
         assertEquals(listOf("seedseedsee"), failed)
         assertTrue(playback.played.isEmpty())
 
-        assertEquals(false, loop.resumeIfWaiting()) // nothing new yet
+        assertEquals(false, loop.resumeIfWaiting())
         source.queueIds += "refillrefil"
         assertEquals(true, loop.resumeIfWaiting())
 
@@ -140,7 +130,6 @@ class StationLoopTest {
 
     @Test
     fun `a resolve that returns after a newer request does not play`() = runTest {
-        // Two taps in a row: the first resolve is slow and must not override the second.
         val gate = CompletableDeferred<Unit>()
         val source = object : MediaSourceProvider {
             val ids = mutableListOf("slowslowslo")

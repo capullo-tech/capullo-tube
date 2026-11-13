@@ -8,11 +8,7 @@ import tech.capullo.tubecapullo.data.youtube.YtRelated
 import tech.capullo.tubecapullo.data.youtube.YtVideo
 import tech.capullo.tubecapullo.station.RELATED_MIN_VIEWS
 
-/** The Full albums row's filters (docs/probes/home-v2-criteria.md section 3): the album window,
- *  the album test, the related gate, liked items left out, one card per album, and the
- *  fallback's artists. */
 class FullAlbumsTest {
-
     private fun item(
         id: String,
         title: String = "Artist - Record (Full Album)",
@@ -46,7 +42,7 @@ class FullAlbumsTest {
         val japanese = item("ja", title = "青葉市子 アルバム")
         val chaptered = item("c", title = "Live at Juan-les-Pins (1967)")
         val neither = item("n", title = "Late night drive mix")
-        val inWord = item("w", title = "Albumin and other proteins") // not the word "album"
+        val inWord = item("w", title = "Albumin and other proteins")
 
         val albums = albumsOf(listOf(titled, spanish, japanese, chaptered, neither, inWord), setOf("c"))
 
@@ -67,10 +63,8 @@ class FullAlbumsTest {
         val big = item("big", verified = false, views = 50_000)
         val official = item("official", verified = true)
 
-        // Next to a 100M-view seed the share asks 1M: the 50K re-upload fails there...
         val nextToHit = related(small, big, official, seedViews = 100_000_000)
         assertEquals(listOf("official"), ids(fullAlbumCandidates(listOf(nextToHit), emptySet())))
-        // ...and passes in a search, where only the floor applies.
         val search = related(small, big, official, seedViews = -1)
         assertEquals(listOf("big", "official"), ids(fullAlbumCandidates(listOf(search), emptySet())))
     }
@@ -94,7 +88,6 @@ class FullAlbumsTest {
 
         val row = fullAlbumCards(listOf(fan, meteora, official, meteoraBig), artists = listOf("Linkin Park"))
 
-        // The verified upload wins over 45x the views; between unverified ones, the views decide.
         assertEquals(listOf("off", "met2"), ids(row.cards))
         assertEquals(2, row.dupes)
     }
