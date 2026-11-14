@@ -38,31 +38,19 @@ import tech.capullo.tubecapullo.station.LikeEffect
 import tech.capullo.tubecapullo.station.RollOver
 import tech.capullo.tubecapullo.ui.upnext.UpNextText
 
-/**
- * How long the like chip ("Added 3 from X's Mix") stays, in ms. Long enough to read a short
- * sentence once, short enough not to sit over the art. GUESS: not measured with listeners;
- * Material's short snackbar (4 s) felt long for a confirmation the heart already shows.
- */
 internal const val LIKE_CHIP_MS = 2_500L
 
-/** The transient station chip: what a like did to the queue ([UpNextText.likeChip]), or that
- *  a playlist, channel or album ended and the station goes on as a radio
- *  ([UpNextText.rollChip]). It hides itself after [LIKE_CHIP_MS]; a second chip restarts the
- *  timer. */
 @Stable
 class LikeChipState internal constructor() {
-    /** The last chip text; kept after [visible] drops so the fade-out still shows it. */
     var text: String by mutableStateOf("")
         private set
 
     var visible: Boolean by mutableStateOf(false)
         private set
 
-    /** The chip says a list or album rolled into a radio (a radio icon), not a like (a heart). */
     var rollOver: Boolean by mutableStateOf(false)
         private set
 
-    /** Bumped per [show], so the hide timer restarts even when the text repeats. */
     internal var shown by mutableIntStateOf(0)
         private set
 
@@ -78,13 +66,6 @@ class LikeChipState internal constructor() {
     }
 }
 
-/**
- * The chip's state, fed by [effects] (the engine's like effects) and [rollOvers] (the engine's
- * roll-overs) only while the caller is composed. The Player and the mini-bar each hold one, and
- * the mini-bar is gone while the Player is open, so one event shows one chip. An effect lands
- * once the liked song's Mix does, so the chip may come up on the other surface than the heart
- * that was tapped.
- */
 @Composable
 fun rememberLikeChipState(effects: Flow<LikeEffect>, rollOvers: Flow<RollOver>): LikeChipState {
     val state = remember { LikeChipState() }
@@ -98,7 +79,6 @@ fun rememberLikeChipState(effects: Flow<LikeEffect>, rollOvers: Flow<RollOver>):
     return state
 }
 
-/** The chip in place; fades in and out with [state]. */
 @Composable
 fun LikeChip(state: LikeChipState, modifier: Modifier = Modifier) {
     AnimatedVisibility(
@@ -111,8 +91,6 @@ fun LikeChip(state: LikeChipState, modifier: Modifier = Modifier) {
     }
 }
 
-/** The chip floating just above its parent (the mini-bar), so showing it never moves the
- *  layout around it. */
 @Composable
 fun LikeChipAbove(state: LikeChipState) {
     if (!state.visible) return
@@ -134,7 +112,7 @@ private fun ChipBody(text: String, rollOver: Boolean) {
         ) {
             Icon(
                 if (rollOver) Icons.Default.Radio else Icons.Default.Favorite,
-                contentDescription = null, // decorative; the text says it
+                contentDescription = null,
                 modifier = Modifier.padding(end = 4.dp).size(16.dp),
             )
             Text(

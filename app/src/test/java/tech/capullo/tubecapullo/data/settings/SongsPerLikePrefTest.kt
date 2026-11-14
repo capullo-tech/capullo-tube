@@ -7,14 +7,9 @@ import io.mockk.mockk
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/** Songs added per like: its default, whole pairs only (odd counts round up, stored ones too),
- *  its bounds, and that the value survives a restart. */
 class SongsPerLikePrefTest {
-
-    /** The prefs file, shared by every [settings] built from it, as on a device. */
     private val stored = mutableMapOf<String, Int>()
 
-    /** A fresh AppSettings over [stored]: the app after a restart. */
     private fun settings(): AppSettings {
         val editor = mockk<SharedPreferences.Editor>(relaxed = true)
         every { editor.putInt(any(), any()) } answers {
@@ -33,13 +28,11 @@ class SongsPerLikePrefTest {
 
     @Test
     fun `songs added per like is 2 until the listener picks a count`() {
-        // Owner decision 2026-11-11: the number is the requirement, not the constant's echo.
         assertEquals(2, settings().songsPerLike.value)
     }
 
     @Test
     fun `an odd count stored by an earlier build rounds up to whole pairs`() {
-        // 1, 3 and 5 were choices of "Songs from each Mix", stored under the same key.
         for ((old, now) in listOf(1 to 2, 3 to 4, 5 to 6)) {
             stored["mix_songs"] = old
             assertEquals("stored $old", now, settings().songsPerLike.value)

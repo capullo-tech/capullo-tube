@@ -6,16 +6,14 @@ import org.junit.Before
 import org.junit.Test
 import java.util.Locale
 
-/** The Settings device-default label names the chart it shows, and why when it substitutes. */
 class DeviceDefaultLabelTest {
-
     private val supported = setOf("JP", "KR", "NI", "US")
     private lateinit var locale: Locale
 
     @Before
     fun setUp() {
         locale = Locale.getDefault()
-        Locale.setDefault(Locale.US) // country names in English
+        Locale.setDefault(Locale.US)
     }
 
     @After

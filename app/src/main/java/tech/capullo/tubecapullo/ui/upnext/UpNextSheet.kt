@@ -81,43 +81,16 @@ import tech.capullo.tubecapullo.util.ShareLink
 import tech.capullo.tubecapullo.util.formatDuration
 import tech.capullo.tubecapullo.util.viewsLine
 
-/** Row actions; each takes the row's video. */
 private class RowActions(
-    /** A row tap; the flag is set for a played row (play it again, then go on). */
     val playNow: (YtVideo, Boolean) -> Unit,
-    /** An upcoming row's swipe, or its "Remove" accessibility action. */
     val remove: (YtVideo) -> Unit,
     val share: (YtVideo) -> Unit,
     val toggleLike: (YtVideo) -> Unit,
-    /** The current row's heart: the Player's ([UpNextViewModel.toggleHeart]; the album's in
-     *  album mode). */
     val toggleHeart: (YtVideo) -> Unit,
-    /** Collections only: leave the list for a song radio seeded from the row. */
     val startRadio: (YtVideo) -> Unit,
-    /** A chapter row's tap: the album seeks to its start. */
     val playChapter: (Long) -> Unit,
 )
 
-/**
- * The Queue (owner decisions 2026-11-12): "Queue", the station's source title under it, then one
- * list with no section headers ([queueEntries]): the songs played this session (dimmed), the
- * current song (highlighted, a GraphicEq badge on its art), then the upcoming songs in play
- * order (pinned rows marked; in album mode the chapters follow the album's row with the same
- * three states). Each upcoming row says where it came from ([UpNextText.provenance]). The sheet
- * opens with the first upcoming row at the top ([initialIndex]); the played and current rows sit
- * above it. A pull down scrolls the list first and dismisses the sheet only at the list's top
- * (M3's nested scroll). A row tap plays that track now, the common queue behaviour: an upcoming
- * row jumps ahead to it (the station goes on from there), a played row plays again before the
- * station goes on, and the current row's tap does nothing.
- *
- * Each row has the Player's heart (tap likes or unlikes) and a share button; while a collection
- * plays (Liked, a playlist, a channel), a menu adds Go to radio (a song radio from the row), which
- * replaces the station and closes the sheet. A radio row has no menu: Go to radio is its only
- * item, and a radio hides it. An upcoming row swiped toward the start leaves the queue (owner
- * decision 2026-11-11). The sheet may expand upwards but stays a drawer, never full screen: its
- * height is capped below the Player's top and it floats between small side margins (owner review
- * 2026-11-11; [Dimens]).
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UpNextSheet(onDismiss: () -> Unit, viewModel: UpNextViewModel = hiltViewModel()) {
@@ -149,16 +122,6 @@ fun UpNextSheet(onDismiss: () -> Unit, viewModel: UpNextViewModel = hiltViewMode
         playChapter = viewModel::seekTo,
     )
     val entries = remember(station) { queueEntries(station) }
-    // Opened on the first upcoming row. The station can still change while the sheet slides in
-    // (the first frames may hold the StateFlow's previous value, and the played list grows as a
-    // track starts), so the start row is re-applied on every change UNTIL the listener drags the
-    // list; after that their position is theirs (OPPO 2026-11-12: a one-shot scroll on the first
-    // frame opened on the current or last played row instead of the next song).
-    // A queue shorter than the list cannot scroll that far (LazyColumn stops where its last row
-    // meets the bottom: measured idx=3 first=2 on the OPPO with Liked radio's short queue), so
-    // the list gets bottom slack of exactly the missing height. The sheet opens half-way (two
-    // steps, owner call 2026-11-12), so that slack sits below the screen edge until the listener
-    // drags the sheet fully open.
     val listState = rememberLazyListState()
     var userMoved by remember { mutableStateOf(false) }
     var bottomSlackPx by remember { mutableIntStateOf(0) }
@@ -177,18 +140,11 @@ fun UpNextSheet(onDismiss: () -> Unit, viewModel: UpNextViewModel = hiltViewMode
             val below = info.visibleItemsInfo.filter { it.index >= target }.sumOf { it.size }
             val viewport = info.viewportEndOffset - info.viewportStartOffset
             bottomSlackPx = (viewport - below).coerceAtLeast(0)
-            withFrameNanos { } // let the slack lay out before scrolling again
+            withFrameNanos { }
             listState.scrollToItem(target)
         }
     }
 
-    // A drawer, never full screen: the cap keeps the Player's top in view above the expanded
-    // sheet, and the side margins make it float. The cap sits on the LIST, not on the sheet: with
-    // `heightIn` on the sheet's own modifier, M3 1.4.0 placed the Expanded anchor for the
-    // uncapped content, so sliding up parked the capped sheet against the top of the screen with
-    // an empty band below it (owner report 2026-11-12; measured on the OPPO: sheet top at 178 px,
-    // list bottom at 1813 px, navigation bar at 2268 px). Capping the content keeps the sheet's
-    // measured height and its anchors the same thing.
     val windowHeight = with(LocalDensity.current) {
         LocalWindowInfo.current.containerSize.height.toDp()
     }
@@ -196,8 +152,6 @@ fun UpNextSheet(onDismiss: () -> Unit, viewModel: UpNextViewModel = hiltViewMode
     val maxSheetHeight = (windowHeight - statusBar) * Dimens.UP_NEXT_MAX_HEIGHT_FRACTION
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        // Two steps (owner call 2026-11-12): half-way first, showing the next songs; drag up for
-        // the capped full height; pull down inside the list to see the current and played songs.
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false),
         modifier = Modifier.padding(horizontal = Dimens.UP_NEXT_SHEET_SIDE_MARGIN),
     ) {
@@ -216,8 +170,6 @@ fun UpNextSheet(onDismiss: () -> Unit, viewModel: UpNextViewModel = hiltViewMode
                             is ChapterEntry -> ChapterRow(entry, actions)
                             is TrackEntry -> TrackRow(
                                 track = entry,
-                                // The current row's heart is the Player's: the album's in album
-                                // mode.
                                 isLiked = entry.video.videoId in if (
                                     entry.state == RowState.CURRENT && station.albumMode
                                 ) {
@@ -237,7 +189,6 @@ fun UpNextSheet(onDismiss: () -> Unit, viewModel: UpNextViewModel = hiltViewMode
     }
 }
 
-/** "Queue", and under it the station's source as the Player's top bar names it. */
 @Composable
 private fun QueueTitle(source: PlaySource?) {
     Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
@@ -255,7 +206,6 @@ private fun QueueTitle(source: PlaySource?) {
     }
 }
 
-/** A played row's art and text fade; the current and upcoming rows keep full alpha. */
 private fun contentAlpha(state: RowState): Float = if (state == RowState.PLAYED) {
     Dimens.UP_NEXT_PLAYED_ALPHA
 } else {
@@ -276,9 +226,6 @@ private fun headlineColor(state: RowState): Color = if (state == RowState.CURREN
     MaterialTheme.colorScheme.onSurface
 }
 
-/** The row's tap and its spoken state. The current row has no tap (it is already playing), so
- *  a screen reader does not announce it as a disabled button; "Now playing" and "Played" say
- *  what the highlight and the dimming show. */
 private fun Modifier.rowTap(state: RowState, onPlay: () -> Unit): Modifier = when (state) {
     RowState.PLAYED -> clickable(onClickLabel = "Play again", onClick = onPlay)
         .semantics { stateDescription = "Played" }
@@ -286,8 +233,6 @@ private fun Modifier.rowTap(state: RowState, onPlay: () -> Unit): Modifier = whe
     RowState.UPCOMING -> clickable(onClickLabel = "Play now", onClick = onPlay)
 }
 
-/** A chapter of the playing album: its number (the playing badge on the current one), title and
- *  start time in the album. */
 @Composable
 private fun ChapterRow(chapter: ChapterEntry, actions: RowActions) {
     val alpha = contentAlpha(chapter.state)
@@ -329,7 +274,6 @@ private fun ChapterRow(chapter: ChapterEntry, actions: RowActions) {
     )
 }
 
-/** The last line when nothing is still to come. */
 @Composable
 private fun EndLineText(text: String) {
     Text(
@@ -340,12 +284,6 @@ private fun EndLineText(text: String) {
     )
 }
 
-/**
- * One track. The three trailing [Dimens.LIST_BUTTON_SIZE] buttons of a collection row take
- * 120 dp; on a 360 dp wide screen, after the row's padding and gaps and the art, that leaves the
- * text about 148 dp, so every text line keeps its line limit and ellipsizes. A radio row has no
- * menu button, so its text gets 40 dp more.
- */
 @Composable
 private fun TrackRow(
     track: TrackEntry,
@@ -401,7 +339,6 @@ private fun TrackRow(
                 .rowTap(track.state) {
                     actions.playNow(video, track.state == RowState.PLAYED)
                 }
-                // The swipe is a gesture only; accessibility services get it as an action.
                 .then(
                     if (track.removable) {
                         Modifier.semantics {
@@ -425,15 +362,8 @@ private fun TrackRow(
     }
 }
 
-/**
- * An upcoming row that leaves the queue when swiped toward the start, over a delete background.
- * End to start only: the other way has no meaning here, and a stray rightward drag must not
- * remove a track.
- */
 @Composable
 private fun SwipeToRemove(videoId: String, onRemove: () -> Unit, content: @Composable () -> Unit) {
-    // Rows are keyed by position, so after a removal this slot shows the next track, which must
-    // start settled instead of inheriting the dismissed offset.
     key(videoId) {
         val state = rememberSwipeToDismissBoxState()
         SwipeToDismissBox(
@@ -462,13 +392,12 @@ private fun RemoveBackground() {
     ) {
         Icon(
             Icons.Default.Delete,
-            contentDescription = null, // decorative; the row's "Remove" action carries the meaning
+            contentDescription = null,
             tint = MaterialTheme.colorScheme.onErrorContainer,
         )
     }
 }
 
-/** The row's own buttons: the heart, share, then (collections only) the song menu. */
 @Composable
 private fun RowButtons(
     video: YtVideo,
@@ -495,14 +424,10 @@ private fun RowButtons(
                 modifier = Modifier.size(Dimens.LIST_ICON_SIZE),
             )
         }
-        // Hidden, not disabled, in a radio (CONTRIBUTING §3): its one item, Go to radio, would
-        // only replace a radio with another.
         if (isCollection) RowMenu(video, actions)
     }
 }
 
-/** Only the song actions: Remove is the swipe and Play next is the row tap's job (it plays now),
- *  which leaves Go to radio. */
 @Composable
 private fun RowMenu(video: YtVideo, actions: RowActions) {
     var open by remember { mutableStateOf(false) }
@@ -523,9 +448,6 @@ private fun RowMenu(video: YtVideo, actions: RowActions) {
     }
 }
 
-/** Placeholder note under the Coil image, so a slow load shows the note, not a flicker (the
- *  Library row's pattern). A played row's art fades; the current row's carries the playing
- *  badge. */
 @Composable
 private fun Thumbnail(url: String?, state: RowState) {
     Box(
@@ -545,7 +467,7 @@ private fun Thumbnail(url: String?, state: RowState) {
         url?.let {
             AsyncImage(
                 model = it,
-                contentDescription = null, // decorative; the title text carries the meaning
+                contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
             )
@@ -554,9 +476,6 @@ private fun Thumbnail(url: String?, state: RowState) {
     }
 }
 
-/** The GraphicEq mark on a filled primary circle: the current row's art, or the playing
- *  chapter's number slot. Decorative: the row's "Now playing" state description carries the
- *  meaning, so a screen reader does not say it twice. */
 @Composable
 private fun PlayingBadge() {
     Box(

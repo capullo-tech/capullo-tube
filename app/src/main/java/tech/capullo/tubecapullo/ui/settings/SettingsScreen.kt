@@ -82,7 +82,6 @@ fun SettingsScreen(
     val openYouTubeLinks by viewModel.openYouTubeLinks.collectAsStateWithLifecycle()
     val askForSharedLinks by viewModel.askForSharedLinks.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    // Saveable: an open dialog stays open across rotation (CONTRIBUTING §3).
     var showChartsDialog by rememberSaveable { mutableStateOf(false) }
     var showLikeModeDialog by rememberSaveable { mutableStateOf(false) }
 
@@ -201,7 +200,6 @@ fun SettingsScreen(
                     onValueChange = viewModel::setOpenYouTubeLinks,
                 ),
             )
-            // Hidden, not disabled, while the app takes no links: there is nothing to choose.
             if (openYouTubeLinks) {
                 ListItem(
                     leadingContent = {
@@ -234,7 +232,6 @@ fun SettingsScreen(
                     onValueChange = viewModel::setAskForSharedLinks,
                 ),
             )
-            // Hidden, not disabled, in release builds (CONTRIBUTING §3).
             if (viewModel.isDebuggable) {
                 HorizontalDivider()
                 SectionHeader("Developer")
@@ -283,7 +280,6 @@ private val LikeMode.label: String
         LikeMode.SWITCH_NOW -> "Switch now"
     }
 
-/** [songsPerLike]: Songs added per like, the count Blend in puts after the liked song. */
 private fun LikeMode.explanation(songsPerLike: Int): String = when (this) {
     LikeMode.BLEND -> if (songsPerLike == 0) {
         "Songs added per like is 0, so the like is only saved"
@@ -294,7 +290,6 @@ private fun LikeMode.explanation(songsPerLike: Int): String = when (this) {
     LikeMode.SWITCH_NOW -> "Songs like it play after this song; a list becomes a radio"
 }
 
-/** A count setting with a -/+ stepper that moves by [step]; the buttons stop at 0 and [max]. */
 @Composable
 private fun StepperItem(
     icon: ImageVector,
@@ -335,11 +330,6 @@ private fun SectionHeader(title: String) {
     )
 }
 
-/**
- * Android's "Open by default" page for this app, where the user picks which supported links it
- * opens and settles a tie with YouTube. The page exists from API 31; before that, and on builds
- * that leave it out, App info is the nearest screen and links to the same choice.
- */
 private fun openByDefaultSettings(context: Context) {
     val packageUri = Uri.fromParts("package", context.packageName, null)
     val appInfo = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, packageUri)
@@ -355,12 +345,6 @@ private fun openByDefaultSettings(context: Context) {
     }
 }
 
-/**
- * Multi-select of the Trending charts: device default first, then every supported region by
- * name. Rows appear on Home in pick order, which each checked row shows. The device default is
- * the empty pick: checking it clears the countries, and checking a country leaves it. Picks past
- * [AppSettings.MAX_TRENDING_ROWS] are refused with a message, not dropped silently.
- */
 @Composable
 private fun ChartsDialog(
     selected: List<String>,
@@ -369,10 +353,8 @@ private fun ChartsDialog(
     onConfirm: (List<String>) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    // Saveable: a half-made pick survives rotation (CONTRIBUTING §3).
     var picked by rememberSaveable { mutableStateOf(selected) }
     var limitHit by rememberSaveable { mutableStateOf(false) }
-    // Open scrolled to the first chart; index 0 is the device-default row.
     val firstIndex = regions.indexOfFirst { it.code == selected.firstOrNull() } + 1
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = firstIndex)
     AlertDialog(
@@ -424,7 +406,6 @@ private fun ChartsDialog(
     )
 }
 
-/** A checkbox row; a checked country also shows its [rank], its row's place on Home. */
 @Composable
 private fun ChartRow(label: String, rank: Int?, checked: Boolean, onToggle: () -> Unit) {
     Row(
@@ -434,7 +415,6 @@ private fun ChartRow(label: String, rank: Int?, checked: Boolean, onToggle: () -
             .toggleable(value = checked, role = Role.Checkbox, onValueChange = { onToggle() })
             .padding(vertical = 4.dp),
     ) {
-        // Null onCheckedChange: the whole row is the toggle, so the box is not a second target.
         Checkbox(checked = checked, onCheckedChange = null)
         Text(
             label,
@@ -453,11 +433,6 @@ private fun ChartRow(label: String, rank: Int?, checked: Boolean, onToggle: () -
     }
 }
 
-/**
- * A single-choice setting as radio buttons: a pick applies at once and closes the dialog; Cancel
- * or a tap outside keeps the current value. [explanation] gives a choice a line under its
- * [label].
- */
 @Composable
 private fun <T> ChoiceDialog(
     title: String,
@@ -487,7 +462,6 @@ private fun <T> ChoiceDialog(
     )
 }
 
-/** A radio-button row, with an optional [explanation] line under the [label]. */
 @Composable
 private fun ChoiceRow(
     label: String,
@@ -502,7 +476,6 @@ private fun ChoiceRow(
             .selectable(selected = selected, role = Role.RadioButton, onClick = onSelect)
             .padding(vertical = 8.dp),
     ) {
-        // Null onClick: the whole row is the choice, so the button is not a second target.
         RadioButton(selected = selected, onClick = null)
         Column(
             Modifier

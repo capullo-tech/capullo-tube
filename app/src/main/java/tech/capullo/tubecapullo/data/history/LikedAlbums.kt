@@ -10,19 +10,11 @@ import tech.capullo.tubecapullo.data.youtube.YtVideo
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Persisted album likes ([LikedAlbumEntity]): Library > Albums, the album heart and Listen again.
- * The same contract as [LikedTracks]: [set] is fire-and-forget and swallows failures (an album
- * heart must never break playback), reads collapse to empty, and the backup calls ([entries],
- * [likedIds], [importAll]) throw so the user hears why. Newest like first everywhere.
- */
 @Singleton
 class LikedAlbums @Inject constructor(
     private val dao: LikedAlbumDao,
     private val scope: CoroutineScope,
 ) {
-
-    /** Records [album] as liked, or removes it when [liked] is false. */
     fun set(album: YtVideo, liked: Boolean) {
         scope.launch {
             runCatching {
@@ -35,8 +27,6 @@ class LikedAlbums @Inject constructor(
         .onFailure { Log.w(TAG, "liked-album read failed", it) }
         .getOrDefault(emptyList())
 
-    /** Liked albums with their like dates, re-emitted on every change; a read failure emits one
-     *  empty list and ends the flow. */
     fun observeEntries(): Flow<List<LikedEntry>> = dao.observe()
         .map { rows -> rows.map { LikedEntry(it.toYtVideo(), it.likedAtEpochMs) } }
         .catch {
@@ -44,14 +34,10 @@ class LikedAlbums @Inject constructor(
             emit(emptyList())
         }
 
-    /** For a backup export; throws on a read failure. */
     suspend fun entries(): List<LikedEntry> = dao.all().map { LikedEntry(it.toYtVideo(), it.likedAtEpochMs) }
 
-    /** For an import's "already liked" count; throws on a read failure. */
     suspend fun likedIds(): Set<String> = dao.ids().toSet()
 
-    /** Imported albums with their like dates, merge only (an existing id keeps its row). Returns
-     *  the albums inserted, in [entries] order. Throws on a write failure. */
     suspend fun importAll(entries: List<LikedEntry>): List<YtVideo> {
         if (entries.isEmpty()) return emptyList()
         val rowIds = dao.insertAllIgnoringExisting(entries.map { it.video.toEntity(it.likedAtEpochMs) })

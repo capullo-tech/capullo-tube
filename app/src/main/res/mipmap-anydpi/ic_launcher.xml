@@ -1,6 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Pre-26 launcher icon: the adaptive-icon XML in mipmap-anydpi-v26 only resolves on
-     API 26+, so API 23-25 (minSdk 23) get the same art as a plain layer-list. -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:drawable="@color/ic_launcher_background" />
     <item android:drawable="@drawable/ic_launcher_foreground" />

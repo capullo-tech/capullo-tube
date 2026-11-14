@@ -9,11 +9,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 
-/**
- * The heart, on the Player and on each Up next row: a tap likes or unlikes. [likeLabel] names
- * the like while the song is not liked yet; once liked, the label is "Unlike". [modifier] sizes
- * the button (a compact row passes a slot below 48 dp), [iconModifier] the heart glyph.
- */
 @Composable
 fun LikeButton(
     isLiked: Boolean,

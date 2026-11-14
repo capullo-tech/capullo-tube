@@ -3,9 +3,7 @@ package tech.capullo.tubecapullo.data.settings
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/** The stored Trending chart list, including the move from the single-region pref. */
 class ChartRegionsPrefTest {
-
     @Test
     fun `a single region from an earlier build becomes a one-chart list`() {
         assertEquals(listOf("NI"), decodeChartRegions(stored = null, legacy = "NI"))
