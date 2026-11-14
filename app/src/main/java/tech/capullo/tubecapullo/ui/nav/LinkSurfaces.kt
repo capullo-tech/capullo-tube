@@ -38,11 +38,6 @@ import tech.capullo.tubecapullo.links.LinkPick
 import tech.capullo.tubecapullo.links.LinksViewModel
 import tech.capullo.tubecapullo.util.TitleCleaner
 
-/**
- * Runs [links]' one-shot effects (navigation, snackbars, toasts) and shows its ask dialog. Hosted
- * by TubeApp, so a message lands on whichever screen is current; a cold start from a share
- * still gets it, because the effects wait in the ViewModel's channel until this collects.
- */
 @Composable
 internal fun LinkEffects(
     links: LinksViewModel,
@@ -54,10 +49,7 @@ internal fun LinkEffects(
         links.effects.collect { effect ->
             when (effect) {
                 is LinkEffect.Open -> navigator.open(effect.route)
-                // Launched: showSnackbar suspends until the snackbar goes, and the next effect
-                // (a navigation) must not wait for that.
                 is LinkEffect.Snackbar -> launch {
-                    // A newer message replaces the one showing rather than queueing behind it.
                     snackbarHostState.currentSnackbarData?.dismiss()
                     snackbarHostState.showSnackbar(effect.text)
                 }
@@ -70,14 +62,8 @@ internal fun LinkEffects(
     choice?.let { LinkChoiceDialog(it, onPick = links::choose) }
 }
 
-/**
- * Shown while an incoming link's video loads (~1 s): without it a share looks ignored
- * (CONTRIBUTING §4). Snackbar-shaped, at the snackbar's place, so the result message that follows
- * takes over the same spot.
- */
 @Composable
 internal fun LinkProgress() {
-    // 12 dp: the margin SnackbarHost's own snackbars get, so the two line up.
     Snackbar(Modifier.padding(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             CircularProgressIndicator(
@@ -90,15 +76,9 @@ internal fun LinkProgress() {
     }
 }
 
-/**
- * Settings > "Ask what to do with shared links": the choices for one shared or opened video.
- * Play next is absent when nothing plays (there is no queue to pin it into), not disabled
- * (CONTRIBUTING §3). Dismissing the dialog is Cancel.
- */
 @Composable
 internal fun LinkChoiceDialog(choice: LinkChoice, onPick: (LinkPick) -> Unit) {
     val video = choice.video
-    // Display only: the raw title stays the record everywhere else.
     val title = remember(video.title, video.uploader) {
         TitleCleaner.clean(video.title, video.uploader)
     }
@@ -139,7 +119,6 @@ private fun PickRow(icon: ImageVector, label: String, onClick: () -> Unit) {
             .clickable(role = Role.Button, onClick = onClick)
             .padding(vertical = 12.dp),
     ) {
-        // The label names the action; the icon would only repeat it to a screen reader.
         Icon(icon, contentDescription = null)
         Text(
             label,

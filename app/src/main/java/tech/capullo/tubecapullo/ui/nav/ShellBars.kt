@@ -43,13 +43,6 @@ import tech.capullo.tubecapullo.ui.player.rememberLikeChipState
 import tech.capullo.tubecapullo.ui.theme.Dimens
 import tech.capullo.tubecapullo.util.TitleCleaner
 
-/** The now-playing mini-bar: the track's art, title and channel, then like, play/pause and next
- *  packed at the end with no spacing, so the title and channel lines get every dp the art and
- *  buttons leave (owner requests 2026-11-11; sizes in [Dimens], MINI_BAR_*). No extra
- *  minimumInteractiveComponentSize: 48 dp targets do not fit side by side in the bar's slots.
- *  Tap opens the Player; the buttons act in place. After a like, the chip ([likeEffects]) says
- *  just above the bar what it did to the queue; when a list or album ends ([rollOvers]), it says
- *  the station goes on as a radio. */
 @Composable
 internal fun NowPlayingBar(
     video: YtVideo,
@@ -63,7 +56,6 @@ internal fun NowPlayingBar(
     onOpen: () -> Unit,
 ) {
     val likeChip = rememberLikeChipState(likeEffects, rollOvers)
-    // Display only: the raw title stays the record everywhere else.
     val title = remember(video.title, video.uploader) {
         TitleCleaner.clean(video.title, video.uploader)
     }
@@ -74,13 +66,10 @@ internal fun NowPlayingBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(Dimens.MINI_BAR_HEIGHT)
-                // No end padding: the last button's own inset (11 dp) puts its glyph closest to
-                // the art's 8 dp at the start.
                 .padding(start = Dimens.MINI_BAR_PADDING),
         ) {
             BarArt(video.thumbnailUrl)
             Spacer(Modifier.width(Dimens.MINI_BAR_ART_TEXT_GAP))
-            // Long names scroll instead of ellipsizing, the Player's way.
             Column(Modifier.weight(1f)) {
                 Text(
                     title,
@@ -113,8 +102,6 @@ internal fun NowPlayingBar(
                     modifier = Modifier.size(Dimens.MINI_BAR_ICON_SIZE),
                 )
             }
-            // The ring replaces play/pause while a track resolves, in the same slot, so the text
-            // beside it does not reflow.
             Box(Modifier.size(Dimens.MINI_BAR_BUTTON_SIZE), contentAlignment = Alignment.Center) {
                 if (state.isBuffering) {
                     CircularProgressIndicator(Modifier.size(Dimens.MINI_BAR_SPINNER_SIZE))
@@ -142,8 +129,6 @@ internal fun NowPlayingBar(
     }
 }
 
-/** The thumbnail over a tonal MusicNote placeholder, so a slow load shows the note, not a
- *  flicker (the Home cards' pattern). */
 @Composable
 private fun BarArt(url: String?) {
     Box(
@@ -161,7 +146,7 @@ private fun BarArt(url: String?) {
         url?.let {
             AsyncImage(
                 model = it,
-                contentDescription = null, // decorative; the title text carries the meaning
+                contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
             )

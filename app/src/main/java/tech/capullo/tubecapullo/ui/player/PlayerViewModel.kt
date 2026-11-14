@@ -26,10 +26,6 @@ import tech.capullo.tubecapullo.station.StationEngine
 import tech.capullo.tubecapullo.ui.upnext.UpNextText
 import javax.inject.Inject
 
-/**
- * Full-screen player: a thin pass-through to the coordinator and station singletons. Snapcast is
- * read-only here (the multiroom icon's connected count); the controls live in MultiroomSheet.
- */
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class PlayerViewModel @Inject constructor(
@@ -38,22 +34,16 @@ class PlayerViewModel @Inject constructor(
     private val snapcastManager: SnapcastManager,
     private val extractor: YouTubeExtractorClient,
 ) : ViewModel() {
-
     val playerState = player.state
     val position = player.position
     val likedIds = stationEngine.likedIds
 
-    /** Liked album ids: the heart in album mode. */
     val likedAlbumIds = stationEngine.likedAlbumIds
 
-    /** The station: the top bar's source, the shuffle state, a collection's repeat state and an
-     *  album's chapters. */
     val station = stationEngine.state
 
-    /** What each like did to the queue, for the chip over the art. */
     val likeEffects = stationEngine.likeEffects
 
-    /** A list or album ended and the station goes on as a radio, for the same chip. */
     val rollOvers = stationEngine.rollOvers
 
     val snapcastState = snapcastManager.state
@@ -61,7 +51,6 @@ class PlayerViewModel @Inject constructor(
 
     private val http = OkHttpClient()
 
-    /** Cover bytes for the playing video (its YouTube thumbnail); null while loading or on failure. */
     val albumArt: StateFlow<ByteArray?> = player.state
         .map { it.video?.thumbnailUrl }
         .distinctUntilChanged()
@@ -79,13 +68,10 @@ class PlayerViewModel @Inject constructor(
     fun previous() = player.previous()
     fun seekTo(positionMs: Long) = player.seekTo(positionMs)
 
-    /** The heart: like/unlike the playing track; in album mode, save or remove the album. */
     fun toggleLike() {
         playerState.value.video?.let(stationEngine::toggleHeart)
     }
 
-    /** The playing track's channel as a collection: its uploads, newest first. A track read back
-     *  from Room carries no channel URL, so one metadata fetch finds it first. */
     fun startChannel(video: YtVideo) {
         val uploader = video.uploader ?: return
         viewModelScope.launch {
@@ -105,8 +91,6 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    /** The song title's "Go to radio" (hidden inside a radio): a song radio
-     *  from the playing track replaces the list. The engine logs the start. */
     fun startRadio() {
         playerState.value.video?.let { player.start(PlaySource.SongRadio(it)) }
     }

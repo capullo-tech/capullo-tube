@@ -3,10 +3,6 @@ package tech.capullo.tubecapullo.data.history
 import androidx.room.Database
 import androidx.room.RoomDatabase
 
-/** v2: + liked_track (M-C). v3: + play_event (item 13, fatigue). v4: - play_event (the radio no
- *  longer reads history). v5: + liked_album, + station_snapshot (Home v2: album likes, Continue
- *  and Previous across restarts). Each migration's CREATE TABLE matches the exported schema JSON
- *  so Room's runtime table check passes. */
 @Database(
     entities = [
         PlayedTrackEntity::class,
@@ -27,8 +23,6 @@ abstract class TubeCapulloDatabase : RoomDatabase() {
     abstract fun stationSnapshotDao(): StationSnapshotDao
 
     companion object {
-        /** CREATE TABLE copied verbatim from the exported 2.json (Room validates table info at
-         *  open; a hand-typed variant that drifts crashes the app on first DB use). */
         val MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                 db.execSQL(
@@ -40,11 +34,6 @@ abstract class TubeCapulloDatabase : RoomDatabase() {
             }
         }
 
-        /**
-         * Adds play_event only (the v3 schema, 3.json); played_track and liked_track rows are
-         * untouched. A v2 install upgrades through this and then [MIGRATION_3_4], which drops the
-         * table again: Room needs an unbroken migration path.
-         */
         val MIGRATION_2_3 = object : androidx.room.migration.Migration(2, 3) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                 db.execSQL(
@@ -56,21 +45,12 @@ abstract class TubeCapulloDatabase : RoomDatabase() {
             }
         }
 
-        /**
-         * Drops play_event: its only reader was the radio's fatigue term, gone with the scored
-         * radio. played_track (History, Listen again) and liked_track rows are untouched.
-         */
         val MIGRATION_3_4 = object : androidx.room.migration.Migration(3, 4) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                 db.execSQL("DROP TABLE IF EXISTS `play_event`")
             }
         }
 
-        /**
-         * Adds liked_album and station_snapshot (the v5 schema, 5.json, CREATE TABLE copied
-         * verbatim); played_track and liked_track rows are untouched. MigrationTest runs it on
-         * a real SQLite.
-         */
         val MIGRATION_4_5 = object : androidx.room.migration.Migration(4, 5) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                 db.execSQL(

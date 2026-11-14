@@ -12,7 +12,6 @@ import tech.capullo.tubecapullo.data.history.LikedEntry
 import tech.capullo.tubecapullo.data.youtube.YtVideo
 
 class LikedBackupFormatTest {
-
     private val a = "dQw4w9WgXcQ"
     private val b = "9bZkp7q19f0"
     private val c = "kJQP7kiw5Fk"
@@ -150,7 +149,6 @@ class LikedBackupFormatTest {
 
         val plan = LikedBackupFormat.merge(incoming, existingIds = setOf(b))
 
-        // b is already liked: not re-inserted, so its own likedAt stays. The first a wins.
         assertEquals(listOf(entry(a, 100), entry(c, 300)), plan.toInsert)
         assertEquals(1, plan.alreadyLiked)
     }

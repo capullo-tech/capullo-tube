@@ -17,10 +17,7 @@ import tech.capullo.tubecapullo.station.StationSnapshot
 import tech.capullo.tubecapullo.station.Why
 import kotlin.random.Random
 
-/** Home's section order rule, the Trending banner rule, and the Continue, Listen again and "More
- *  like" row rules. */
 class HomeSectionsTest {
-
     private fun video(id: String, seconds: Long = 200) = YtVideo(id, "Title $id", "Uploader", seconds, null)
 
     private fun videos(vararg ids: String) = ids.map { video(it) }
@@ -142,11 +139,9 @@ class HomeSectionsTest {
         assertEquals(listOf("trending-NO"), keys(sections))
     }
 
-    // --- Continue ---
-
     @Test
     fun `continue leaves out the playing station and keeps the newest up to the setting`() {
-        val stored = (5L downTo 1L).map { station(it) } // newest first, as Room gives them
+        val stored = (5L downTo 1L).map { station(it) }
 
         val cards = continueCards(stored, playingStationId = 5, max = 3)
 
@@ -169,9 +164,7 @@ class HomeSectionsTest {
         assertEquals("0:05 in", continueHint(station(4, left = unknown, positionMs = 5_000)))
     }
 
-    // --- Listen again ---
-
-    private val now = 1_000L * 24 * 60 * 60 * 1000 // day 1000
+    private val now = 1_000L * 24 * 60 * 60 * 1000
     private val day = 24 * 60 * 60 * 1000L
 
     private fun liked(id: String, daysAgo: Long, seconds: Long = 200) = LikedEntry(video(id, seconds), now - daysAgo * day)
@@ -257,8 +250,6 @@ class HomeSectionsTest {
 
         assertEquals(setOf("alb", "left2"), continueIds(cards))
     }
-
-    // --- More like ---
 
     private val seed = video("seed")
 

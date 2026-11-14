@@ -37,15 +37,8 @@ import tech.capullo.tubecapullo.data.youtube.YtVideo
 import tech.capullo.tubecapullo.data.youtube.YtVideoList
 import kotlin.random.Random
 
-/**
- * Home v2 in the station (PLAN "Home v2 and albums"; docs/probes/home-v2-criteria.md sections 1
- * and 4): stations stored in Room and brought back exactly (Continue) or from before an app
- * restart (Previous), chapter-driven Next and Previous in an album, the album's roll-over into a
- * radio and the roll chip, and the album heart.
- */
 @OptIn(ExperimentalCoroutinesApi::class)
 class StationHomeV2Test {
-
     private fun video(id: String, seconds: Long = 240) = YtVideo(
         videoId = id.padEnd(11, 'x').take(11),
         title = "t-$id",
@@ -68,7 +61,6 @@ class StationHomeV2Test {
     private val likedTracks = mockk<LikedTracks>(relaxed = true)
     private val likedAlbums = mockk<LikedAlbums>(relaxed = true)
 
-    /** Room's station_snapshot table, through the real codec: what a restart reads back. */
     private val rows = HashMap<Long, Pair<Long, String>>()
     private val store = mockk<StationSnapshots>().also { store ->
         coEvery { store.save(any(), any()) } answers {
@@ -114,11 +106,10 @@ class StationHomeV2Test {
             likedAlbums,
             store,
         )
-        advanceUntilIdle() // likes, albums and stored stations hydrate
+        advanceUntilIdle()
         return engine
     }
 
-    /** A station change: [source] replaces the station and its first track plays. */
     private fun TestScope.change(engine: StationEngine, source: PlaySource) {
         engine.start(source)
         advanceUntilIdle()
@@ -126,7 +117,6 @@ class StationHomeV2Test {
         advanceUntilIdle()
     }
 
-    /** [count] Nexts from the playing track, as the loop makes them. */
     private fun TestScope.next(engine: StationEngine, count: Int): List<String> {
         val played = mutableListOf<String>()
         repeat(count) {
@@ -152,13 +142,11 @@ class StationHomeV2Test {
 
     @After fun tearDown() = unmockkStatic(Log::class)
 
-    // --- Snapshots: Continue and Previous ---
-
     @Test
     fun `a left list resumes exactly - song, playhead, queue, list place, shuffle and repeat`() = runTest(StandardTestDispatcher()) {
         val engine = engine()
         change(engine, playlist)
-        engine.cycleRepeat() // ALL
+        engine.cycleRepeat()
         engine.setShuffle(true)
         next(engine, 2)
         val left = engine.state.value
@@ -166,7 +154,7 @@ class StationHomeV2Test {
         engine.onProgress(left.current!!.videoId, 83_000, 240_000)
         val rest = engine.queuedIds()
 
-        change(engine, PlaySource.SongRadio(video("ELSEWHERE"))) // a station change saves it
+        change(engine, PlaySource.SongRadio(video("ELSEWHERE")))
         engine.resume(listId)
         advanceUntilIdle()
 
@@ -180,7 +168,6 @@ class StationHomeV2Test {
         engine.onQueueAdvanced(0)
         assertEquals("the playhead it was left at", 83_000L, engine.startPositionFor(0))
         assertNull("once", engine.startPositionFor(0))
-        // The list goes on from its place, in its round.
         assertEquals(rest, next(engine, rest.size))
     }
 
@@ -191,9 +178,9 @@ class StationHomeV2Test {
         next(before, 3)
         val left = before.state.value
         before.onProgress(left.current!!.videoId, StationEngine.SNAPSHOT_SAVE_MS + 5_000, 240_000)
-        advanceUntilIdle() // the periodic write lands
+        advanceUntilIdle()
 
-        val after = engine() // the process died; a new engine reads Room
+        val after = engine()
         after.resume(left.stationId)
         advanceUntilIdle()
         after.onQueueAdvanced(0)
@@ -225,16 +212,12 @@ class StationHomeV2Test {
         assertEquals(PlaySource.SongRadio(video("FIRST")), restoreNext(after))
     }
 
-    /** Previous on a station's first song once more; the source it restores. */
     private fun TestScope.restoreNext(engine: StationEngine): PlaySource? {
         val at = engine.previous(positionMs = 0) ?: return null
         engine.onQueueAdvanced(at)
         advanceUntilIdle()
-        // The restored station's own history comes first: walk back to its first song.
         return if (at == 0) engine.state.value.source else restoreNext(engine)
     }
-
-    // --- Albums ---
 
     @Test
     fun `next and previous move through the chapters, with the 3 s rule inside a chapter`() = runTest(StandardTestDispatcher()) {
@@ -285,7 +268,7 @@ class StationHomeV2Test {
         runCurrent()
         assertTrue(chips.isEmpty())
 
-        next(engine, 1) // the album ended
+        next(engine, 1)
 
         val state = engine.state.value
         assertEquals(PlaySource.SongRadio(albumVideo), state.source)
@@ -301,7 +284,7 @@ class StationHomeV2Test {
         val chips = mutableListOf<RollOver>()
         backgroundScope.launch { engine.rollOvers.toList(chips) }
         change(engine, playlist)
-        next(engine, list.size - 1) // the last list track plays: the title is Radio already
+        next(engine, list.size - 1)
         runCurrent()
         assertTrue(engine.state.value.source is PlaySource.SongRadio)
         assertTrue("not ended yet", chips.isEmpty())

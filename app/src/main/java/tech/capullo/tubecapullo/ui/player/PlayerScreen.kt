@@ -82,22 +82,8 @@ import tech.capullo.tubecapullo.ui.upnext.UpNextText
 import tech.capullo.tubecapullo.util.ShareLink
 import kotlin.math.abs
 
-/**
- * Swipe distance on the art that counts as a gesture (left = skip, right = restart, up = Up
- * next). Carried over from telecloud's art gestures, chosen by eye there (GUESS, not measured):
- * shorter and a tap's jitter or a scroll attempt fires it; longer and a short flick does nothing.
- */
 private val ART_SWIPE_THRESHOLD = 90.dp
 
-/**
- * Full-screen now-playing, ported from telecloud-radio's PortraitPlayer: square art (the YouTube
- * thumbnail) taking whatever space the fixed info + transport leave, slim seek bar, transport row,
- * and a secondary row: Multiroom, like, share and Queue spread evenly. The top
- * bar names the station's source. After a like, a chip over the art says what it did
- * to the queue ([LikeChip]). The Telegram-only parts (reactions, download, stats, sleep timer,
- * album-art tinting) are not ported - telecloud's PlayerScreen is the reference when any of them
- * comes back.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlayerScreen(
@@ -111,7 +97,6 @@ fun PlayerScreen(
     val likedIds by viewModel.likedIds.collectAsStateWithLifecycle()
     val likedAlbumIds by viewModel.likedAlbumIds.collectAsStateWithLifecycle()
     val albumArt by viewModel.albumArt.collectAsStateWithLifecycle()
-    // Saveable: an open sheet survives rotation (CONTRIBUTING §3).
     var upNextOpen by rememberSaveable { mutableStateOf(false) }
     val likeChip = rememberLikeChipState(viewModel.likeEffects, viewModel.rollOvers)
 
@@ -157,20 +142,12 @@ fun PlayerScreen(
     }
 }
 
-/**
- * The source in a bold word plus its name ("**Radio** · Song", "**Playlist** · Name"). Empty
- * before any station starts. The source word stays put; only a name too long for the bar
- * scrolls, so "Radio", "Playlist" or "Channel" is always readable at a glance.
- */
 @Composable
 private fun StationTitle(station: StationState) {
     val source = station.source ?: return
     val title = UpNextText.sourceTitle(source)
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(title.word, fontWeight = FontWeight.Bold, maxLines = 1)
-        // The separator is fixed with its own padding: inside the scrolling text the gap
-        // would be one space that slides away with the marquee.
-        // Normal weight: the source word alone is bold, the title role is SemiBold.
         Text(
             "·",
             fontWeight = FontWeight.Normal,
@@ -202,8 +179,6 @@ private fun PortraitPlayer(
     onOpenUpNext: () -> Unit,
 ) {
     val context = LocalContext.current
-    // Fit-to-space (telecloud): the art is the sole weight holder, a square capped at the width,
-    // so info + transport are never squeezed at any font scale.
     Column(
         modifier = Modifier.fillMaxSize().padding(bottom = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -222,14 +197,11 @@ private fun PortraitPlayer(
         TrackInfo(
             video,
             onChannelClick = { viewModel.startChannel(video) },
-            // Owner call 2026-11-11: the song's own actions hang off its title, and only the
-            // ones that change something show - no "Go to radio" inside a radio.
             onStartRadio = viewModel::startRadio.takeIf {
                 station.source !is PlaySource.SongRadio && station.source !is PlaySource.SearchRadio
             },
             modifier = Modifier.padding(horizontal = 28.dp),
         )
-        // Album mode with chapters: the chapter playing, under the album's title.
         station.album?.let { album ->
             album.chapters.getOrNull(album.index)?.let { chapter ->
                 Text(
@@ -249,13 +221,9 @@ private fun PortraitPlayer(
             verticalArrangement = Arrangement.spacedBy(14.dp),
             modifier = Modifier.padding(horizontal = 28.dp),
         ) {
-            // The player's duration once known, else the extractor's.
             val durationMs = state.durationMs.takeIf { it > 0 } ?: (video.durationSeconds * 1000)
             SeekBar(durationMs, viewModel.position, onSeek = viewModel::seekTo)
             ControlBar(state, station, viewModel)
-            // Four buttons spread evenly, the queue rightmost. Owner review 2026-11-12: grouping
-            // three at the end (Spotify's layout) left a wide hole after Multiroom that read as a
-            // missing button. Each button keeps its 48 dp target.
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly,
@@ -278,8 +246,6 @@ private fun PortraitPlayer(
     }
 }
 
-// Surround-sound glyph with the count of OTHER connected clients in its centre (telecloud /
-// QuantumCast). Lit whenever anything is connected, so it stays lit while solo.
 @Composable
 private fun MultiroomIcon(connectedOthers: Int, anyConnected: Boolean) {
     val tint = if (anyConnected) {
@@ -311,9 +277,7 @@ private fun MultiroomIcon(connectedOthers: Int, anyConnected: Boolean) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SeekBar(durationMs: Long, positionState: StateFlow<Long>, onSeek: (Long) -> Unit) {
-    // Collected at the leaf so the 500 ms tick only recomposes the seek bar.
     val position by positionState.collectAsStateWithLifecycle()
-    // Local drag value so the thumb doesn't fight the ticker.
     var dragValue by remember { mutableStateOf<Float?>(null) }
     val shownMs = (dragValue ?: position.coerceIn(0L, durationMs).toFloat()).toLong()
     Column(Modifier.fillMaxWidth()) {
@@ -360,23 +324,10 @@ private fun SeekBar(durationMs: Long, positionState: StateFlow<Long>, onSeek: (L
     }
 }
 
-/**
- * Gap between the five transport slots ([shuffle] [restart] [play/pause] [next] [repeat]).
- * Calculated, not tuned: the five took 48 + 56 + 68 + 56 + 48 = 276 dp, 284 dp while the
- * buffering ring shows, and a 360 dp phone (the OnePlus 3) leaves 304 dp inside the 28 dp side
- * padding, so 4 gaps of 4 dp fit; telecloud's 8 dp gaps would squeeze the repeat button there.
- * With [Dimens.PLAYER_ORDER_BUTTON_SIZE] (40 dp) shuffle and repeat the five take 260 dp, 268 dp
- * with the ring, so this gap still fits.
- */
 private val CONTROL_GAP = 4.dp
 
-/** Shuffle and repeat glyph size: telecloud's order and repeat icons, chosen by eye there (GUESS,
- *  not measured), smaller than the 40 dp transport glyphs so the toggles read as secondary. */
 private val ORDER_ICON_SIZE = 26.dp
 
-/** telecloud's transport: [shuffle] [restart] [play/pause] [next] [repeat]. A radio shuffles too
- *  (the rest of the current Mix) but has no end to repeat: its repeat slot stays empty, so
- *  play/pause keeps the centre whichever source plays. */
 @Composable
 private fun ControlBar(
     state: PlaybackCoordinator.State,
@@ -402,7 +353,6 @@ private fun ControlBar(
         IconButton(onClick = viewModel::previous, modifier = Modifier.size(56.dp)) {
             Icon(Icons.Default.SkipPrevious, contentDescription = "Previous", modifier = Modifier.size(40.dp))
         }
-        // Play/pause stays usable while the next track resolves; loading shows as a ring around it.
         Box(contentAlignment = Alignment.Center) {
             FilledIconButton(onClick = viewModel::togglePlayPause, modifier = Modifier.size(68.dp)) {
                 Icon(
@@ -450,9 +400,6 @@ private fun toggleTint(active: Boolean): Color = if (active) {
     MaterialTheme.colorScheme.onSurfaceVariant
 }
 
-// Tap = play/pause · swipe left = skip · swipe right = previous (telecloud's art gestures) ·
-// swipe up = the Queue sheet. The dominant axis of the whole drag decides, so a sloppy horizontal
-// swipe still skips and a sloppy upward one still opens the sheet.
 private fun Modifier.artGestures(viewModel: PlayerViewModel, onSwipeUp: () -> Unit): Modifier = this
     .pointerInput(Unit) { detectTapGestures(onTap = { viewModel.togglePlayPause() }) }
     .pointerInput(Unit) {
@@ -494,11 +441,6 @@ private fun AlbumArtDisplay(albumArt: ByteArray?, modifier: Modifier = Modifier)
     }
 }
 
-/**
- * Cleaned title (display only) and the uploader. A tap on the title opens the song's actions
- * ([onStartRadio]; null hides it, and then the title is plain text). A tap on the uploader plays
- * its channel.
- */
 @Composable
 private fun TrackInfo(
     video: YtVideo,
@@ -532,7 +474,7 @@ private fun TrackInfo(
             SongActionsMenu(
                 expanded = menuOpen,
                 onDismiss = { menuOpen = false },
-                onPlayNext = null, // the playing track itself
+                onPlayNext = null,
                 onGoToRadio = onStartRadio,
             )
         }

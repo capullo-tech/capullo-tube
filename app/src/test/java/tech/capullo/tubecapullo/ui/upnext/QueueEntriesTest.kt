@@ -11,14 +11,11 @@ import tech.capullo.tubecapullo.station.StationState
 import tech.capullo.tubecapullo.station.UpNextItem
 import tech.capullo.tubecapullo.station.Why
 
-/** The Queue sheet's one list: played, current, upcoming, and the row it opens on. */
 class QueueEntriesTest {
-
     private fun video(id: String) = YtVideo(id, "Song $id", "Artist", 213, null)
 
     private fun queued(id: String) = UpNextItem(video(id), Why(Provenance.MIX, "s", "Seed"), pinned = false)
 
-    /** Each row as "<state> <video id or chapter number>", or "end" for the end line. */
     private fun rows(entries: List<QueueEntry>): List<String> = entries.map {
         when (it) {
             is TrackEntry -> "${it.state} ${it.video.videoId}"
@@ -41,13 +38,11 @@ class QueueEntriesTest {
             listOf("PLAYED a", "PLAYED b", "CURRENT c", "UPCOMING d", "UPCOMING e"),
             rows(entries),
         )
-        // Opens on the first upcoming row; the played and current rows sit above it.
         assertEquals(3, initialIndex(entries))
     }
 
     @Test
     fun `a track both played and upcoming gets a unique key in each place`() {
-        // A list on repeat: "a" played and queued again.
         val state = StationState(
             current = video("b"),
             earlier = listOf(video("a")),

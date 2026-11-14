@@ -38,13 +38,8 @@ import kotlinx.coroutines.launch
 import tech.capullo.tubecapullo.station.StationEngine
 import javax.inject.Inject
 
-/**
- * Refresh period of the live dump, ms. A debugging view, not a meter: once a second follows
- * track changes and refills without re-rendering a long text block every frame. Not measured.
- */
 private const val DEBUG_REFRESH_MS = 1_000L
 
-/** Polls [StationEngine.dump] while the screen is visible (WhileSubscribed with no grace). */
 @HiltViewModel
 class StationDebugViewModel @Inject constructor(
     private val engine: StationEngine,
@@ -59,7 +54,6 @@ class StationDebugViewModel @Inject constructor(
     private fun render(): String = StringBuilder().also { engine.dump(it) }.toString()
 }
 
-/** Settings > Developer > Station debug, and `--es dbg station`: the engine dump, live. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StationDebugScreen(onBack: () -> Unit, viewModel: StationDebugViewModel = hiltViewModel()) {

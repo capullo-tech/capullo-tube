@@ -10,7 +10,6 @@ import tech.capullo.audio.ui.SnapcastControlSheet
 import tech.capullo.tubecapullo.snapcast.SnapcastManager
 import javax.inject.Inject
 
-/** Snapcast listener controls behind the Multiroom sheet: a pass-through to [SnapcastManager]. */
 @HiltViewModel
 class MultiroomViewModel @Inject constructor(
     private val snapcastManager: SnapcastManager,
@@ -23,11 +22,6 @@ class MultiroomViewModel @Inject constructor(
     fun setClientLatency(clientId: String, latencyMs: Int) = snapcastManager.adjustClientLatency(clientId, latencyMs)
 }
 
-/**
- * The Multiroom sheet: the shared capullo-audio-ui SnapcastControlSheet (same sheet telecloud
- * uses), opened from the Player's multiroom icon. The sheet's own QR button shows the
- * web-player URL, its QR code and a Share action (ListenQrDialog at the pinned 92d1b63).
- */
 @Composable
 fun MultiroomSheet(onDismiss: () -> Unit, viewModel: MultiroomViewModel = hiltViewModel()) {
     val state by viewModel.snapcastState.collectAsStateWithLifecycle()

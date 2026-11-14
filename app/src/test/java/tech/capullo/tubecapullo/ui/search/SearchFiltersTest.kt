@@ -6,9 +6,7 @@ import org.junit.Test
 import tech.capullo.tubecapullo.data.youtube.CollectionKind
 import tech.capullo.tubecapullo.data.youtube.YtCollection
 
-/** What the search box fetches under each chip, and the collection rows' second line. */
 class SearchFiltersTest {
-
     @Test
     fun `search terms follow the chip`() {
         assertEquals(

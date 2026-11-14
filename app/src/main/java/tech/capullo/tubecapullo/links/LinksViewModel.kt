@@ -25,10 +25,8 @@ import tech.capullo.tubecapullo.ui.nav.Route
 import tech.capullo.tubecapullo.util.TitleCleaner
 import javax.inject.Inject
 
-/** The ask dialog's content: the resolved [video], and whether Play next is offered. */
 data class LinkChoice(val video: YtVideo, val canPlayNext: Boolean)
 
-/** A button in the ask dialog. [logName] is its `pick=` value in the `TubeLinks` log. */
 enum class LinkPick(val logName: String) {
     PLAY_NOW("play-now"),
     PLAY_NEXT("play-next"),
@@ -36,28 +34,14 @@ enum class LinkPick(val logName: String) {
     CANCEL("cancel"),
 }
 
-/** One-shot UI work for TubeApp: navigate, or tell the user something. */
 sealed interface LinkEffect {
     data class Open(val route: Route) : LinkEffect
 
-    /** On the current screen, above the shell. */
     data class Snackbar(val text: String) : LinkEffect
 
-    /** Short confirmations and refusals that need no screen of their own. */
     data class Toast(val text: String) : LinkEffect
 }
 
-/**
- * Incoming YouTube links (shares and tapped links), from intent to playback. MainActivity
- * forwards each link to [handle]; TubeApp shows [resolving], [choice] and [effects]. Activity
- * scoped (MainActivity's `by viewModels()`, TubeApp gets the same instance), so a link still
- * loading or a dialog still open survives rotation.
- *
- * The decision is [decideLinkAction] (pure, tested); this class only runs it: it loads the
- * video's metadata (~1 s, [resolving] meanwhile), then plays, queues or asks. Each link logs one
- * `TubeLinks incoming ...` line (`adb logcat -s TubeLinks`); what it does to the station logs
- * under `TubeStation` as usual.
- */
 @HiltViewModel
 class LinksViewModel @Inject constructor(
     private val extractor: YouTubeExtractorClient,
@@ -66,26 +50,20 @@ class LinksViewModel @Inject constructor(
     private val settings: AppSettings,
     private val playlistLinks: PlaylistLinkRequests,
 ) : ViewModel() {
-
     private val _resolving = MutableStateFlow(false)
 
-    /** True while a link's video metadata loads, so a share does not look ignored. */
     val resolving: StateFlow<Boolean> = _resolving.asStateFlow()
 
     private val _choice = MutableStateFlow<LinkChoice?>(null)
 
-    /** The ask dialog, when "Ask what to do with shared links" is on; null when closed. */
     val choice: StateFlow<LinkChoice?> = _choice.asStateFlow()
 
-    // Buffered: a cold start from a share handles its intent before TubeApp starts collecting.
     private val _effects = Channel<LinkEffect>(Channel.UNLIMITED)
     val effects: Flow<LinkEffect> = _effects.receiveAsFlow()
 
-    // Counts links, so a superseded load cannot clear the spinner of the load that replaced it.
     private var generation = 0
     private var resolveJob: Job? = null
 
-    /** [text] is the shared text or the tapped URL; null when the intent carried none. */
     fun handle(via: LinkVia, text: String?) {
         val target = IncomingLinks.find(text)
         val action = decideLinkAction(
@@ -102,7 +80,6 @@ class LinksViewModel @Inject constructor(
                 "action=${action.logName}$reason",
         )
 
-        // The newest link wins over one still loading or waiting in the dialog.
         generation++
         resolveJob?.cancel()
         _resolving.value = false
@@ -118,7 +95,6 @@ class LinksViewModel @Inject constructor(
         }
     }
 
-    /** The user's answer in the ask dialog. */
     fun choose(pick: LinkPick) {
         val choice = _choice.value ?: return
         _choice.value = null
@@ -155,13 +131,11 @@ class LinksViewModel @Inject constructor(
     }
 
     private fun playNow(video: YtVideo) {
-        player.start(PlaySource.SongRadio(video)) // the coordinator starts the service
+        player.start(PlaySource.SongRadio(video))
         _effects.trySend(LinkEffect.Open(Route.Player))
     }
 
     private fun playNext(video: YtVideo) {
-        // The station may have stopped while the link loaded or the dialog was open; the engine
-        // would then drop the pin, and "Plays next" would be a lie.
         if (player.state.value.video == null) {
             playNow(video)
             return
@@ -171,7 +145,6 @@ class LinksViewModel @Inject constructor(
         _effects.trySend(LinkEffect.Snackbar("Plays next: $title"))
     }
 
-    // toggleLike on a track already liked would UNLIKE it: say so instead.
     private fun like(video: YtVideo) {
         if (video.videoId in stationEngine.likedIds.value) {
             _effects.trySend(LinkEffect.Toast("Already in your likes"))
@@ -201,8 +174,6 @@ class LinksViewModel @Inject constructor(
             LinkTarget.OtherYouTube, LinkTarget.NotYouTube -> "none"
         }
 
-    // YouTubeError already carries listener-readable text (bot check, unavailable and why);
-    // anything else is a surprise, so say so rather than show an empty message.
     private fun Throwable.readable(): String = when (this) {
         is YouTubeError -> message ?: "YouTube request failed"
         else -> message ?: "Something went wrong"

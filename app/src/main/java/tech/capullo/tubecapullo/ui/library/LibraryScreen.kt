@@ -81,15 +81,6 @@ private enum class LibraryTab(val label: String) {
     HISTORY("History"),
 }
 
-/**
- * The Library tab (PLAN "Home v2 and albums"): Songs (the liked songs: Play, Shuffle, Radio;
- * unlike from the row), Albums (the liked albums; a tap plays one as an album, the heart removes
- * it) and History. A song row tap is the app-wide track tap (Go to radio: song radio + open the
- * player); a long-press opens the song's actions: Play next (only while something plays) and Go
- * to radio. A liked album in History plays as an album. Export and import carry songs and
- * albums. The shell owns the bottom navigation, and mini-bar, so this screen renders only its
- * top bar and content.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LibraryScreen(onOpenPlayer: () -> Unit, viewModel: LibraryViewModel = hiltViewModel()) {
@@ -102,9 +93,7 @@ fun LibraryScreen(onOpenPlayer: () -> Unit, viewModel: LibraryViewModel = hiltVi
     val backupMessage by viewModel.backupMessage.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
-    // Saveable: the selected tab survives rotation and process death (CONTRIBUTING §3).
     var selectedTab by rememberSaveable { mutableIntStateOf(LibraryTab.SONGS.ordinal) }
-    // One list state per tab, hoisted here so switching tabs keeps each tab's scroll position.
     val likedListState = rememberLazyListState()
     val albumsListState = rememberLazyListState()
     val historyListState = rememberLazyListState()
@@ -122,11 +111,9 @@ fun LibraryScreen(onOpenPlayer: () -> Unit, viewModel: LibraryViewModel = hiltVi
             viewModel.playSongRadio(video)
             onOpenPlayer()
         },
-        // Hidden while nothing plays: there is no station to queue into.
         playNext = playNext.takeIf { playingId != null },
     )
 
-    // Storage Access Framework: the user picks the file, so no storage permission is needed.
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument(BACKUP_MIME),
     ) { uri -> uri?.let(viewModel::exportLiked) }
@@ -134,7 +121,6 @@ fun LibraryScreen(onOpenPlayer: () -> Unit, viewModel: LibraryViewModel = hiltVi
         ActivityResultContracts.OpenDocument(),
     ) { uri -> uri?.let(viewModel::importLiked) }
 
-    // Shown once, then cleared; a result that lands while the Library is away waits for it.
     LaunchedEffect(backupMessage) {
         backupMessage?.let {
             snackbarHostState.showSnackbar(it.text, duration = SnackbarDuration.Long)
@@ -147,7 +133,6 @@ fun LibraryScreen(onOpenPlayer: () -> Unit, viewModel: LibraryViewModel = hiltVi
             TopAppBar(
                 title = { Text("Library") },
                 actions = {
-                    // Hidden, not disabled, while a backup runs or on History (§3).
                     if (selectedTab != LibraryTab.HISTORY.ordinal && backupProgress == null) {
                         LikedOverflowMenu(
                             canExport = !liked.isNullOrEmpty() || !albums.isNullOrEmpty(),
@@ -213,8 +198,6 @@ fun LibraryScreen(onOpenPlayer: () -> Unit, viewModel: LibraryViewModel = hiltVi
     }
 }
 
-/** The Songs and Albums tabs' overflow: export and import of the likes, songs and albums in one
- *  file. Export is hidden with no likes. */
 @Composable
 private fun LikedOverflowMenu(canExport: Boolean, onExport: () -> Unit, onImport: () -> Unit) {
     var expanded by remember { mutableStateOf(false) }
@@ -243,7 +226,6 @@ private fun LikedOverflowMenu(canExport: Boolean, onExport: () -> Unit, onImport
     }
 }
 
-/** What the running export or import is doing; a link import shows "Importing 12 of 40". */
 @Composable
 private fun BackupProgressBar(progress: BackupProgress) {
     Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
@@ -283,8 +265,6 @@ private fun LikedTab(
 ) {
     when {
         tracks == null -> Loading()
-        // No likes: the actions are hidden, not disabled (CONTRIBUTING §3), and the empty state
-        // says how to get out of it.
         tracks.isEmpty() -> EmptyState(
             "No liked songs yet. Tap the heart on the player or on the now-playing bar to " +
                 "like the song that is playing. Liked songs show up here.",
@@ -382,8 +362,6 @@ private fun HistoryTab(
     }
 }
 
-/** An album row: a tap plays it as an album; no song menu (Play next and Go to radio are song
- *  actions). */
 @Composable
 private fun AlbumRow(
     album: YtVideo,
@@ -432,17 +410,11 @@ private fun ActionButton(
         onClick = onClick,
         contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
     ) {
-        // Decorative: the button's text label carries the meaning.
         Icon(icon, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
         Text(label, modifier = Modifier.padding(start = ButtonDefaults.IconSpacing))
     }
 }
 
-/**
- * One track: art, cleaned title, uploader and duration. The playing track gets the GraphicEq
- * mark over its art, the same highlight the Home cards use. The MusicNote placeholder sits under
- * the Coil image so a slow load shows the placeholder, not a flicker (Home's MusicCard pattern).
- */
 @Composable
 private fun TrackRow(
     video: YtVideo,
@@ -481,7 +453,7 @@ private fun TrackRowContent(
                 video.thumbnailUrl?.let { url ->
                     AsyncImage(
                         model = url,
-                        contentDescription = null, // decorative; the title text carries the meaning
+                        contentDescription = null,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize(),
                     )
@@ -523,18 +495,10 @@ private fun TrackRowContent(
     )
 }
 
-/**
- * Alpha of the scrim behind the GraphicEq mark on the playing row's art, so the primary-tinted
- * mark stays legible on bright thumbnails. Chosen by eye, not measured on a device (GUESS). Too
- * low and the mark disappears on light art; too high and the art reads as missing.
- */
 private const val PLAYING_SCRIM = 0.4f
 
-/** The export's MIME type: the file is JSON, and storage apps file it by this. */
 private const val BACKUP_MIME = "application/json"
 
-/** Import picker filter. JSON for our export, text for link lists, and any type last because
- *  storage apps often label a .json or .txt file application/octet-stream. */
 private val IMPORT_MIMES = arrayOf(BACKUP_MIME, "text/plain", "*/*")
 
 @Composable

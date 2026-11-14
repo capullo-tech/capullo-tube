@@ -2,9 +2,7 @@ import com.android.build.api.artifact.SingleArtifact
 
 plugins {
     alias(libs.plugins.android.application)
-    // No kotlin.android: AGP 9.0+ ships built-in Kotlin (see RadioCapullo).
     alias(libs.plugins.kotlin.compose)
-    // Navigation3 back-stack keys are @Serializable so the stacks survive process death.
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
@@ -16,12 +14,6 @@ android {
 
     defaultConfig {
         applicationId = "tech.capullo.tubecapullo"
-        // minSdk 26 per CONTRIBUTING §1. NewPipeExtractor's java.nio.file use is native on
-        // API 26+, but its java.util.stream use is NOT all native: Collectors.toUnmodifiableList
-        // (JDK 10) only exists on Android from API 33, and the trending kiosk died with
-        // NoSuchMethodError on API 28-32 until desugaring was enabled (2026-11-11 smoke matrix,
-        // docs/probes/desugar-api28-32-criteria.md). URLDecoder.decode(String, Charset)
-        // (API 33) needs the _nio flavour too (OnePlus 3, Android 11, 2026-11-12).
         minSdk = 26
         targetSdk = 36
         versionCode = 2
@@ -29,10 +21,6 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
-    // CI signs with the preview keystore from RELEASE_* env, quantumcast's exact pattern
-    // (.github/workflows/Build.yml decodes RELEASE_KEYSTORE_BASE64 to $RUNNER_TEMP). Absent or
-    // empty env - local dev, fork PRs - leaves the release build UNSIGNED: green but
-    // un-installable. Release.yml runs `apksigner verify` before publishing to reject that case.
     val releaseKeystore = System.getenv("RELEASE_KEYSTORE_FILE")
         ?.let(::file)
         ?.takeIf { it.exists() && it.length() > 0L }
@@ -60,11 +48,8 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
-        // Backports the JDK 9-11 java.util.stream additions (e.g. Collectors.toUnmodifiableList)
-        // onto API < 33 for NewPipeExtractor; see the minSdk comment above.
         isCoreLibraryDesugaringEnabled = true
     }
-    // compilerOptions, NOT jvmToolchain(17): mirrors telecloud/RadioCapullo (Kotlin 2.3 / AGP 9.x DSL).
     kotlin {
         compilerOptions {
             jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
@@ -80,18 +65,11 @@ android {
             excludes += "/META-INF/NOTICE*"
         }
         jniLibs {
-            // The snapcast binaries (libsnapserver/libsnapclient/libsnapcontrol.so) are EXECUTED
-            // via ProcessBuilder from nativeLibraryDir, not System.loadLibrary'd. Without legacy
-            // packaging AGP leaves them inside the APK and exec fails with ENOENT (seen on-device
-            // 2026-08-18). Same setting telecloud carries for the same reason.
             useLegacyPackaging = true
         }
     }
 }
 
-// Self-identifying APK copies: tubecapullo-v<versionName>-vc<versionCode>-<variant>.apk under
-// build/outputs/apk-named/<variant>/, produced automatically after each assemble (CONTRIBUTING §1).
-// Uses only the public artifacts API (SingleArtifact.APK) so it survives AGP upgrades.
 androidComponents {
     onVariants { variant ->
         val vn = android.defaultConfig.versionName
@@ -108,22 +86,13 @@ androidComponents {
     }
 }
 
-// Room schema export: versioned JSON under app/schemas/ so future migrations are reviewable
-// (Jetispot's convention; telecloud runs Room without schema export).
 ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 dependencies {
-    // See compileOptions.isCoreLibraryDesugaringEnabled - stream and URLDecoder backports for
-    // API < 33 (the _nio flavour; see pins.versions.toml).
     coreLibraryDesugaring(pins.desugar.jdk.libs.nio)
-    // The snapcast delivery engine's transport classes + capullo-audio-contracts (re-exported as
-    // api). Pulled in at M1 on purpose: it validates the jitpack pin early and lands the contracts
-    // jar in the Gradle cache so the SPI signatures can be read before M4 (HANDOFF-bootstrap §7).
-    // Brings lib-snapcast-android (the native .so binaries) + ktor transitively.
     implementation(pins.capullo.audio)
-    // Shared capullo UI: the multiroom SnapcastControlSheet (same sheet telecloud-radio uses).
     implementation(pins.capullo.audio.ui)
 
     ksp(libs.hilt.android.compiler)
@@ -131,12 +100,9 @@ dependencies {
     implementation(libs.hilt.android)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
-    // Navigation3: tab back stacks + full-screen routes (ui/nav/). Same setup as RadioCapullo.
-    // kotlinx-serialization-core (for the @Serializable keys) arrives as navigation3-runtime's api.
     implementation(libs.androidx.navigation3.runtime)
     implementation(libs.androidx.navigation3.ui)
     implementation(libs.androidx.lifecycle.viewmodel.navigation3)
-    // The liked-songs backup file (data/backup/): versioned JSON export and import.
     implementation(libs.kotlinx.serialization.json)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
@@ -150,31 +116,23 @@ dependencies {
     implementation(pins.androidx.hilt.lifecycle.viewmodel.compose)
     implementation(libs.kotlinx.coroutines.android)
 
-    // Local playback (M2). The FIFO tee variant arrives with the snapcast wiring in M3.
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.session)
     implementation(libs.media3.common)
 
-    // YouTube source: search, playlist/mix expansion and audio-stream resolution (data/youtube/).
-    // Only the extractor library - the NewPipe *app* is not vendored. Brings Rhino transitively
-    // for the player-JS deobfuscation.
     implementation(pins.newpipe.extractor)
-    implementation(pins.okhttp) // backs the extractor's blocking Downloader SPI (see data/youtube/)
-    implementation(pins.coil.compose) // card and row art; Search song rows stay icon-only
+    implementation(pins.okhttp)
+    implementation(pins.coil.compose)
 
-    // Play history ("Listen again" on Home). Versions come from the shared catalog,
-    // same as telecloud's Room setup.
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
-    testImplementation(pins.mockk) // fakes YouTubeExtractorClient (concrete class) in station tests
-    testImplementation(pins.sqlite.jdbc) // MigrationTest: the Room migrations on a real SQLite
+    testImplementation(pins.mockk)
+    testImplementation(pins.sqlite.jdbc)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
-    // Device-level launch smoke for the emulator matrix (EmulatorSmoke.yml): UiAutomator because
-    // a Compose rule's idle sync never settles under home's infinite loading spinner.
     androidTestImplementation(pins.androidx.test.uiautomator)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
