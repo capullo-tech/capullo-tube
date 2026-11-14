@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.SystemClock
 import android.util.Log
+import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.ForwardingPlayer
@@ -66,6 +67,8 @@ import javax.inject.Inject
  * the silence watchdog (guards corrupt local files; a YouTube stream that fails surfaces as a
  * player error, which the ViewModel's retry already handles), and the listen-in player swap.
  */
+// androidx.annotation.OptIn, not kotlin.OptIn: lint's UnsafeOptInUsageError only honors the
+// androidx form for media3's @UnstableApi; kotlin.OptIn compiles but leaves lint errors.
 @OptIn(UnstableApi::class)
 @AndroidEntryPoint
 class PlaybackService : MediaSessionService() {
