@@ -26,6 +26,14 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
       - name: Check spotless
         run: ./gradlew spotlessCheck --no-configuration-cache
+      - name: Check lint
+        run: ./gradlew :app:lintDebug
+      - name: Upload lint report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-report-${{ github.sha }}
+          path: app/build/reports/lint-results-debug.html
       - name: Decode release keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
