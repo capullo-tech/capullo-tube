@@ -24,7 +24,7 @@ device. The radio constants are first guesses.
 
 ## Build
 
-Requirements: JDK 17, Android SDK 36. Device: Android 8.0+ (minSdk 26).
+Requirements: JDK 17, Android SDK 36. Device: Android 6.0+ (minSdk 23).
 
 Point Gradle at your SDK: open the project once in Android Studio (it writes `local.properties`),
 or set `ANDROID_HOME`, or create `local.properties` with `sdk.dir=/path/to/Android/Sdk`.

@@ -14,7 +14,7 @@ android {
 
     defaultConfig {
         applicationId = "tech.capullo.tubecapullo"
-        minSdk = 26
+        minSdk = 23
         targetSdk = 36
         versionCode = 2
         versionName = "0.2"

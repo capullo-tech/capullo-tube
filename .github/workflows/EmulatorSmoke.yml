@@ -45,7 +45,7 @@ jobs:
         run: |
           SDKMGR="${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools/latest/bin/sdkmanager"
           IMAGES=$("$SDKMGR" --list 2>/dev/null \
-            | grep -E 'system-images;android-(2[89]|3[0-9])' | sort -u || true)
+            | grep -E 'system-images;android-(23|2[89]|3[0-9])' | sort -u || true)
           echo "$IMAGES"
           {
             echo '### Available system images (stable channel)'
@@ -74,7 +74,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        api-level: ['28', '29', '30', '31', '32', '33', '34', '35', '36', '37']
+        api-level: ['23', '28', '29', '30', '31', '32', '33', '34', '35', '36', '37']
         include:
           - api-level: '37'
             target: 'aosp_atd'
@@ -112,6 +112,7 @@ jobs:
         run: |
           set -eu
           yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager --install emulator > /dev/null
           sdkmanager --install "system-images;android-$ANDROID_API;$ANDROID_TARGET;x86_64" > /dev/null
           echo no | avdmanager create avd --force -n smoke \
             --package "system-images;android-$ANDROID_API;$ANDROID_TARGET;x86_64"
@@ -216,7 +217,7 @@ jobs:
           adb shell pm path tech.capullo.tubecapullo | grep -q apk
           adb shell am instrument -w -e class tech.capullo.tubecapullo.MainSmokeTest \
             tech.capullo.tubecapullo.test/androidx.test.runner.AndroidJUnitRunner \
-            2>&1 | tee "$RUNNER_TEMP/instrument.log"
+            2>&1 | tr -d '\r' | tee "$RUNNER_TEMP/instrument.log"
           if ! grep -qE '^OK \([0-9]+ tests?\)$' "$RUNNER_TEMP/instrument.log"; then
             echo "::error::smoke test did not complete on API ${{ matrix.api-level }} (transcript above)"
             exit 1
