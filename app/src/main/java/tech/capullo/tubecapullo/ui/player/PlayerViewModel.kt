@@ -9,14 +9,20 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.scan
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import tech.capullo.tubecapullo.data.lyrics.LyricsRepository
+import tech.capullo.tubecapullo.data.lyrics.LyricsState
+import tech.capullo.tubecapullo.data.settings.AppSettings
 import tech.capullo.tubecapullo.data.youtube.YouTubeExtractorClient
 import tech.capullo.tubecapullo.data.youtube.YtVideo
 import tech.capullo.tubecapullo.player.PlaybackCoordinator
@@ -33,6 +39,8 @@ class PlayerViewModel @Inject constructor(
     private val stationEngine: StationEngine,
     private val snapcastManager: SnapcastManager,
     private val extractor: YouTubeExtractorClient,
+    lyricsRepository: LyricsRepository,
+    appSettings: AppSettings,
 ) : ViewModel() {
     val playerState = player.state
     val position = player.position
@@ -62,6 +70,20 @@ class PlayerViewModel @Inject constructor(
             http.newCall(Request.Builder().url(url).build()).execute().use { it.body?.bytes() }
         }.getOrNull()
     }
+
+    val lyrics: StateFlow<PlayerLyrics> = combine(
+        player.state.map { it.video?.videoId }.distinctUntilChanged(),
+        lyricsRepository.current,
+        ::Pair,
+    )
+        .scan<Pair<String?, LyricsState?>, PlayerLyrics>(PlayerLyrics.None) { previous, pair ->
+            PlayerLyrics.next(previous, pair.first, pair.second)
+        }
+        .drop(1)
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PlayerLyrics.None)
+
+    val lyricsCard = appSettings.lyricsCard
 
     fun togglePlayPause() = player.togglePlayPause()
     fun next() = player.next()

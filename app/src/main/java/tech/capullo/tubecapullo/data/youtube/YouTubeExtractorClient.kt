@@ -32,6 +32,7 @@ import org.schabi.newpipe.extractor.services.youtube.extractors.kiosk.YoutubeTre
 import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory
 import org.schabi.newpipe.extractor.stream.AudioStream
 import org.schabi.newpipe.extractor.stream.DeliveryMethod
+import org.schabi.newpipe.extractor.stream.Description
 import org.schabi.newpipe.extractor.stream.StreamInfo
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
 import org.schabi.newpipe.extractor.stream.StreamSegment
@@ -120,6 +121,7 @@ class YouTubeExtractorClient @Inject constructor(private val downloader: TubeCap
 
     suspend fun mix(videoId: String, limit: Int = MIX_RAW_FETCH_LIMIT): List<YtVideo> = extract("mix") {
         val url = YouTubeUrls.mixUrl(videoId)
+
         PlaylistInfo.getInfo(ServiceList.YouTube, url).expand(url, limit).distinctBy { it.videoId }
     }
 
@@ -170,6 +172,12 @@ class YouTubeExtractorClient @Inject constructor(private val downloader: TubeCap
         YtAlbum(info.toYtVideo(videoId), chapters(info.streamSegments.orEmpty()))
     }
 
+    suspend fun description(videoId: String): String = extract("description") {
+        val info = StreamInfo.getInfo(ServiceList.YouTube, YouTubeUrls.watchUrl(videoId))
+        val description = info.description ?: return@extract ""
+        descriptionText(description.content.orEmpty(), html = description.type == Description.HTML)
+    }
+
     private fun StreamInfo.toYtVideo(videoId: String) = YtVideo(
         videoId = videoId,
         title = name.orEmpty().ifBlank { videoId },
@@ -217,10 +225,12 @@ class YouTubeExtractorClient @Inject constructor(private val downloader: TubeCap
     private fun cachedStream(videoId: String): YtStream? = synchronized(streamCache) {
         val cached = streamCache[videoId] ?: return null
         val expiry = cached.expiresAtEpochSeconds
+
         if (expiry == null) {
             streamCache.remove(videoId)
             return null
         }
+
         if (expiry - System.currentTimeMillis() / 1000 < EXPIRY_MARGIN_SECONDS) {
             streamCache.remove(videoId)
             return null
@@ -273,6 +283,7 @@ class YouTubeExtractorClient @Inject constructor(private val downloader: TubeCap
     private fun AudioStream.toCandidate() = AudioCandidate(
         url = url.orEmpty(),
         mimeType = format?.mimeType ?: "audio/mp4",
+
         bitrateKbps = averageBitrate.takeIf { it > 0 } ?: bitrate.takeIf { it > 0 } ?: 0,
         contentLength = itagItem?.contentLength?.takeIf { it > 0 },
         itag = itagItem?.id ?: -1,
@@ -304,6 +315,7 @@ class YouTubeExtractorClient @Inject constructor(private val downloader: TubeCap
             durationSeconds = duration.coerceAtLeast(0),
             thumbnailUrl = thumbnails.bestThumbnailUrl(),
             uploaderUrl = uploaderUrl?.takeIf { it.isNotBlank() },
+
             viewCount = viewCount.coerceAtLeast(-1),
             uploadYear = uploadDate?.offsetDateTime()?.year,
             uploaderVerified = isUploaderVerified,
@@ -311,6 +323,7 @@ class YouTubeExtractorClient @Inject constructor(private val downloader: TubeCap
     }
 
     private companion object {
+
         const val EXPIRY_MARGIN_SECONDS = 5 * 60L
 
         const val MIX_RAW_FETCH_LIMIT = 100
@@ -362,5 +375,36 @@ internal fun chapters(segments: List<StreamSegment>): List<YtChapter> {
         }
     return chapters.takeIf { it.size >= MIN_CHAPTERS }.orEmpty()
 }
+
+internal fun descriptionText(content: String, html: Boolean): String {
+    if (!html) return content
+    val text = HTML_TAG.replace(HTML_BREAK.replace(content, "\n"), "")
+    return HTML_ENTITY.replace(text) { match ->
+        val name = match.groupValues[1]
+        when {
+            name.startsWith("#x", ignoreCase = true) ->
+                name.drop(2).toIntOrNull(16)?.let(::codePointText)
+            name.startsWith("#") -> name.drop(1).toIntOrNull()?.let(::codePointText)
+            else -> NAMED_ENTITIES[name]
+        } ?: match.value
+    }
+}
+
+private fun codePointText(codePoint: Int): String? {
+    if (!Character.isValidCodePoint(codePoint)) return null
+    return String(Character.toChars(codePoint))
+}
+
+private val HTML_BREAK = Regex("""<br\s*/?>|</p>""", RegexOption.IGNORE_CASE)
+private val HTML_TAG = Regex("""<[^>]+>""")
+private val HTML_ENTITY = Regex("""&(#[0-9]+|#[xX][0-9a-fA-F]+|[a-zA-Z]+);""")
+private val NAMED_ENTITIES = mapOf(
+    "amp" to "&",
+    "lt" to "<",
+    "gt" to ">",
+    "quot" to "\"",
+    "apos" to "'",
+    "nbsp" to " ",
+)
 
 private fun List<Image>.bestThumbnailUrl(): String? = maxByOrNull { if (it.height > 0) it.height else 0 }?.url

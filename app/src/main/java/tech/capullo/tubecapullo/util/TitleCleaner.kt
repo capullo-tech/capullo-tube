@@ -3,35 +3,65 @@ package tech.capullo.tubecapullo.util
 import java.util.Locale
 
 object TitleCleaner {
+
     fun clean(title: String, uploader: String?): String {
-        val unwrapped = tidy(stripGroups(title) { it in NOISE_WORDS }.substringBefore('|'))
+        val unwrapped = stripGroups(title) { words -> words.all { it in NOISE_WORDS } }
+            .substringBefore('|')
+            .let(::tidy)
         return stripUploaderPrefix(unwrapped, uploader).ifBlank { title }
+    }
+
+    fun stripTaggedGroups(text: String, isPackaging: (String) -> Boolean): String {
+        val stripped = stripGroups(text) { words ->
+            words.any { it in NOISE_WORDS || isPackaging(it) }
+        }
+        return tidy(stripped)
+    }
+
+    fun splitAtDash(title: String): Pair<String, String>? {
+        val match = ARTIST_PREFIX.find(title) ?: return null
+        return match.groupValues[1] to match.groupValues[2]
+    }
+
+    fun artistName(uploader: String): String {
+        val name = uploader.trim().removeSuffix(TOPIC_SUFFIX)
+        val vevo = name.length > VEVO_SUFFIX.length && name.endsWith(VEVO_SUFFIX, ignoreCase = true)
+        return if (vevo) {
+            name.dropLast(VEVO_SUFFIX.length)
+        } else {
+            name
+        }
+    }
+
+    fun sameArtist(name: String, uploader: String?): Boolean {
+        val key = nameKey(name)
+        return uploader != null && key.isNotEmpty() && key == artistKey(uploader)
     }
 
     fun key(title: String, uploader: String?): String? = nameKey(clean(title, uploader)).ifEmpty { null }
 
     fun albumKey(title: String, uploader: String?, artists: Collection<String>): String? {
-        val bare = tidy(ALBUM_PHRASE.replace(stripGroups(title, ::isAlbumPackaging), " "))
+        val unpackaged = stripGroups(title) { it.all(::isAlbumPackaging) }
+        val bare = tidy(ALBUM_PHRASE.replace(unpackaged, " "))
             .takeIf { text -> text.any { it.isLetterOrDigit() } } ?: title
         val names = (listOfNotNull(uploader) + artists).map(::artistKey)
             .filterTo(HashSet()) { it.isNotEmpty() }
         return nameKey(stripArtistPrefix(clean(bare, null), names)).ifEmpty { null }
     }
 
-    private fun stripGroups(title: String, packaging: (String) -> Boolean): String {
+    private fun stripGroups(title: String, drop: (List<String>) -> Boolean): String {
         var text = title
+
         while (true) {
             val next = GROUP.replace(text) {
-                if (isPackaging(it.groupValues[1], packaging)) " " else it.value
+                val words = WORD.findAll(it.groupValues[1].lowercase(Locale.ROOT))
+                    .map { word -> word.value }
+                    .toList()
+                if (words.isNotEmpty() && drop(words)) " " else it.value
             }
             if (next == text) return text
             text = next
         }
-    }
-
-    private fun isPackaging(group: String, packaging: (String) -> Boolean): Boolean {
-        val words = WORD.findAll(group.lowercase(Locale.ROOT)).map { it.value }.toList()
-        return words.isNotEmpty() && words.all(packaging)
     }
 
     private fun isAlbumPackaging(word: String): Boolean = word in NOISE_WORDS || word in ALBUM_WORDS || YEAR.matches(word) || ORDINAL.matches(word)

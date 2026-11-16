@@ -105,6 +105,15 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
         _askForSharedLinks.value = enabled
     }
 
+    private val _lyricsCard = MutableStateFlow(prefs.getBoolean(KEY_LYRICS_CARD, false))
+
+    val lyricsCard: StateFlow<Boolean> = _lyricsCard.asStateFlow()
+
+    fun setLyricsCard(enabled: Boolean) {
+        prefs.edit { putBoolean(KEY_LYRICS_CARD, enabled) }
+        _lyricsCard.value = enabled
+    }
+
     companion object {
         const val MAX_TRENDING_ROWS = 5
 
@@ -132,6 +141,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 
         private const val KEY_SONGS_PER_LIKE = "mix_songs"
         private const val KEY_ASK_FOR_SHARED_LINKS = "ask_for_shared_links"
+        private const val KEY_LYRICS_CARD = "lyrics_card"
     }
 }
 

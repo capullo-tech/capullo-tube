@@ -7,14 +7,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -32,13 +27,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -58,7 +51,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
@@ -75,6 +67,7 @@ import tech.capullo.tubecapullo.data.youtube.YtVideo
 import tech.capullo.tubecapullo.station.PlaySource
 import tech.capullo.tubecapullo.ui.shared.CompactListItem
 import tech.capullo.tubecapullo.ui.shared.LikeButton
+import tech.capullo.tubecapullo.ui.shared.PlayerDrawer
 import tech.capullo.tubecapullo.ui.shared.SongActionsMenu
 import tech.capullo.tubecapullo.ui.theme.Dimens
 import tech.capullo.tubecapullo.util.ShareLink
@@ -82,12 +75,17 @@ import tech.capullo.tubecapullo.util.formatDuration
 import tech.capullo.tubecapullo.util.viewsLine
 
 private class RowActions(
+
     val playNow: (YtVideo, Boolean) -> Unit,
+
     val remove: (YtVideo) -> Unit,
     val share: (YtVideo) -> Unit,
     val toggleLike: (YtVideo) -> Unit,
+
     val toggleHeart: (YtVideo) -> Unit,
+
     val startRadio: (YtVideo) -> Unit,
+
     val playChapter: (Long) -> Unit,
 )
 
@@ -122,6 +120,7 @@ fun UpNextSheet(onDismiss: () -> Unit, viewModel: UpNextViewModel = hiltViewMode
         playChapter = viewModel::seekTo,
     )
     val entries = remember(station) { queueEntries(station) }
+
     val listState = rememberLazyListState()
     var userMoved by remember { mutableStateOf(false) }
     var bottomSlackPx by remember { mutableIntStateOf(0) }
@@ -145,47 +144,37 @@ fun UpNextSheet(onDismiss: () -> Unit, viewModel: UpNextViewModel = hiltViewMode
         }
     }
 
-    val windowHeight = with(LocalDensity.current) {
-        LocalWindowInfo.current.containerSize.height.toDp()
-    }
-    val statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val maxSheetHeight = (windowHeight - statusBar) * Dimens.UP_NEXT_MAX_HEIGHT_FRACTION
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false),
-        modifier = Modifier.padding(horizontal = Dimens.UP_NEXT_SHEET_SIDE_MARGIN),
-    ) {
-        Box(Modifier.fillMaxWidth().heightIn(max = maxSheetHeight - Dimens.UP_NEXT_HANDLE_SPACE)) {
-            Column {
-                QueueTitle(station.source)
-                LazyColumn(
-                    state = listState,
-                    contentPadding = PaddingValues(
-                        bottom = with(LocalDensity.current) { bottomSlackPx.toDp() },
-                    ),
-                ) {
-                    items(entries, key = { it.key }, contentType = { it::class }) { entry ->
-                        when (entry) {
-                            is EndLine -> EndLineText(entry.text)
-                            is ChapterEntry -> ChapterRow(entry, actions)
-                            is TrackEntry -> TrackRow(
-                                track = entry,
-                                isLiked = entry.video.videoId in if (
-                                    entry.state == RowState.CURRENT && station.albumMode
-                                ) {
-                                    likedAlbumIds
-                                } else {
-                                    likedIds
-                                },
-                                isCollection = station.isCollection,
-                                actions = actions,
-                            )
-                        }
+    PlayerDrawer(onDismiss = onDismiss) {
+        Column {
+            QueueTitle(station.source)
+            LazyColumn(
+                state = listState,
+                contentPadding = PaddingValues(
+                    bottom = with(LocalDensity.current) { bottomSlackPx.toDp() },
+                ),
+            ) {
+                items(entries, key = { it.key }, contentType = { it::class }) { entry ->
+                    when (entry) {
+                        is EndLine -> EndLineText(entry.text)
+                        is ChapterEntry -> ChapterRow(entry, actions)
+                        is TrackEntry -> TrackRow(
+                            track = entry,
+
+                            isLiked = entry.video.videoId in if (
+                                entry.state == RowState.CURRENT && station.albumMode
+                            ) {
+                                likedAlbumIds
+                            } else {
+                                likedIds
+                            },
+                            isCollection = station.isCollection,
+                            actions = actions,
+                        )
                     }
                 }
             }
-            SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter))
         }
+        SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter))
     }
 }
 
@@ -424,6 +413,7 @@ private fun RowButtons(
                 modifier = Modifier.size(Dimens.LIST_ICON_SIZE),
             )
         }
+
         if (isCollection) RowMenu(video, actions)
     }
 }

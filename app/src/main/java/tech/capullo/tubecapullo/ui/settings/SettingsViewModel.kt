@@ -35,6 +35,7 @@ class SettingsViewModel @Inject constructor(
     extractor: YouTubeExtractorClient,
     private val linkAlias: YouTubeLinkAlias,
 ) : ViewModel() {
+
     val chartRegions: StateFlow<List<String>> = appSettings.chartRegions
 
     val regions: List<RegionOption> = extractor.supportedRegions()
@@ -66,6 +67,10 @@ class SettingsViewModel @Inject constructor(
     val fullAlbums: StateFlow<Boolean> = appSettings.fullAlbums
 
     fun setFullAlbums(enabled: Boolean) = appSettings.setFullAlbums(enabled)
+
+    val lyricsCard: StateFlow<Boolean> = appSettings.lyricsCard
+
+    fun setLyricsCard(enabled: Boolean) = appSettings.setLyricsCard(enabled)
 
     val likeMode: StateFlow<LikeMode> = appSettings.likeMode
 

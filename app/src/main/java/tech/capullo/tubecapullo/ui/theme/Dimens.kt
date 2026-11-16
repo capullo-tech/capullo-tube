@@ -3,6 +3,7 @@ package tech.capullo.tubecapullo.ui.theme
 import androidx.compose.ui.unit.dp
 
 object Dimens {
+
     val MINI_BAR_HEIGHT = 56.dp
 
     val MINI_BAR_PADDING = 8.dp
@@ -57,13 +58,17 @@ object Dimens {
 
     val PLAYER_ORDER_BUTTON_SIZE = 40.dp
 
+    val PLAYER_LYRICS_CARD_HEIGHT = 64.dp
+
+    val PLAYER_LYRICS_TAB_HEIGHT = 36.dp
+
     val SEARCH_CHIP_SPACING = 6.dp
 
-    const val UP_NEXT_MAX_HEIGHT_FRACTION = 0.85f
+    const val PLAYER_DRAWER_MAX_HEIGHT_FRACTION = 0.85f
 
-    val UP_NEXT_HANDLE_SPACE = 48.dp
+    val PLAYER_DRAWER_HANDLE_SPACE = 48.dp
 
-    val UP_NEXT_SHEET_SIDE_MARGIN = 8.dp
+    val PLAYER_DRAWER_SIDE_MARGIN = 8.dp
 
     const val UP_NEXT_PLAYED_ALPHA = 0.5f
 

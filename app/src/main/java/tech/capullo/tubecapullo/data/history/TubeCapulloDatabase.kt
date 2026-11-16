@@ -9,8 +9,9 @@ import androidx.room.RoomDatabase
         LikedTrackEntity::class,
         LikedAlbumEntity::class,
         StationSnapshotEntity::class,
+        LyricsEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = true,
 )
 abstract class TubeCapulloDatabase : RoomDatabase() {
@@ -22,7 +23,10 @@ abstract class TubeCapulloDatabase : RoomDatabase() {
 
     abstract fun stationSnapshotDao(): StationSnapshotDao
 
+    abstract fun lyricsDao(): LyricsDao
+
     companion object {
+
         val MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                 db.execSQL(
@@ -63,6 +67,16 @@ abstract class TubeCapulloDatabase : RoomDatabase() {
                     "CREATE TABLE IF NOT EXISTS `station_snapshot` (`id` INTEGER NOT NULL, " +
                         "`savedAtEpochMs` INTEGER NOT NULL, `state` TEXT NOT NULL, " +
                         "PRIMARY KEY(`id`))",
+                )
+            }
+        }
+
+        val MIGRATION_5_6 = object : androidx.room.migration.Migration(5, 6) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `lyrics` (`videoId` TEXT NOT NULL, " +
+                        "`kind` TEXT NOT NULL, `source` TEXT, `text` TEXT, " +
+                        "`fetchedAtEpochMs` INTEGER NOT NULL, PRIMARY KEY(`videoId`))",
                 )
             }
         }
