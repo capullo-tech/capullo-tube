@@ -3,7 +3,6 @@ package tech.capullo.tubecapullo.ui.theme
 import androidx.compose.ui.unit.dp
 
 object Dimens {
-
     val MINI_BAR_HEIGHT = 56.dp
 
     val MINI_BAR_PADDING = 8.dp

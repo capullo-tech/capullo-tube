@@ -12,8 +12,8 @@ import javax.inject.Singleton
 import okhttp3.Request as OkRequest
 
 @Singleton
-class TubeCapulloDownloader @Inject constructor() : Downloader() {
-    private val client = OkHttpClient.Builder()
+class TubeCapulloDownloader @Inject constructor(http: OkHttpClient) : Downloader() {
+    private val client = http.newBuilder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .build()

@@ -10,6 +10,7 @@ import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import okhttp3.OkHttpClient
 import tech.capullo.tubecapullo.data.history.LikedAlbumDao
 import tech.capullo.tubecapullo.data.history.LikedTrackDao
 import tech.capullo.tubecapullo.data.history.LyricsDao
@@ -22,7 +23,6 @@ import kotlin.random.Random
 @Module
 @InstallIn(SingletonComponent::class)
 object AppModule {
-
     @Provides
     @Singleton
     fun provideAppScope(): CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -33,6 +33,10 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideOkHttpClient(): OkHttpClient = OkHttpClient()
+
+    @Provides
+    @Singleton
     fun provideDatabase(@ApplicationContext context: Context): TubeCapulloDatabase = Room.databaseBuilder(context, TubeCapulloDatabase::class.java, "tubecapullo.db")
         .addMigrations(
             TubeCapulloDatabase.MIGRATION_1_2,
@@ -40,6 +44,7 @@ object AppModule {
             TubeCapulloDatabase.MIGRATION_3_4,
             TubeCapulloDatabase.MIGRATION_4_5,
             TubeCapulloDatabase.MIGRATION_5_6,
+            TubeCapulloDatabase.MIGRATION_6_7,
         )
         .build()
 

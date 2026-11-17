@@ -8,6 +8,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import tech.capullo.tubecapullo.data.history.LyricsEntity
 import tech.capullo.tubecapullo.data.lyrics.LrclibClient.Companion.LYRICS_DURATION_TOLERANCE_S
+import tech.capullo.tubecapullo.data.lyrics.LrclibClient.Companion.SYNCED_PREFERENCE_WINDOW_S
 import tech.capullo.tubecapullo.data.lyrics.LyricsRepository.Companion.KIND_NONE
 import tech.capullo.tubecapullo.data.lyrics.LyricsRepository.Companion.KIND_PLAIN
 import tech.capullo.tubecapullo.data.lyrics.LyricsRepository.Companion.KIND_SYNCED
@@ -49,6 +50,25 @@ class LyricsTest {
     fun `LRC with no stamp is not synced lyrics`() {
         assertTrue(Lrc.parse("[ar:Someone]\nplain line").isEmpty())
         assertNull(Lyrics.synced(LyricsSource.LRCLIB_GET, "plain line"))
+    }
+
+    @Test
+    fun `the offset tag moves every stamp, a positive offset earlier`() {
+        assertEquals(
+            listOf(LyricLine(9_500, "a"), LyricLine(19_500, "b")),
+            Lrc.parse("[offset:+500]\n[00:10.00]a\n[00:20.00]b"),
+        )
+        assertEquals(listOf(LyricLine(10_250, "a")), Lrc.parse("[ti:Song]\n[offset: -250]\n[00:10.00]a"))
+        assertEquals(listOf(LyricLine(0, "a")), Lrc.parse("[offset:1500]\n[00:01.00]a"))
+        assertEquals(LyricLine(9_500, "a"), Lyrics.synced(LyricsSource.LRCLIB_GET, "[offset:500]\n[00:10.00]a")!!.lines.single())
+    }
+
+    @Test
+    fun `an LRC with untimed lyric lines is not synced and keeps every line as plain text`() {
+        val lrc = "[ar:Someone]\n[00:01.00]timed one\nuntimed verse\n\n[00:03.00][00:05.00]timed two"
+        assertNull(Lyrics.synced(LyricsSource.LRCLIB_GET, lrc))
+        assertEquals(listOf("timed one", "untimed verse", "", "timed two"), Lyrics.plain(LyricsSource.LRCLIB_GET, Lrc.plainText(lrc))!!.lines.map { it.text })
+        assertTrue(Lyrics.synced(LyricsSource.LRCLIB_GET, "[ar:Someone]\n[00:01.00]one\n\n[00:02.00]")!!.synced)
     }
 
     @Test
@@ -94,8 +114,25 @@ class LyricsTest {
         val plainOnly = record(201.0, synced = null)
         assertSame(near, LrclibClient.bestMatch(listOf(plainOnly, near), 200))
         assertNull(LrclibClient.bestMatch(listOf(record(200.0, synced = null, plain = null)), 200))
-        assertNull(LrclibClient.bestMatch(listOf(record(200.0, instrumental = true)), 200))
         assertNull(LrclibClient.bestMatch(listOf(record(null)), 200))
+    }
+
+    @Test
+    fun `synced wins over a slightly closer plain record, not over a much closer one`() {
+        val plainExact = record(200.0, synced = null)
+        val syncedNear = record(201.5)
+        assertSame(syncedNear, LrclibClient.bestMatch(listOf(plainExact, syncedNear), 200))
+        val syncedFar = record(200.0 + SYNCED_PREFERENCE_WINDOW_S + 0.5)
+        assertSame(plainExact, LrclibClient.bestMatch(listOf(syncedFar, plainExact), 200))
+    }
+
+    @Test
+    fun `an instrumental record matches, and lyrics in the same window win over it`() {
+        val instrumental = record(200.0, synced = null, plain = null, instrumental = true)
+        assertSame(instrumental, LrclibClient.bestMatch(listOf(instrumental), 200))
+        val lyrics = record(201.0)
+        assertSame(lyrics, LrclibClient.bestMatch(listOf(instrumental, lyrics), 200))
+        assertNull(LrclibClient.bestMatch(listOf(record(200.0 + LYRICS_DURATION_TOLERANCE_S + 1, instrumental = true)), 200))
     }
 
     private val day = 24 * 60 * 60 * 1000L

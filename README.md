@@ -16,7 +16,8 @@ as clients. You pick one song. The app extends it into an endless radio:
 - **⌕ Search** starts somewhere new.
 - **Lyrics** show under the Player's controls when a song has them: synced lyrics from
   [LRCLIB](https://lrclib.net), or lyrics pasted into the video description. LRCLIB receives the
-  artist, the title and the duration of each song that plays.
+  artist, the title and the duration of each song that plays; Settings > Look up lyrics online
+  turns that off.
 
 Part of the [capullo-tech](https://github.com/capullo-tech) family (RadioCapullo, telecloud-radio).
 

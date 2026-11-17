@@ -22,6 +22,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import tech.capullo.tubecapullo.data.lyrics.LyricsRepository
 import tech.capullo.tubecapullo.data.lyrics.LyricsState
+import tech.capullo.tubecapullo.data.lyrics.LyricsTiming
 import tech.capullo.tubecapullo.data.settings.AppSettings
 import tech.capullo.tubecapullo.data.youtube.YouTubeExtractorClient
 import tech.capullo.tubecapullo.data.youtube.YtVideo
@@ -39,7 +40,8 @@ class PlayerViewModel @Inject constructor(
     private val stationEngine: StationEngine,
     private val snapcastManager: SnapcastManager,
     private val extractor: YouTubeExtractorClient,
-    lyricsRepository: LyricsRepository,
+    private val lyricsRepository: LyricsRepository,
+    private val http: OkHttpClient,
     appSettings: AppSettings,
 ) : ViewModel() {
     val playerState = player.state
@@ -56,8 +58,6 @@ class PlayerViewModel @Inject constructor(
 
     val snapcastState = snapcastManager.state
     val localClientId: String get() = snapcastManager.localClientId
-
-    private val http = OkHttpClient()
 
     val albumArt: StateFlow<ByteArray?> = player.state
         .map { it.video?.thumbnailUrl }
@@ -81,9 +81,25 @@ class PlayerViewModel @Inject constructor(
         }
         .drop(1)
         .distinctUntilChanged()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PlayerLyrics.None)
+        .stateIn(viewModelScope, SharingStarted.Lazily, PlayerLyrics.None)
+
+    val lyricsOffsetMs: StateFlow<Long> = combine(
+        snapcastManager.state.map { LyricsTiming.autoDelayMs(it.groups, snapcastManager.localClientId) },
+        appSettings.lyricsDelayMs,
+        lyrics.map { (it as? PlayerLyrics.Shown)?.offsetMs ?: 0L },
+    ) { auto, manual, song -> auto + manual + song }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0L)
 
     val lyricsCard = appSettings.lyricsCard
+
+    init {
+        player.state.value.video?.let(lyricsRepository::retryFailed)
+    }
+
+    fun nudgeLyrics(deltaMs: Long) {
+        player.state.value.video?.let { lyricsRepository.nudge(it.videoId, deltaMs) }
+    }
 
     fun togglePlayPause() = player.togglePlayPause()
     fun next() = player.next()

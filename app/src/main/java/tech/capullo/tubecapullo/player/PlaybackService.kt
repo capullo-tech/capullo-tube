@@ -244,7 +244,6 @@ class PlaybackService : MediaSessionService() {
         ).also { loop = it }
         stationLoop.onTrackChanged = { index ->
             val video = stationEngine.videoAt(index)
-
             video?.let(lyrics::onTrackStarted)
             coordinator.updateState { it.copy(video = video, isBuffering = true, durationMs = 0) }
             val startAt = stationEngine.startPositionFor(index)

@@ -30,11 +30,13 @@ import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Lyrics
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
@@ -79,6 +81,9 @@ fun SettingsScreen(
     val continueCards by viewModel.continueCards.collectAsStateWithLifecycle()
     val fullAlbums by viewModel.fullAlbums.collectAsStateWithLifecycle()
     val lyricsCard by viewModel.lyricsCard.collectAsStateWithLifecycle()
+    val lyricsOnline by viewModel.lyricsOnline.collectAsStateWithLifecycle()
+    val lyricsDelayMs by viewModel.lyricsDelayMs.collectAsStateWithLifecycle()
+    val lyricsAutoDelayMs by viewModel.lyricsAutoDelayMs.collectAsStateWithLifecycle()
     val likeMode by viewModel.likeMode.collectAsStateWithLifecycle()
     val songsPerLike by viewModel.songsPerLike.collectAsStateWithLifecycle()
     val openYouTubeLinks by viewModel.openYouTubeLinks.collectAsStateWithLifecycle()
@@ -180,6 +185,38 @@ fun SettingsScreen(
                     role = Role.Switch,
                     onValueChange = viewModel::setLyricsCard,
                 ),
+            )
+            ListItem(
+                leadingContent = { Icon(Icons.Default.Language, contentDescription = null) },
+                headlineContent = { Text("Look up lyrics online") },
+                supportingContent = {
+                    Text(
+                        if (lyricsOnline) {
+                            "Each song's artist, title and length go to LRCLIB (lrclib.net)"
+                        } else {
+                            "Off: lyrics only from video descriptions and earlier lookups"
+                        },
+                    )
+                },
+                trailingContent = { Switch(checked = lyricsOnline, onCheckedChange = null) },
+                modifier = Modifier.toggleable(
+                    value = lyricsOnline,
+                    role = Role.Switch,
+                    onValueChange = viewModel::setLyricsOnline,
+                ),
+            )
+            StepperItem(
+                icon = Icons.Default.Timer,
+                title = "Lyrics timing",
+                explanation = "Added to the speakers' $lyricsAutoDelayMs ms delay. More shows lyrics later",
+                value = lyricsDelayMs,
+                min = -AppSettings.MAX_LYRICS_DELAY_MS,
+                max = AppSettings.MAX_LYRICS_DELAY_MS,
+                step = AppSettings.LYRICS_DELAY_STEP_MS,
+                valueLabel = delayLabel(lyricsDelayMs),
+                fewerLabel = "Lyrics 0.1 s earlier",
+                moreLabel = "Lyrics 0.1 s later",
+                onValueChange = viewModel::setLyricsDelayMs,
             )
             ListItem(
                 leadingContent = {
@@ -311,6 +348,8 @@ private fun LikeMode.explanation(songsPerLike: Int): String = when (this) {
     LikeMode.SWITCH_NOW -> "Songs like it play after this song; a list becomes a radio"
 }
 
+private fun delayLabel(delayMs: Int): String = if (delayMs > 0) "+$delayMs ms" else "$delayMs ms"
+
 @Composable
 private fun StepperItem(
     icon: ImageVector,
@@ -321,6 +360,8 @@ private fun StepperItem(
     fewerLabel: String,
     moreLabel: String,
     step: Int = 1,
+    min: Int = 0,
+    valueLabel: String = "$value",
     onValueChange: (Int) -> Unit,
 ) {
     ListItem(
@@ -329,10 +370,10 @@ private fun StepperItem(
         supportingContent = { Text(explanation) },
         trailingContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { onValueChange(value - step) }, enabled = value > 0) {
+                IconButton(onClick = { onValueChange(value - step) }, enabled = value > min) {
                     Icon(Icons.Default.Remove, contentDescription = fewerLabel)
                 }
-                Text("$value", style = MaterialTheme.typography.titleMedium)
+                Text(valueLabel, style = MaterialTheme.typography.titleMedium)
                 IconButton(onClick = { onValueChange(value + step) }, enabled = value < max) {
                     Icon(Icons.Default.Add, contentDescription = moreLabel)
                 }

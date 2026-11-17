@@ -1,6 +1,7 @@
 package tech.capullo.tubecapullo.data.youtube
 
 import kotlinx.coroutines.runBlocking
+import okhttp3.OkHttpClient
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Before
@@ -58,7 +59,7 @@ class SearchFilterProbeTest {
 
     @Test
     fun `q3 music artists with a Videos tab - measurement only`() {
-        NewPipe.init(TubeCapulloDownloader(), Localization("en", "US"), ContentCountry("US"))
+        NewPipe.init(TubeCapulloDownloader(OkHttpClient()), Localization("en", "US"), ContentCountry("US"))
         val handler = ServiceList.YouTube.searchQHFactory
             .fromQuery(QUERY, listOf(YoutubeSearchQueryHandlerFactory.MUSIC_ARTISTS), "")
         val artists = SearchInfo.getInfo(ServiceList.YouTube, handler).relatedItems

@@ -4,6 +4,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import okhttp3.OkHttpClient
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Before
@@ -24,7 +25,7 @@ class LyricsProbeTest {
     @Before
     fun setUp() {
         assumeTrue("set YT_SMOKE=1 to run the probe", System.getenv("YT_SMOKE") == "1")
-        lrclib = LrclibClient()
+        lrclib = LrclibClient(OkHttpClient())
         youtube = probeClient()
     }
 

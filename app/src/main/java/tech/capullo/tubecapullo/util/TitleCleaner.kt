@@ -3,7 +3,6 @@ package tech.capullo.tubecapullo.util
 import java.util.Locale
 
 object TitleCleaner {
-
     fun clean(title: String, uploader: String?): String {
         val unwrapped = stripGroups(title) { words -> words.all { it in NOISE_WORDS } }
             .substringBefore('|')
@@ -51,7 +50,6 @@ object TitleCleaner {
 
     private fun stripGroups(title: String, drop: (List<String>) -> Boolean): String {
         var text = title
-
         while (true) {
             val next = GROUP.replace(text) {
                 val words = WORD.findAll(it.groupValues[1].lowercase(Locale.ROOT))

@@ -11,6 +11,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.isSuccess
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import okhttp3.OkHttpClient
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.abs
@@ -29,9 +30,10 @@ data class LrclibRecord(
 data class LrclibMatch(val source: LyricsSource, val record: LrclibRecord)
 
 @Singleton
-class LrclibClient @Inject constructor() {
+class LrclibClient @Inject constructor(okHttp: OkHttpClient) {
 
     private val http = HttpClient(OkHttp) {
+        engine { preconfigured = okHttp }
         expectSuccess = false
 
         install(UserAgent) { agent = USER_AGENT }
@@ -74,6 +76,8 @@ class LrclibClient @Inject constructor() {
 
         const val LYRICS_DURATION_TOLERANCE_S = 5.0
 
+        const val SYNCED_PREFERENCE_WINDOW_S = 2.0
+
         private const val CONNECT_TIMEOUT_MS = 10_000L
 
         private const val REQUEST_TIMEOUT_MS = 15_000L
@@ -82,17 +86,27 @@ class LrclibClient @Inject constructor() {
 
         private const val USER_AGENT = "CapulloTube (https://github.com/capullo-tech/capullo-tube)"
 
-        fun bestMatch(records: List<LrclibRecord>, durationS: Long): LrclibRecord? = records
-            .filter { it.hasLyrics() }
-            .mapNotNull { record -> record.duration?.let { record to abs(it - durationS) } }
-            .filter { (_, gap) -> gap <= LYRICS_DURATION_TOLERANCE_S }
-            .minWithOrNull(
-                compareBy<Pair<LrclibRecord, Double>> { (_, gap) -> gap }
-                    .thenBy { (record, _) -> record.syncedLyrics.isNullOrBlank() },
-            )
-            ?.first
+        fun bestMatch(records: List<LrclibRecord>, durationS: Long): LrclibRecord? {
+            val candidates = records
+                .filter { it.instrumental || it.hasLyrics() }
+                .mapNotNull { record -> record.duration?.let { record to abs(it - durationS) } }
+                .filter { (_, gap) -> gap <= LYRICS_DURATION_TOLERANCE_S }
+            val closest = candidates.minOfOrNull { (_, gap) -> gap } ?: return null
+            return candidates
+                .filter { (_, gap) -> gap <= closest + SYNCED_PREFERENCE_WINDOW_S }
+                .minWithOrNull(
+                    compareBy<Pair<LrclibRecord, Double>> { (record, _) -> record.rank() }
+                        .thenBy { (_, gap) -> gap },
+                )
+                ?.first
+        }
 
-        private fun LrclibRecord.hasLyrics(): Boolean = !instrumental &&
-            (!syncedLyrics.isNullOrBlank() || !plainLyrics.isNullOrBlank())
+        private fun LrclibRecord.rank(): Int = when {
+            instrumental -> 2
+            !syncedLyrics.isNullOrBlank() -> 0
+            else -> 1
+        }
+
+        private fun LrclibRecord.hasLyrics(): Boolean = !syncedLyrics.isNullOrBlank() || !plainLyrics.isNullOrBlank()
     }
 }

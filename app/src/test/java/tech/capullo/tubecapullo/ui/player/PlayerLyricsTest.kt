@@ -17,6 +17,10 @@ class PlayerLyricsTest {
             PlayerLyrics.Shown(lyrics),
             PlayerLyrics.next(PlayerLyrics.None, "A", LyricsState.Done("A", lyrics)),
         )
+        assertEquals(
+            PlayerLyrics.Shown(lyrics, offsetMs = 1_500),
+            PlayerLyrics.next(PlayerLyrics.Shown(lyrics), "A", LyricsState.Done("A", lyrics, offsetMs = 1_500)),
+        )
 
         assertEquals(PlayerLyrics.None, PlayerLyrics.next(PlayerLyrics.None, "B", LyricsState.Done("A", lyrics)))
         assertEquals(PlayerLyrics.None, PlayerLyrics.next(PlayerLyrics.Shown(lyrics), null, LyricsState.Done("A", lyrics)))

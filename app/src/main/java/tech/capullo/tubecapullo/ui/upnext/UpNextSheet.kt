@@ -75,17 +75,12 @@ import tech.capullo.tubecapullo.util.formatDuration
 import tech.capullo.tubecapullo.util.viewsLine
 
 private class RowActions(
-
     val playNow: (YtVideo, Boolean) -> Unit,
-
     val remove: (YtVideo) -> Unit,
     val share: (YtVideo) -> Unit,
     val toggleLike: (YtVideo) -> Unit,
-
     val toggleHeart: (YtVideo) -> Unit,
-
     val startRadio: (YtVideo) -> Unit,
-
     val playChapter: (Long) -> Unit,
 )
 
@@ -120,7 +115,6 @@ fun UpNextSheet(onDismiss: () -> Unit, viewModel: UpNextViewModel = hiltViewMode
         playChapter = viewModel::seekTo,
     )
     val entries = remember(station) { queueEntries(station) }
-
     val listState = rememberLazyListState()
     var userMoved by remember { mutableStateOf(false) }
     var bottomSlackPx by remember { mutableIntStateOf(0) }
@@ -159,7 +153,6 @@ fun UpNextSheet(onDismiss: () -> Unit, viewModel: UpNextViewModel = hiltViewMode
                         is ChapterEntry -> ChapterRow(entry, actions)
                         is TrackEntry -> TrackRow(
                             track = entry,
-
                             isLiked = entry.video.videoId in if (
                                 entry.state == RowState.CURRENT && station.albumMode
                             ) {
@@ -413,7 +406,6 @@ private fun RowButtons(
                 modifier = Modifier.size(Dimens.LIST_ICON_SIZE),
             )
         }
-
         if (isCollection) RowMenu(video, actions)
     }
 }

@@ -7,19 +7,26 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.Card
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
@@ -38,12 +45,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
-import tech.capullo.tubecapullo.data.lyrics.Lrc
 import tech.capullo.tubecapullo.data.lyrics.LyricLine
 import tech.capullo.tubecapullo.data.lyrics.Lyrics
 import tech.capullo.tubecapullo.data.lyrics.LyricsSource
+import tech.capullo.tubecapullo.data.lyrics.LyricsTiming
 import tech.capullo.tubecapullo.ui.shared.PlayerDrawer
 import tech.capullo.tubecapullo.ui.theme.Dimens
+import kotlin.math.abs
 
 private const val PAUSE_MARK = "♪"
 
@@ -53,36 +61,49 @@ private const val LINES_ABOVE_CURRENT = 2
 internal fun LyricsCard(
     lyrics: Lyrics?,
     positionState: StateFlow<Long>,
+    offsetMs: Long,
     onOpen: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .height(Dimens.PLAYER_LYRICS_CARD_HEIGHT)
             .clickable(onClickLabel = "Show lyrics", onClick = onOpen)
             .swipeUp(onOpen),
     ) {
-        Column(
-            Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.Center,
-        ) {
-            when {
-                lyrics == null -> CardLine("Looking for lyrics…", current = false)
-                lyrics.synced -> {
-                    val index by currentLineIndex(lyrics, positionState)
-                    val line = lyrics.lines.getOrNull(index)
-                    CardLine(line?.shownText() ?: PAUSE_MARK, current = true)
-                    lyrics.lines.getOrNull(index + 1)?.let { next ->
-                        CardLine(next.shownText(), current = false)
-                    }
-                }
-                else -> {
-                    val first = lyrics.lines.filter { it.text.isNotEmpty() }.take(2)
-                    first.forEachIndexed { i, line -> CardLine(line.text, current = i == 0) }
-                }
+        when {
+            lyrics == null -> CardLines("Looking for lyrics…", "", currentFirst = false)
+            lyrics.synced -> {
+                val index by currentLineIndex(lyrics, positionState, offsetMs)
+                CardLines(
+                    lyrics.lines.getOrNull(index)?.shownText() ?: PAUSE_MARK,
+                    lyrics.lines.getOrNull(index + 1)?.shownText().orEmpty(),
+                )
+            }
+            else -> {
+                val first = lyrics.lines.filter { it.text.isNotEmpty() }.take(2)
+                CardLines(first.getOrNull(0)?.text.orEmpty(), first.getOrNull(1)?.text.orEmpty())
             }
         }
+    }
+}
+
+@Composable
+internal fun LyricsCardSpace(modifier: Modifier = Modifier) {
+    CardLines("", "", modifier = modifier)
+}
+
+@Composable
+private fun CardLines(first: String, second: String, modifier: Modifier = Modifier, currentFirst: Boolean = true) {
+    Column(
+        modifier
+            .fillMaxWidth()
+            .heightIn(min = Dimens.PLAYER_LYRICS_CARD_HEIGHT)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.Center,
+    ) {
+        CardLine(first, current = currentFirst)
+        CardLine(second, current = false)
     }
 }
 
@@ -100,6 +121,7 @@ internal fun LyricsTab(onOpen: () -> Unit, modifier: Modifier = Modifier) {
         Box(
             Modifier
                 .navigationBarsPadding()
+                .minimumInteractiveComponentSize()
                 .height(Dimens.PLAYER_LYRICS_TAB_HEIGHT)
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp),
@@ -131,10 +153,13 @@ internal fun LyricsSheet(
     lyrics: Lyrics?,
     songTitle: String,
     positionState: StateFlow<Long>,
+    offsetMs: Long,
+    songOffsetMs: Long,
     onSeek: (Long) -> Unit,
+    onNudge: (Long) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val current by currentLineIndex(lyrics, positionState)
+    val current by currentLineIndex(lyrics, positionState, offsetMs)
 
     val listState = remember(lyrics) { LazyListState() }
     var userMoved by remember(lyrics) { mutableStateOf(false) }
@@ -149,28 +174,50 @@ internal fun LyricsSheet(
     }
     PlayerDrawer(onDismiss = onDismiss, showHandle = false, twoSteps = false) {
         Column {
-            Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 8.dp)) {
-                Text("Lyrics", style = MaterialTheme.typography.titleLarge)
-
-                Text(
-                    songTitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    lyrics?.let(::sourceLabel) ?: "Looking for lyrics…",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                )
+            Row(
+                Modifier.padding(start = 16.dp, end = 8.dp, top = 20.dp, bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Lyrics", style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        songTitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        lyrics?.let(::sourceLabel) ?: "Looking for lyrics…",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                    )
+                }
+                if (lyrics?.synced == true) SongNudge(songOffsetMs, onNudge)
             }
             LazyColumn(state = listState, contentPadding = PaddingValues(bottom = 16.dp)) {
                 itemsIndexed(lyrics?.lines.orEmpty()) { index, line ->
-                    SheetLine(line, isCurrent = index == current, onSeek = onSeek)
+                    SheetLine(
+                        line,
+                        isCurrent = index == current,
+                        onSeek = { time -> onSeek(LyricsTiming.seekTarget(time, offsetMs)) },
+                    )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SongNudge(songOffsetMs: Long, onNudge: (Long) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        IconButton(onClick = { onNudge(-LyricsTiming.SONG_NUDGE_STEP_MS) }) {
+            Icon(Icons.Default.Remove, contentDescription = "Lyrics earlier for this song")
+        }
+        Text(nudgeLabel(songOffsetMs), style = MaterialTheme.typography.labelLarge)
+        IconButton(onClick = { onNudge(LyricsTiming.SONG_NUDGE_STEP_MS) }) {
+            Icon(Icons.Default.Add, contentDescription = "Lyrics later for this song")
         }
     }
 }
@@ -191,7 +238,9 @@ private fun SheetLine(line: LyricLine, isCurrent: Boolean, onSeek: (Long) -> Uni
             .fillMaxWidth()
             .then(
                 if (time != null) {
-                    Modifier.clickable(onClickLabel = "Play from here") { onSeek(time) }
+                    Modifier
+                        .clickable(onClickLabel = "Play from here") { onSeek(time) }
+                        .minimumInteractiveComponentSize()
                 } else {
                     Modifier
                 },
@@ -201,12 +250,10 @@ private fun SheetLine(line: LyricLine, isCurrent: Boolean, onSeek: (Long) -> Uni
 }
 
 @Composable
-private fun currentLineIndex(lyrics: Lyrics?, positionState: StateFlow<Long>): State<Int> {
+private fun currentLineIndex(lyrics: Lyrics?, positionState: StateFlow<Long>, offsetMs: Long): State<Int> {
     val position = positionState.collectAsStateWithLifecycle()
-    return remember(lyrics) {
-        derivedStateOf {
-            if (lyrics?.synced == true) Lrc.currentLineIndex(lyrics.lines, position.value) else -1
-        }
+    return remember(lyrics, offsetMs) {
+        derivedStateOf { lyrics?.let { LyricsTiming.lineIndex(it, position.value, offsetMs) } ?: -1 }
     }
 }
 
@@ -216,6 +263,13 @@ private fun sourceLabel(lyrics: Lyrics): String {
         LyricsSource.DESCRIPTION -> "From the video description"
     }
     return if (lyrics.synced) source else "$source · not synced"
+}
+
+private fun nudgeLabel(offsetMs: Long): String {
+    if (offsetMs == 0L) return "0 s"
+    val sign = if (offsetMs > 0) "+" else "−"
+    val ms = abs(offsetMs)
+    return "$sign${ms / 1000}.${ms % 1000 / 100} s"
 }
 
 private fun LyricLine.shownText(): String = text.ifEmpty { if (timeMs != null) PAUSE_MARK else "" }

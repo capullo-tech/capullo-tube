@@ -3,14 +3,20 @@ package tech.capullo.tubecapullo.ui.settings
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import tech.capullo.tubecapullo.data.lyrics.LyricsTiming
 import tech.capullo.tubecapullo.data.settings.AppSettings
 import tech.capullo.tubecapullo.data.settings.LikeMode
 import tech.capullo.tubecapullo.data.youtube.YouTubeExtractorClient
 import tech.capullo.tubecapullo.data.youtube.defaultChartRegion
 import tech.capullo.tubecapullo.links.YouTubeLinkAlias
+import tech.capullo.tubecapullo.snapcast.SnapcastManager
 import tech.capullo.tubecapullo.util.countryName
 import java.text.Collator
 import java.util.Locale
@@ -34,8 +40,8 @@ class SettingsViewModel @Inject constructor(
     private val appSettings: AppSettings,
     extractor: YouTubeExtractorClient,
     private val linkAlias: YouTubeLinkAlias,
+    snapcastManager: SnapcastManager,
 ) : ViewModel() {
-
     val chartRegions: StateFlow<List<String>> = appSettings.chartRegions
 
     val regions: List<RegionOption> = extractor.supportedRegions()
@@ -71,6 +77,18 @@ class SettingsViewModel @Inject constructor(
     val lyricsCard: StateFlow<Boolean> = appSettings.lyricsCard
 
     fun setLyricsCard(enabled: Boolean) = appSettings.setLyricsCard(enabled)
+
+    val lyricsOnline: StateFlow<Boolean> = appSettings.lyricsOnline
+
+    fun setLyricsOnline(enabled: Boolean) = appSettings.setLyricsOnline(enabled)
+
+    val lyricsDelayMs: StateFlow<Int> = appSettings.lyricsDelayMs
+
+    fun setLyricsDelayMs(delayMs: Int) = appSettings.setLyricsDelayMs(delayMs)
+
+    val lyricsAutoDelayMs: StateFlow<Long> = snapcastManager.state
+        .map { LyricsTiming.autoDelayMs(it.groups, snapcastManager.localClientId) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LyricsTiming.SNAPSERVER_BUFFER_MS)
 
     val likeMode: StateFlow<LikeMode> = appSettings.likeMode
 

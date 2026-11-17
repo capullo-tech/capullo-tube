@@ -35,10 +35,8 @@ fun PlayerDrawer(
     val maxSheetHeight = (windowHeight - statusBar) * Dimens.PLAYER_DRAWER_MAX_HEIGHT_FRACTION
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = !twoSteps),
         modifier = Modifier.padding(horizontal = Dimens.PLAYER_DRAWER_SIDE_MARGIN),
-
         dragHandle = if (showHandle) ({ BottomSheetDefaults.DragHandle() }) else null,
     ) {
         val handleSpace = if (showHandle) Dimens.PLAYER_DRAWER_HANDLE_SPACE else 0.dp

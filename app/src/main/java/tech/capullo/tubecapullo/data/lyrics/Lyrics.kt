@@ -18,7 +18,7 @@ data class Lyrics(val source: LyricsSource, val synced: Boolean, val lines: List
     companion object {
 
         fun synced(source: LyricsSource, lrc: String): Lyrics? = Lrc.parse(lrc)
-            .takeIf { it.isNotEmpty() }
+            .takeIf { it.isNotEmpty() && Lrc.isFullyTimed(lrc) }
             ?.let { Lyrics(source, synced = true, lines = it) }
 
         fun plain(source: LyricsSource, text: String): Lyrics? {
@@ -36,19 +36,36 @@ data class Lyrics(val source: LyricsSource, val synced: Boolean, val lines: List
 
 object Lrc {
 
-    fun parse(lrc: String): List<LyricLine> = lrc.lineSequence()
-        .flatMap { raw ->
-            var rest = raw.trim()
-            val times = mutableListOf<Long>()
-            while (true) {
-                val stamp = STAMP.find(rest) ?: break
-                times += stampMs(stamp)
-                rest = rest.substring(stamp.range.last + 1)
+    fun parse(lrc: String): List<LyricLine> {
+        val shift = offsetMs(lrc)
+        return lrc.lineSequence()
+            .flatMap { raw ->
+                var rest = raw.trim()
+                val times = mutableListOf<Long>()
+                while (true) {
+                    val stamp = STAMP.find(rest) ?: break
+                    times += stampMs(stamp)
+                    rest = rest.substring(stamp.range.last + 1)
+                }
+                times.map { LyricLine((it - shift).coerceAtLeast(0), rest.trim()) }
             }
-            times.map { LyricLine(it, rest.trim()) }
-        }
-        .sortedBy { it.timeMs }
-        .toList()
+            .sortedBy { it.timeMs }
+            .toList()
+    }
+
+    fun isFullyTimed(lrc: String): Boolean = lrc.lineSequence()
+        .map { it.trim() }
+        .filter { it.isNotEmpty() && !TAG.matches(it) }
+        .all { STAMP.containsMatchIn(it) }
+
+    fun plainText(lrc: String): String = lrc.lineSequence()
+        .map { it.trim() }
+        .filterNot { TAG.matches(it) }
+        .joinToString("\n") { STAMPS.replace(it, "").trim() }
+
+    fun offsetMs(lrc: String): Long = lrc.lineSequence().firstNotNullOfOrNull { line ->
+        OFFSET.matchEntire(line.trim())?.groupValues?.get(1)?.toLongOrNull()
+    } ?: 0
 
     fun currentLineIndex(lines: List<LyricLine>, positionMs: Long): Int {
         var low = 0
@@ -75,4 +92,10 @@ object Lrc {
     }
 
     private val STAMP = Regex("""^\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?]""")
+
+    private val STAMPS = Regex("""^(?:\[\d{1,3}:\d{1,2}(?:[.:]\d{1,3})?])+""")
+
+    private val TAG = Regex("""^\[[A-Za-z#][^\]]*]$""")
+
+    private val OFFSET = Regex("""^\[offset:\s*([+-]?\d+)\s*]$""", RegexOption.IGNORE_CASE)
 }

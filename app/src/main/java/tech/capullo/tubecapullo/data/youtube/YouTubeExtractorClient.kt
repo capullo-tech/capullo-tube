@@ -48,6 +48,10 @@ class YouTubeExtractorClient @Inject constructor(private val downloader: TubeCap
 
     private val streamCache = mutableMapOf<String, YtStream>()
 
+    private val descriptions = object : LinkedHashMap<String, Description>(DESCRIPTION_CACHE_SIZE, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Description>): Boolean = size > DESCRIPTION_CACHE_SIZE
+    }
+
     suspend fun search(query: String, limit: Int = 30): List<YtVideo> = extract("search") {
         searchItems(query, YoutubeSearchQueryHandlerFactory.VIDEOS).toVideos().take(limit)
     }
@@ -121,7 +125,6 @@ class YouTubeExtractorClient @Inject constructor(private val downloader: TubeCap
 
     suspend fun mix(videoId: String, limit: Int = MIX_RAW_FETCH_LIMIT): List<YtVideo> = extract("mix") {
         val url = YouTubeUrls.mixUrl(videoId)
-
         PlaylistInfo.getInfo(ServiceList.YouTube, url).expand(url, limit).distinctBy { it.videoId }
     }
 
@@ -172,10 +175,12 @@ class YouTubeExtractorClient @Inject constructor(private val downloader: TubeCap
         YtAlbum(info.toYtVideo(videoId), chapters(info.streamSegments.orEmpty()))
     }
 
-    suspend fun description(videoId: String): String = extract("description") {
-        val info = StreamInfo.getInfo(ServiceList.YouTube, YouTubeUrls.watchUrl(videoId))
-        val description = info.description ?: return@extract ""
-        descriptionText(description.content.orEmpty(), html = description.type == Description.HTML)
+    suspend fun description(videoId: String): String {
+        val cached = synchronized(descriptions) { descriptions[videoId] }
+        val description = cached ?: extract("description") {
+            StreamInfo.getInfo(ServiceList.YouTube, YouTubeUrls.watchUrl(videoId)).description
+        } ?: return ""
+        return descriptionText(description.content.orEmpty(), html = description.type == Description.HTML)
     }
 
     private fun StreamInfo.toYtVideo(videoId: String) = YtVideo(
@@ -195,6 +200,7 @@ class YouTubeExtractorClient @Inject constructor(private val downloader: TubeCap
 
         return extract("resolve") {
             val info = StreamInfo.getInfo(ServiceList.YouTube, YouTubeUrls.watchUrl(videoId))
+            info.description?.let { synchronized(descriptions) { descriptions[videoId] = it } }
             if (info.streamType == StreamType.LIVE_STREAM ||
                 info.streamType == StreamType.AUDIO_LIVE_STREAM
             ) {
@@ -225,12 +231,10 @@ class YouTubeExtractorClient @Inject constructor(private val downloader: TubeCap
     private fun cachedStream(videoId: String): YtStream? = synchronized(streamCache) {
         val cached = streamCache[videoId] ?: return null
         val expiry = cached.expiresAtEpochSeconds
-
         if (expiry == null) {
             streamCache.remove(videoId)
             return null
         }
-
         if (expiry - System.currentTimeMillis() / 1000 < EXPIRY_MARGIN_SECONDS) {
             streamCache.remove(videoId)
             return null
@@ -283,7 +287,6 @@ class YouTubeExtractorClient @Inject constructor(private val downloader: TubeCap
     private fun AudioStream.toCandidate() = AudioCandidate(
         url = url.orEmpty(),
         mimeType = format?.mimeType ?: "audio/mp4",
-
         bitrateKbps = averageBitrate.takeIf { it > 0 } ?: bitrate.takeIf { it > 0 } ?: 0,
         contentLength = itagItem?.contentLength?.takeIf { it > 0 },
         itag = itagItem?.id ?: -1,
@@ -315,7 +318,6 @@ class YouTubeExtractorClient @Inject constructor(private val downloader: TubeCap
             durationSeconds = duration.coerceAtLeast(0),
             thumbnailUrl = thumbnails.bestThumbnailUrl(),
             uploaderUrl = uploaderUrl?.takeIf { it.isNotBlank() },
-
             viewCount = viewCount.coerceAtLeast(-1),
             uploadYear = uploadDate?.offsetDateTime()?.year,
             uploaderVerified = isUploaderVerified,
@@ -323,8 +325,9 @@ class YouTubeExtractorClient @Inject constructor(private val downloader: TubeCap
     }
 
     private companion object {
-
         const val EXPIRY_MARGIN_SECONDS = 5 * 60L
+
+        const val DESCRIPTION_CACHE_SIZE = 8
 
         const val MIX_RAW_FETCH_LIMIT = 100
 

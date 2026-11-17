@@ -8,7 +8,7 @@ sealed interface PlayerLyrics {
 
     data object Pending : PlayerLyrics
 
-    data class Shown(val lyrics: Lyrics) : PlayerLyrics
+    data class Shown(val lyrics: Lyrics, val offsetMs: Long = 0) : PlayerLyrics
 
     companion object {
 
@@ -16,7 +16,7 @@ sealed interface PlayerLyrics {
             val done = (state as? LyricsState.Done)?.takeIf { it.videoId == videoId }
             return when {
                 videoId == null -> None
-                done != null -> done.lyrics?.let(::Shown) ?: None
+                done != null -> done.lyrics?.let { Shown(it, done.offsetMs) } ?: None
                 previous != None -> Pending
                 else -> None
             }
