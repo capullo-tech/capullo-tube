@@ -1,7 +1,9 @@
 package tech.capullo.tubecapullo.ui.home
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,6 +23,8 @@ import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -36,8 +40,10 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -131,6 +137,7 @@ fun HomeScreen(
                         viewModel.resume(card)
                         onOpenPlayer()
                     },
+                    onRemoveContinue = viewModel::removeContinue,
                 )
             }
         }
@@ -145,6 +152,7 @@ private fun HomeList(
     actions: SongActions,
     onPlayAlbum: (YtVideo) -> Unit,
     onResume: (ContinueCard) -> Unit,
+    onRemoveContinue: (ContinueCard) -> Unit,
 ) {
     LazyColumn(Modifier.fillMaxSize()) {
         uiState.error?.let { error ->
@@ -154,7 +162,7 @@ private fun HomeList(
             item(key = "${section.key}-header") { SectionHeader(section.title()) }
             item(key = "${section.key}-row") {
                 when (section) {
-                    is HomeSection.Continue -> ContinueRow(section.stations, onResume)
+                    is HomeSection.Continue -> ContinueRow(section.stations, onResume, onRemoveContinue)
                     is HomeSection.ListenAgain ->
                         CardRow(section.cards, playingId, actions, section.albumIds, onPlayAlbum)
                     is HomeSection.BecauseLiked -> CardRow(section.cards, playingId, actions)
@@ -206,42 +214,64 @@ private fun CardRow(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ContinueRow(stations: List<ContinueCard>, onResume: (ContinueCard) -> Unit) {
+private fun ContinueRow(
+    stations: List<ContinueCard>,
+    onResume: (ContinueCard) -> Unit,
+    onRemove: (ContinueCard) -> Unit,
+) {
     LazyRow(
         contentPadding = PaddingValues(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(Dimens.HOME_CARD_SPACING),
     ) {
         items(stations, key = { it.stationId }) { card ->
-            Column(
-                Modifier
-                    .width(Dimens.HOME_CARD_WIDTH)
-                    .clip(RoundedCornerShape(Dimens.HOME_CARD_CORNER))
-                    .clickable(onClickLabel = "Continue") { onResume(card) },
-            ) {
-                CardArt(card.video.thumbnailUrl, isPlaying = false)
-                val title = UpNextText.sourceTitle(card.source)
-                Text(
-                    "${title.word} · ${title.name}",
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
-                Text(
-                    UpNextText.clean(card.video),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 2.dp),
-                )
-                Text(
-                    card.hint,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                )
+            var menuOpen by remember { mutableStateOf(false) }
+            Box {
+                Column(
+                    Modifier
+                        .width(Dimens.HOME_CARD_WIDTH)
+                        .clip(RoundedCornerShape(Dimens.HOME_CARD_CORNER))
+                        .combinedClickable(
+                            onClickLabel = "Continue",
+                            onLongClickLabel = "Continue card options",
+                            onLongClick = { menuOpen = true },
+                            onClick = { onResume(card) },
+                        ),
+                ) {
+                    CardArt(card.video.thumbnailUrl, isPlaying = false)
+                    val title = UpNextText.sourceTitle(card.source)
+                    Text(
+                        "${title.word} · ${title.name}",
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                    Text(
+                        UpNextText.clean(card.video),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                    Text(
+                        card.hint,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                    )
+                }
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Remove") },
+                        onClick = {
+                            menuOpen = false
+                            onRemove(card)
+                        },
+                    )
+                }
             }
         }
     }

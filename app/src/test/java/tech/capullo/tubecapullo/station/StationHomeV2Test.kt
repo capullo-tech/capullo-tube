@@ -75,6 +75,8 @@ class StationHomeV2Test {
         coEvery { store.byId(any()) } answers {
             rows[firstArg<Long>()]?.second?.let(StationSnapshotCodec::decode)
         }
+        coEvery { store.delete(any()) } answers { rows.remove(firstArg<Long>()) }
+        coEvery { store.deleteAll() } answers { rows.clear() }
     }
 
     private fun extractor(): YouTubeExtractorClient {
@@ -91,7 +93,7 @@ class StationHomeV2Test {
         return extractor
     }
 
-    private fun TestScope.engine(): StationEngine {
+    private fun TestScope.engine(settle: Boolean = true): StationEngine {
         val settings = mockk<AppSettings> {
             every { this@mockk.likeMode } returns this@StationHomeV2Test.likeMode
             every { songsPerLike } returns MutableStateFlow(AppSettings.DEFAULT_SONGS_PER_LIKE)
@@ -106,7 +108,7 @@ class StationHomeV2Test {
             likedAlbums,
             store,
         )
-        advanceUntilIdle()
+        if (settle) advanceUntilIdle()
         return engine
     }
 
@@ -327,5 +329,91 @@ class StationHomeV2Test {
         change(engine, PlaySource.Liked(shuffle = false))
         assertEquals(song, engine.state.value.current)
         assertTrue(engine.queuedIds().none { it == albumVideo.videoId })
+    }
+
+    @Test
+    fun `a removed station leaves Room and Previous skips it`() = runTest(StandardTestDispatcher()) {
+        val engine = engine()
+        change(engine, PlaySource.SongRadio(video("FIRST")))
+        val firstId = engine.state.value.stationId
+        change(engine, playlist)
+        val listId = engine.state.value.stationId
+        change(engine, PlaySource.SongRadio(video("SECOND")))
+        val secondId = engine.state.value.stationId
+        assertEquals(setOf(firstId, listId, secondId), rows.keys)
+
+        assertTrue(engine.forgetStation(listId))
+        advanceUntilIdle()
+
+        assertEquals(setOf(firstId, secondId), rows.keys)
+        assertEquals(PlaySource.SongRadio(video("FIRST")), restoreNext(engine))
+    }
+
+    @Test
+    fun `the playing station can't be removed`() = runTest(StandardTestDispatcher()) {
+        val engine = engine()
+        change(engine, playlist)
+        val id = engine.state.value.stationId
+        engine.onProgress(engine.currentId()!!, StationEngine.SNAPSHOT_SAVE_MS + 5_000, 240_000)
+        advanceUntilIdle()
+        assertTrue(id in rows)
+
+        assertFalse(engine.forgetStation(id))
+        advanceUntilIdle()
+
+        assertTrue(id in rows)
+        assertEquals(id, engine.state.value.stationId)
+    }
+
+    @Test
+    fun `a resume already on its way does not bring back a removed station`() = runTest(StandardTestDispatcher()) {
+        val engine = engine()
+        change(engine, PlaySource.SongRadio(video("FIRST")))
+        val firstId = engine.state.value.stationId
+        change(engine, PlaySource.SongRadio(video("SECOND")))
+
+        engine.resume(firstId)
+        assertTrue(engine.forgetStation(firstId))
+        advanceUntilIdle()
+
+        assertEquals(PlaySource.SongRadio(video("SECOND")), engine.state.value.source)
+        assertFalse(firstId in rows)
+    }
+
+    @Test
+    fun `a station removed while the engine still loads Room never reaches Previous`() = runTest(StandardTestDispatcher()) {
+        val before = engine()
+        change(before, PlaySource.SongRadio(video("FIRST")))
+        val firstId = before.state.value.stationId
+        change(before, PlaySource.SongRadio(video("SECOND")))
+        assertTrue(firstId in rows)
+
+        val after = engine(settle = false)
+        assertTrue(after.forgetStation(firstId))
+        advanceUntilIdle()
+        change(after, PlaySource.SongRadio(video("AFTER")))
+
+        assertEquals(PlaySource.SongRadio(video("SECOND")), restoreNext(after))
+        assertNull("FIRST was removed", restoreNext(after))
+        assertFalse(firstId in rows)
+    }
+
+    @Test
+    fun `forgetting all stations empties Room and Previous, and later stations save again`() = runTest(StandardTestDispatcher()) {
+        val engine = engine()
+        change(engine, PlaySource.SongRadio(video("FIRST")))
+        change(engine, playlist)
+        change(engine, PlaySource.SongRadio(video("SECOND")))
+        val secondId = engine.state.value.stationId
+
+        engine.forgetAllStations()
+        advanceUntilIdle()
+
+        assertTrue(rows.isEmpty())
+        assertNull(engine.previous(positionMs = 0))
+
+        change(engine, PlaySource.SongRadio(video("THIRD")))
+        assertTrue(secondId in rows)
+        assertEquals(PlaySource.SongRadio(video("SECOND")), restoreNext(engine))
     }
 }

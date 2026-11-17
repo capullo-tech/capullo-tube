@@ -10,8 +10,10 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import tech.capullo.tubecapullo.data.history.PlayHistoryRetention
 import tech.capullo.tubecapullo.data.lyrics.LyricsTiming
 import tech.capullo.tubecapullo.data.settings.AppSettings
+import tech.capullo.tubecapullo.data.settings.HistoryRetention
 import tech.capullo.tubecapullo.data.settings.LikeMode
 import tech.capullo.tubecapullo.data.youtube.YouTubeExtractorClient
 import tech.capullo.tubecapullo.data.youtube.defaultChartRegion
@@ -41,6 +43,7 @@ class SettingsViewModel @Inject constructor(
     extractor: YouTubeExtractorClient,
     private val linkAlias: YouTubeLinkAlias,
     snapcastManager: SnapcastManager,
+    private val playHistoryRetention: PlayHistoryRetention,
 ) : ViewModel() {
     val chartRegions: StateFlow<List<String>> = appSettings.chartRegions
 
@@ -105,4 +108,10 @@ class SettingsViewModel @Inject constructor(
     val askForSharedLinks: StateFlow<Boolean> = appSettings.askForSharedLinks
 
     fun setAskForSharedLinks(enabled: Boolean) = appSettings.setAskForSharedLinks(enabled)
+
+    val historyRetention: StateFlow<HistoryRetention> = appSettings.historyRetention
+
+    fun setHistoryRetention(retention: HistoryRetention) = appSettings.setHistoryRetention(retention)
+
+    fun clearPlayHistory() = playHistoryRetention.clear()
 }

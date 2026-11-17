@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import tech.capullo.tubecapullo.data.backup.BackupMessage
 import tech.capullo.tubecapullo.data.backup.LikedBackup
 import tech.capullo.tubecapullo.data.history.LikedAlbums
@@ -33,7 +34,7 @@ class LibraryViewModel @Inject constructor(
     private val backup: LikedBackup,
     likedTracks: LikedTracks,
     likedAlbums: LikedAlbums,
-    playHistory: PlayHistory,
+    private val playHistory: PlayHistory,
 ) : ViewModel() {
     val liked: StateFlow<List<YtVideo>?> = likedTracks.observe()
         .stateIn<List<YtVideo>?>(
@@ -75,6 +76,10 @@ class LibraryViewModel @Inject constructor(
     fun unlike(video: YtVideo) = stationEngine.toggleLike(video)
 
     fun unlikeAlbum(album: YtVideo) = stationEngine.toggleAlbumLike(album)
+
+    fun removeFromHistory(video: YtVideo) {
+        viewModelScope.launch { playHistory.remove(video.videoId, player.state.value.video?.videoId) }
+    }
 
     val backupProgress = backup.progress
 

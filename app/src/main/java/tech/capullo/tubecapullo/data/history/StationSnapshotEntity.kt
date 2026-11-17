@@ -41,4 +41,16 @@ interface StationSnapshotDao {
         upsert(entity)
         trim(keep)
     }
+
+    @Query(DELETE_BY_ID)
+    suspend fun delete(id: Long): Int
+
+    @Query(DELETE_ALL)
+    suspend fun deleteAll(): Int
+
+    companion object {
+        const val DELETE_BY_ID = "DELETE FROM station_snapshot WHERE id = :id"
+
+        const val DELETE_ALL = "DELETE FROM station_snapshot"
+    }
 }

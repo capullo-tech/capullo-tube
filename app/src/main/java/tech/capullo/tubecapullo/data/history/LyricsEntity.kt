@@ -30,6 +30,10 @@ interface LyricsDao {
     @Query("UPDATE lyrics SET offsetMs = :offsetMs WHERE videoId = :videoId")
     suspend fun setOffset(videoId: String, offsetMs: Long)
 
-    @Query("DELETE FROM lyrics WHERE videoId != :keep AND videoId NOT IN (SELECT videoId FROM played_track)")
+    @Query(DELETE_UNPLAYED)
     suspend fun deleteUnplayed(keep: String)
+
+    companion object {
+        const val DELETE_UNPLAYED = "DELETE FROM lyrics WHERE videoId != :keep AND videoId NOT IN (SELECT videoId FROM played_track)"
+    }
 }

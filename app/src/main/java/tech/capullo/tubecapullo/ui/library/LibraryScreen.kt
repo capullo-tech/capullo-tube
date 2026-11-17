@@ -2,8 +2,10 @@ package tech.capullo.tubecapullo.ui.library
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -67,6 +69,7 @@ import kotlinx.coroutines.launch
 import tech.capullo.tubecapullo.data.backup.BackupProgress
 import tech.capullo.tubecapullo.data.youtube.YtVideo
 import tech.capullo.tubecapullo.ui.shared.CompactListItem
+import tech.capullo.tubecapullo.ui.shared.REMOVE_FROM_HISTORY
 import tech.capullo.tubecapullo.ui.shared.SongActions
 import tech.capullo.tubecapullo.ui.shared.SongActionsBox
 import tech.capullo.tubecapullo.ui.theme.Dimens
@@ -112,6 +115,11 @@ fun LibraryScreen(onOpenPlayer: () -> Unit, viewModel: LibraryViewModel = hiltVi
             onOpenPlayer()
         },
         playNext = playNext.takeIf { playingId != null },
+    )
+    val historyActions = SongActions(
+        goToRadio = actions.goToRadio,
+        playNext = actions.playNext,
+        removeFromHistory = viewModel::removeFromHistory,
     )
 
     val exportLauncher = rememberLauncherForActivityResult(
@@ -190,7 +198,8 @@ fun LibraryScreen(onOpenPlayer: () -> Unit, viewModel: LibraryViewModel = hiltVi
                     rows = history,
                     playingId = playingId,
                     listState = historyListState,
-                    actions = actions,
+                    actions = historyActions,
+                    onRemove = viewModel::removeFromHistory,
                     onPlayAlbum = playAlbum,
                 )
             }
@@ -343,6 +352,7 @@ private fun HistoryTab(
     listState: LazyListState,
     actions: SongActions,
     onPlayAlbum: (YtVideo) -> Unit,
+    onRemove: (YtVideo) -> Unit,
 ) {
     when {
         rows == null -> Loading()
@@ -353,7 +363,7 @@ private fun HistoryTab(
             items(rows, key = { it.video.videoId }) { row ->
                 val isPlaying = row.video.videoId == playingId
                 if (row.isAlbum) {
-                    AlbumRow(row.video, isPlaying, onPlayAlbum, trailing = null)
+                    HistoryAlbumRow(row.video, isPlaying, onPlayAlbum, onRemove = { onRemove(row.video) })
                 } else {
                     TrackRow(video = row.video, isPlaying = isPlaying, actions = actions)
                 }
@@ -371,6 +381,36 @@ private fun AlbumRow(
 ) {
     Box(Modifier.clickable(onClickLabel = "Play album") { onPlay(album) }) {
         TrackRowContent(album, isPlaying, trailing)
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun HistoryAlbumRow(
+    album: YtVideo,
+    isPlaying: Boolean,
+    onPlay: (YtVideo) -> Unit,
+    onRemove: () -> Unit,
+) {
+    var menuOpen by remember { mutableStateOf(false) }
+    Box(
+        Modifier.combinedClickable(
+            onClickLabel = "Play album",
+            onLongClickLabel = "Album options",
+            onLongClick = { menuOpen = true },
+            onClick = { onPlay(album) },
+        ),
+    ) {
+        TrackRowContent(album, isPlaying, trailing = null)
+        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+            DropdownMenuItem(
+                text = { Text(REMOVE_FROM_HISTORY) },
+                onClick = {
+                    menuOpen = false
+                    onRemove()
+                },
+            )
+        }
     }
 }
 

@@ -32,6 +32,14 @@ class StationSnapshots @Inject constructor(private val dao: StationSnapshotDao) 
         .onFailure { Log.w(TAG, "station-snapshot read failed", it) }
         .getOrNull()
 
+    suspend fun delete(id: Long) {
+        runCatching { dao.delete(id) }.onFailure { Log.w(TAG, "station-snapshot delete failed", it) }
+    }
+
+    suspend fun deleteAll() {
+        runCatching { dao.deleteAll() }.onFailure { Log.w(TAG, "station-snapshot delete failed", it) }
+    }
+
     fun observe(): Flow<List<StationSnapshot>> = dao.observe()
         .map { rows -> rows.mapNotNull { it.decode() } }
         .catch {

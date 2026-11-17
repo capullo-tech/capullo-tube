@@ -28,6 +28,7 @@ import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Language
@@ -36,6 +37,7 @@ import androidx.compose.material.icons.filled.Lyrics
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material3.AlertDialog
@@ -66,6 +68,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import tech.capullo.tubecapullo.data.settings.AppSettings
+import tech.capullo.tubecapullo.data.settings.HistoryRetention
 import tech.capullo.tubecapullo.data.settings.LikeMode
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -88,9 +91,12 @@ fun SettingsScreen(
     val songsPerLike by viewModel.songsPerLike.collectAsStateWithLifecycle()
     val openYouTubeLinks by viewModel.openYouTubeLinks.collectAsStateWithLifecycle()
     val askForSharedLinks by viewModel.askForSharedLinks.collectAsStateWithLifecycle()
+    val historyRetention by viewModel.historyRetention.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var showChartsDialog by rememberSaveable { mutableStateOf(false) }
     var showLikeModeDialog by rememberSaveable { mutableStateOf(false) }
+    var showRetentionDialog by rememberSaveable { mutableStateOf(false) }
+    var showClearHistoryDialog by rememberSaveable { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -241,6 +247,26 @@ fun SettingsScreen(
                 onValueChange = viewModel::setSongsPerLike,
             )
             HorizontalDivider()
+            SectionHeader("History")
+            ListItem(
+                leadingContent = { Icon(Icons.Default.Schedule, contentDescription = null) },
+                headlineContent = { Text("Keep history for") },
+                supportingContent = { Text("${historyRetention.label}. Plays of liked songs and albums always stay") },
+                modifier = Modifier.clickable(
+                    onClickLabel = "Choose how long to keep play history",
+                    onClick = { showRetentionDialog = true },
+                ),
+            )
+            ListItem(
+                leadingContent = { Icon(Icons.Default.DeleteSweep, contentDescription = null) },
+                headlineContent = { Text("Clear play history") },
+                supportingContent = { Text("Library History, play counts, Continue cards and saved lyrics. Likes stay") },
+                modifier = Modifier.clickable(
+                    onClickLabel = "Clear play history",
+                    onClick = { showClearHistoryDialog = true },
+                ),
+            )
+            HorizontalDivider()
             SectionHeader("Links")
             ListItem(
                 leadingContent = { Icon(Icons.Default.Link, contentDescription = null) },
@@ -329,6 +355,41 @@ fun SettingsScreen(
             onDismiss = { showLikeModeDialog = false },
         )
     }
+    if (showRetentionDialog) {
+        ChoiceDialog(
+            title = "Keep history for",
+            choices = HistoryRetention.entries,
+            selected = historyRetention,
+            label = { it.label },
+            explanation = { it.explanation },
+            onPick = { retention ->
+                viewModel.setHistoryRetention(retention)
+                showRetentionDialog = false
+            },
+            onDismiss = { showRetentionDialog = false },
+        )
+    }
+    if (showClearHistoryDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearHistoryDialog = false },
+            title = { Text("Clear play history?") },
+            text = {
+                Text(
+                    "Removes every song from Library History, the play counts behind Listen again, " +
+                        "the Home Continue cards, and the saved lyrics. Liked songs and albums stay.",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.clearPlayHistory()
+                        showClearHistoryDialog = false
+                    },
+                ) { Text("Clear") }
+            },
+            dismissButton = { TextButton(onClick = { showClearHistoryDialog = false }) { Text("Cancel") } },
+        )
+    }
 }
 
 private val LikeMode.label: String
@@ -347,6 +408,20 @@ private fun LikeMode.explanation(songsPerLike: Int): String = when (this) {
     LikeMode.SAVE_ONLY -> "The like is saved; the queue does not change"
     LikeMode.SWITCH_NOW -> "Songs like it play after this song; a list becomes a radio"
 }
+
+private val HistoryRetention.label: String
+    get() = when (this) {
+        HistoryRetention.THREE_MONTHS -> "3 months"
+        HistoryRetention.ONE_YEAR -> "1 year"
+        HistoryRetention.FOREVER -> "Forever"
+    }
+
+private val HistoryRetention.explanation: String
+    get() = when (this) {
+        HistoryRetention.THREE_MONTHS -> "Songs not played for 3 months leave History and Listen again"
+        HistoryRetention.ONE_YEAR -> "Songs not played for a year leave History and Listen again"
+        HistoryRetention.FOREVER -> "Nothing is removed"
+    }
 
 private fun delayLabel(delayMs: Int): String = if (delayMs > 0) "+$delayMs ms" else "$delayMs ms"
 
