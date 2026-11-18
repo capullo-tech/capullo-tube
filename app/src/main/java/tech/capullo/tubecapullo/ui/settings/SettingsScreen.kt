@@ -29,8 +29,10 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Lyrics
@@ -40,6 +42,7 @@ import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.TouchApp
+import androidx.compose.material.icons.filled.TravelExplore
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -48,6 +51,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
@@ -70,6 +74,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import tech.capullo.tubecapullo.data.settings.AppSettings
 import tech.capullo.tubecapullo.data.settings.HistoryRetention
 import tech.capullo.tubecapullo.data.settings.LikeMode
+import tech.capullo.tubecapullo.data.similar.SimilarDepth
+import tech.capullo.tubecapullo.data.similar.isLastfmKeyShape
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -92,11 +98,16 @@ fun SettingsScreen(
     val openYouTubeLinks by viewModel.openYouTubeLinks.collectAsStateWithLifecycle()
     val askForSharedLinks by viewModel.askForSharedLinks.collectAsStateWithLifecycle()
     val historyRetention by viewModel.historyRetention.collectAsStateWithLifecycle()
+    val similarOnline by viewModel.similarOnline.collectAsStateWithLifecycle()
+    val similarDepth by viewModel.similarDepth.collectAsStateWithLifecycle()
+    val lastfmApiKey by viewModel.lastfmApiKey.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var showChartsDialog by rememberSaveable { mutableStateOf(false) }
     var showLikeModeDialog by rememberSaveable { mutableStateOf(false) }
     var showRetentionDialog by rememberSaveable { mutableStateOf(false) }
     var showClearHistoryDialog by rememberSaveable { mutableStateOf(false) }
+    var showDepthDialog by rememberSaveable { mutableStateOf(false) }
+    var showLastfmKeyDialog by rememberSaveable { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -247,6 +258,49 @@ fun SettingsScreen(
                 onValueChange = viewModel::setSongsPerLike,
             )
             HorizontalDivider()
+            SectionHeader("Similar songs")
+            ListItem(
+                leadingContent = { Icon(Icons.Default.TravelExplore, contentDescription = null) },
+                headlineContent = { Text("Find similar songs online") },
+                supportingContent = {
+                    Text(
+                        if (similarOnline) {
+                            "Radios add songs Last.fm finds similar. Each radio song's artist and title go to Last.fm (last.fm)"
+                        } else {
+                            "Off: radios play YouTube's Mix and related videos only"
+                        },
+                    )
+                },
+                trailingContent = { Switch(checked = similarOnline, onCheckedChange = null) },
+                modifier = Modifier.toggleable(
+                    value = similarOnline,
+                    role = Role.Switch,
+                    onValueChange = viewModel::setSimilarOnline,
+                ),
+            )
+            if (similarOnline) {
+                ListItem(
+                    leadingContent = { Icon(Icons.Default.Explore, contentDescription = null) },
+                    headlineContent = { Text("Depth") },
+                    supportingContent = { Text("${similarDepth.label}: ${similarDepth.explanation}") },
+                    modifier = Modifier.clickable(
+                        onClickLabel = "Choose how deep similar songs go",
+                        onClick = { showDepthDialog = true },
+                    ),
+                )
+                ListItem(
+                    leadingContent = { Icon(Icons.Default.Key, contentDescription = null) },
+                    headlineContent = { Text("Last.fm API key") },
+                    supportingContent = {
+                        Text(lastfmKeyLabel(lastfmApiKey, viewModel.hasBuiltInLastfmKey) + ". Similar songs by Last.fm")
+                    },
+                    modifier = Modifier.clickable(
+                        onClickLabel = "Set your own Last.fm API key",
+                        onClick = { showLastfmKeyDialog = true },
+                    ),
+                )
+            }
+            HorizontalDivider()
             SectionHeader("History")
             ListItem(
                 leadingContent = { Icon(Icons.Default.Schedule, contentDescription = null) },
@@ -355,6 +409,31 @@ fun SettingsScreen(
             onDismiss = { showLikeModeDialog = false },
         )
     }
+    if (showDepthDialog) {
+        ChoiceDialog(
+            title = "Depth",
+            choices = SimilarDepth.entries,
+            selected = similarDepth,
+            label = { it.label },
+            explanation = { it.explanation },
+            onPick = { depth ->
+                viewModel.setSimilarDepth(depth)
+                showDepthDialog = false
+            },
+            onDismiss = { showDepthDialog = false },
+        )
+    }
+    if (showLastfmKeyDialog) {
+        LastfmKeyDialog(
+            current = lastfmApiKey,
+            hasBuiltIn = viewModel.hasBuiltInLastfmKey,
+            onSave = { key ->
+                viewModel.setLastfmApiKey(key)
+                showLastfmKeyDialog = false
+            },
+            onDismiss = { showLastfmKeyDialog = false },
+        )
+    }
     if (showRetentionDialog) {
         ChoiceDialog(
             title = "Keep history for",
@@ -422,6 +501,63 @@ private val HistoryRetention.explanation: String
         HistoryRetention.ONE_YEAR -> "Songs not played for a year leave History and Listen again"
         HistoryRetention.FOREVER -> "Nothing is removed"
     }
+
+private val SimilarDepth.label: String
+    get() = when (this) {
+        SimilarDepth.FAMILIAR -> "Familiar"
+        SimilarDepth.DEEP -> "Deep"
+    }
+
+private val SimilarDepth.explanation: String
+    get() = when (this) {
+        SimilarDepth.FAMILIAR -> "Last.fm's closest songs, mostly well known"
+        SimilarDepth.DEEP -> "Songs further down Last.fm's list, less known"
+    }
+
+internal fun lastfmKeyLabel(personal: String, hasBuiltIn: Boolean): String = when {
+    personal.isNotBlank() -> "Your key ending ${personal.takeLast(4)}"
+    hasBuiltIn -> "The app's key, shared by every install"
+    else -> "No key: add your own to find similar songs"
+}
+
+@Composable
+private fun LastfmKeyDialog(
+    current: String,
+    hasBuiltIn: Boolean,
+    onSave: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var text by rememberSaveable { mutableStateOf(current) }
+    val trimmed = text.trim()
+    val valid = trimmed.isEmpty() || isLastfmKeyShape(trimmed)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Last.fm API key") },
+        text = {
+            Column {
+                Text(
+                    "Optional. Get a free key at last.fm/api/account/create and paste the API key " +
+                        "(not the shared secret). " +
+                        if (hasBuiltIn) "Leave empty to use the app's key." else "The app has no key of its own.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    singleLine = true,
+                    isError = !valid,
+                    supportingText = { if (!valid) Text("A key is 32 characters, 0-9 and a-f") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp),
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = { onSave(trimmed) }, enabled = valid) { Text("Save") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
 
 private fun delayLabel(delayMs: Int): String = if (delayMs > 0) "+$delayMs ms" else "$delayMs ms"
 

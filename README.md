@@ -6,18 +6,23 @@ The phone plays YouTube audio and broadcasts it in sync over the LAN with
 [Snapcast](https://github.com/badaix/snapcast). Other phones, Raspberry Pis and web browsers listen
 as clients. You pick one song. The app extends it into an endless radio:
 
-- The radio plays the song's YouTube Mix and its top related videos, in pairs: one song of each,
-  each list in YouTube's order. When the queue runs low, the radio continues with the pairs of
-  the last song played.
-- **♥ Like** saves the song. It also blends in 2 songs like it (one of its Mix, one related)
-  after the current song, in a radio or a list (Settings can change the count, or switch to
-  "Save only" or "Switch now").
+- The radio plays the song's YouTube Mix, its top related videos, and songs
+  [Last.fm](https://www.last.fm) finds similar that YouTube did not offer, in rounds: one song of
+  each, each list in its own order. When the queue runs low, the radio continues from the last
+  song played.
+- **♥ Like** saves the song. It also blends in 2 songs like it after the current song, one of
+  them from Last.fm when it found any, in a radio or a list (Settings can change the count, or
+  switch to "Save only" or "Switch now").
 - **Next** goes to the next song. A skip is not a signal.
 - **⌕ Search** starts somewhere new.
 - **Lyrics** show under the Player's controls when a song has them: synced lyrics from
   [LRCLIB](https://lrclib.net), or lyrics pasted into the video description. LRCLIB receives the
   artist, the title and the duration of each song that plays; Settings > Look up lyrics online
   turns that off.
+- **Similar songs** come from Last.fm. Last.fm receives the artist and title of each song a
+  radio expands; each new suggestion is looked up once on YouTube and remembered. Settings >
+  Similar songs turns this off, picks the Depth (Familiar or Deep), and takes an optional
+  personal Last.fm API key in place of the app's.
 
 Part of the [capullo-tech](https://github.com/capullo-tech) family (RadioCapullo, telecloud-radio).
 
@@ -32,6 +37,9 @@ Requirements: JDK 17, Android SDK 36. Device: Android 6.0+ (minSdk 23).
 
 Point Gradle at your SDK: open the project once in Android Studio (it writes `local.properties`),
 or set `ANDROID_HOME`, or create `local.properties` with `sdk.dir=/path/to/Android/Sdk`.
+
+The app's Last.fm key comes from `LASTFM_API_KEY` in the environment or `lastfm.apiKey` in
+`local.properties` (both optional; without one, similar songs need a personal key in Settings).
 
 ```bash
 ./gradlew :app:assembleDebug
@@ -69,13 +77,15 @@ All listeners stay in sync. The browser player's Next button goes to the next so
 
 ```
 ui/        Home, Search, Library, Settings, Player, Up next
-station/   StationEngine  - radios as chained pairs of YouTube Mix and related videos
-                            (Pairs.kt), Liked radio, playlists, channels and Liked
+station/   StationEngine  - radios as chained rounds of YouTube Mix, related videos and
+                            Last.fm similar songs (Pairs.kt), Liked radio, playlists,
+                            channels and Liked
            StationLoop    - advances the queue
 player/    ExoPlayer → PCM → snapfifo   (PlaybackService = foreground media service)
 snapcast/  SnapcastManager - runs snapserver on the phone
 data/youtube/  NewPipeExtractor client: search, streams, related, Mix
 data/lyrics/   LRCLIB client, the artist and title parser, description lyrics, Room cache
+data/similar/  Last.fm client, seed name tries, Depth, YouTube resolver with a Room cache
 ```
 
 ## Contributing

@@ -30,12 +30,17 @@ import tech.capullo.tubecapullo.data.history.LikedTracks
 import tech.capullo.tubecapullo.data.history.PlayHistory
 import tech.capullo.tubecapullo.data.settings.AppSettings
 import tech.capullo.tubecapullo.data.settings.LikeMode
+import tech.capullo.tubecapullo.data.similar.SimilarFind
+import tech.capullo.tubecapullo.data.similar.SimilarFinder
+import tech.capullo.tubecapullo.data.similar.SimilarNames
+import tech.capullo.tubecapullo.data.similar.SimilarTrack
 import tech.capullo.tubecapullo.data.youtube.YouTubeExtractorClient
 import tech.capullo.tubecapullo.data.youtube.YouTubeUrls
 import tech.capullo.tubecapullo.data.youtube.YtRelated
 import tech.capullo.tubecapullo.data.youtube.YtStream
 import tech.capullo.tubecapullo.data.youtube.YtVideo
 import tech.capullo.tubecapullo.data.youtube.YtVideoList
+import tech.capullo.tubecapullo.util.TitleCleaner
 import kotlin.random.Random
 
 private const val RANDOM_SEED = 7
@@ -135,6 +140,7 @@ class StationEngineTest {
         fakeSettings(),
         mockk(relaxed = true),
         mockk(relaxed = true),
+        FakeSimilarFinder(),
     )
 
     @Before fun setUp() = silenceStationLog()
@@ -417,6 +423,7 @@ class StationLikeModeTest {
             fakeSettings(likeMode, songs),
             mockk(relaxed = true),
             mockk(relaxed = true),
+            FakeSimilarFinder(),
         )
         engine.start(PlaySource.SongRadio(video("SEED")))
         advanceUntilIdle()
@@ -600,6 +607,7 @@ class StationLikedRadioTest {
             fakeSettings(likeMode, songs),
             mockk(relaxed = true),
             mockk(relaxed = true),
+            FakeSimilarFinder(),
         )
         advanceUntilIdle()
         return engine
@@ -790,6 +798,7 @@ class StationCollectionsTest {
         fakeSettings(likeMode, songs),
         mockk(relaxed = true),
         mockk(relaxed = true),
+        FakeSimilarFinder(),
     )
 
     private fun TestScope.started(
@@ -1088,6 +1097,7 @@ class StationPreviousTest {
             fakeSettings(),
             mockk(relaxed = true),
             mockk(relaxed = true),
+            FakeSimilarFinder(),
         )
         advanceUntilIdle()
         return engine
@@ -1264,6 +1274,7 @@ class StationPairsTest {
             fakeSettings(songs = songs),
             mockk(relaxed = true),
             mockk(relaxed = true),
+            FakeSimilarFinder(),
         )
         advanceUntilIdle()
         return engine
@@ -1344,5 +1355,153 @@ class StationPairsTest {
             assertTrue("a unit without a like first: $played", like in likeIds)
             assertPairs(mixIds(like).take(n / 2), relatedHead(like, n / 2), unit.drop(1))
         }
+    }
+}
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class StationSimilarTest {
+    private val likedTracks = mockk<LikedTracks>(relaxed = true)
+    private val songs = MutableStateFlow(AppSettings.DEFAULT_SONGS_PER_LIKE)
+
+    private fun lastfm(seed: String) = (1..6).map { video("L$it-$seed".take(11)) }
+
+    private fun TestScope.engine(
+        finder: SimilarFinder = FakeSimilarFinder(::lastfm),
+        extractor: YouTubeExtractorClient = fakeExtractor(),
+    ) = StationEngine(
+        extractor,
+        this,
+        mockk(relaxed = true),
+        likedTracks,
+        Random(RANDOM_SEED),
+        fakeSettings(songs = songs),
+        mockk(relaxed = true),
+        mockk(relaxed = true),
+        finder,
+    )
+
+    @Before fun setUp() = silenceStationLog()
+
+    @After fun tearDown() = unmockkStatic(Log::class)
+
+    @Test
+    fun `a song radio mixes Last fm's songs into the first rounds, attributed to the seed`() = runTest(StandardTestDispatcher()) {
+        val engine = engine()
+        val seed = video("SEED")
+        engine.start(PlaySource.SongRadio(seed))
+        advanceUntilIdle()
+
+        val queued = engine.state.value.queued
+        val similar = queued.filter { it.why.provenance == Provenance.SIMILAR }
+        assertEquals(
+            lastfm(seed.videoId).take(StationEngine.SIMILAR_PER_FEED).map { it.videoId },
+            similar.map { it.video.videoId },
+        )
+        assertTrue(similar.all { it.why == Why(Provenance.SIMILAR, seed.videoId, seed.title) })
+        val rounds = queued.take(2 * StationEngine.SIMILAR_PER_FEED)
+        assertEquals(
+            "Mix and Last.fm alternate, one of each per round",
+            StationEngine.SIMILAR_PER_FEED,
+            rounds.count { it.why.provenance == Provenance.SIMILAR },
+        )
+    }
+
+    @Test
+    fun `Last fm is told what YouTube already offered, and asked for SIMILAR_PER_FEED songs`() = runTest(StandardTestDispatcher()) {
+        val finder = FakeSimilarFinder(::lastfm)
+        val engine = engine(finder)
+        val seed = video("SEED")
+        engine.start(PlaySource.SongRadio(seed))
+        advanceUntilIdle()
+
+        val (knownIds, knownKeys, count) = finder.resolveCalls.single()
+        assertEquals(StationEngine.SIMILAR_PER_FEED, count)
+        assertTrue(fakeMix(seed.videoId).all { it.videoId in knownIds })
+        assertTrue(fakeMix(seed.videoId).all { TitleCleaner.key(it.title, it.uploader) in knownKeys })
+    }
+
+    @Test
+    fun `a Last fm song that is already in the Mix plays once, as Mix`() = runTest(StandardTestDispatcher()) {
+        val seed = video("SEED")
+        val inMix = fakeMix(seed.videoId)[3]
+        val careless = object : SimilarFinder {
+            override suspend fun names(seed: YtVideo) = SimilarNames(listOf(SimilarTrack("a", "b", 1.0)), "track")
+            override suspend fun resolve(names: SimilarNames, knownIds: Set<String>, knownKeys: Set<String>, count: Int) = SimilarFind(listOf(inMix), 1, 1, 0)
+        }
+        val engine = engine(careless)
+        engine.start(PlaySource.SongRadio(seed))
+        advanceUntilIdle()
+
+        val copies = engine.state.value.queued.filter { it.video.videoId == inMix.videoId }
+        assertEquals(listOf(Provenance.MIX), copies.map { it.why.provenance })
+    }
+
+    @Test
+    fun `when Last fm fails the radio is YouTube's Mix, as before`() = runTest(StandardTestDispatcher()) {
+        val broken = object : SimilarFinder {
+            override suspend fun names(seed: YtVideo): SimilarNames = throw IllegalStateException("offline")
+            override suspend fun resolve(names: SimilarNames, knownIds: Set<String>, knownKeys: Set<String>, count: Int): SimilarFind = throw IllegalStateException("offline")
+        }
+        val engine = engine(broken)
+        val seed = video("SEED")
+        engine.start(PlaySource.SongRadio(seed))
+        advanceUntilIdle()
+
+        assertEquals(fakeMix(seed.videoId).drop(1).map { it.videoId }, engine.queuedIds())
+    }
+
+    @Test
+    fun `a blend like always brings one Last fm song among its N`() = runTest(StandardTestDispatcher()) {
+        for (n in listOf(AppSettings.DEFAULT_SONGS_PER_LIKE, AppSettings.MAX_SONGS_PER_LIKE)) {
+            songs.value = n
+            val engine = engine()
+            engine.start(PlaySource.SongRadio(video("SEED")))
+            advanceUntilIdle()
+            engine.advanceThrough(2)
+            advanceUntilIdle()
+            val liked = engine.state.value.current!!
+
+            engine.toggleLike(liked)
+            advanceUntilIdle()
+
+            val blended = engine.state.value.queued.take(n)
+            assertTrue("N=$n", blended.all { it.why.fromVideoId == liked.videoId })
+            assertTrue("N=$n: $blended", blended.any { it.why.provenance == Provenance.SIMILAR })
+            assertEquals("N=$n", n, blended.size)
+        }
+    }
+
+    @Test
+    fun `a blend like with no Last fm songs is YouTube's picks only`() = runTest(StandardTestDispatcher()) {
+        val engine = engine(FakeSimilarFinder())
+        engine.start(PlaySource.SongRadio(video("SEED")))
+        advanceUntilIdle()
+        engine.advanceThrough(2)
+        advanceUntilIdle()
+        val liked = engine.state.value.current!!
+
+        engine.toggleLike(liked)
+        advanceUntilIdle()
+
+        val blended = engine.state.value.queued.take(AppSettings.DEFAULT_SONGS_PER_LIKE)
+        assertTrue(blended.all { it.why.provenance == Provenance.MIX })
+    }
+
+    @Test
+    fun `the radio chains with Last fm songs of the last song played`() = runTest(StandardTestDispatcher()) {
+        val finder = FakeSimilarFinder(::lastfm)
+        val mixSize = StationEngine.CHAIN_BELOW + 3
+        val engine = engine(finder, fakeExtractor(mixSize = mixSize))
+        engine.start(PlaySource.SongRadio(video("SEED")))
+        advanceUntilIdle()
+
+        val chainAt = mixSize + StationEngine.SIMILAR_PER_FEED - StationEngine.CHAIN_BELOW + 1
+        engine.advanceThrough(chainAt + 1)
+        advanceUntilIdle()
+
+        val last = engine.videoAt(chainAt)!!
+        assertEquals(2, finder.namedSeeds.size)
+        assertEquals(last.videoId, finder.namedSeeds.last())
+        assertTrue(engine.state.value.queued.any { it.why == Why(Provenance.SIMILAR, last.videoId, last.title) })
     }
 }

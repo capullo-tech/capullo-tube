@@ -161,3 +161,24 @@ Misses in q3: `Ckay - love nwantiti [feat. ...] [Remix]`, a few Arabic titles, o
 track.
 
 Verdict: go for PR 2, with the parsing retry and artist fallback above as part of its scope.
+
+## PR 2 as built (`tube/smart-playlist`)
+
+- `data/similar/`: `LastfmClient` (track.getSimilar, artist.getSimilar, artist.getTopTracks),
+  `SeedNames` (parsed names, then bare names: no brackets, no featured artist, first artist of a
+  joint credit; Topic channels), `depthOrder`, `pickResolution` (studio over live/cover/remix),
+  `TrackResolver` (Room `resolved_track`, v8; hits kept 180 days, misses 30), and
+  `LastfmSimilarFinder` (key choice, retry, artist fallback, novelty filter, bounded searches).
+- Engine: `fetchSong` asks Last.fm in parallel with the Mix and related, then resolves up to
+  `SIMILAR_PER_FEED = 4` new songs in one parallel batch (at most 2 searches per wanted song).
+  `interleave` replaces `pairUp`; with no Last.fm songs the order is exactly the old pairing.
+  New log line: `similar seed=.. via=track|retry|artist|off|no-key|unparsed|none|error names=..
+  known=.. tried=.. searched=.. found=..`.
+- Change from the draft: a like still adds "Songs added per like" (N); one of the N is a Last.fm
+  song whenever Last.fm found one, instead of N + 1.
+- Deep = ranks past 10 with match >= 0.1, then ranks 1-10 (the probe showed weak matches below
+  0.1).
+- Settings > Similar songs: on/off (default on), Depth, Last.fm API key (optional; empty means
+  the built-in key from `LASTFM_API_KEY` / `local.properties` `lastfm.apiKey`).
+- Home "More like" rows stay YouTube-only.
+- Device check: owner's razr, once the feature is mature.

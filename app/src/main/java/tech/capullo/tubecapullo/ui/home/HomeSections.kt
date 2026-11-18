@@ -8,7 +8,7 @@ import tech.capullo.tubecapullo.station.PlaySource
 import tech.capullo.tubecapullo.station.StationSnapshot
 import tech.capullo.tubecapullo.station.chapterAt
 import tech.capullo.tubecapullo.station.inTrackWindow
-import tech.capullo.tubecapullo.station.pairUp
+import tech.capullo.tubecapullo.station.interleave
 import tech.capullo.tubecapullo.station.songLists
 import tech.capullo.tubecapullo.util.formatDuration
 import kotlin.random.Random
@@ -82,7 +82,7 @@ internal fun becauseLikedCards(
     random: Random,
 ): List<YtVideo> {
     val lists = songLists(seed, mix, related, excludedIds = likedIds)
-    return pairUp(lists.mix, lists.related, random).take(CARDS_PER_ROW)
+    return interleave(listOf(lists.mix, lists.related), random).take(CARDS_PER_ROW)
 }
 
 internal fun continueCards(stations: List<StationSnapshot>, playingStationId: Long, max: Int): List<ContinueCard> = stations.asSequence()

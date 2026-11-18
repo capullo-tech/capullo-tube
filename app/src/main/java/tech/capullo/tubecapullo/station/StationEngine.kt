@@ -22,11 +22,15 @@ import tech.capullo.tubecapullo.data.history.PlayHistory
 import tech.capullo.tubecapullo.data.history.StationSnapshots
 import tech.capullo.tubecapullo.data.settings.AppSettings
 import tech.capullo.tubecapullo.data.settings.LikeMode
+import tech.capullo.tubecapullo.data.similar.SimilarFind
+import tech.capullo.tubecapullo.data.similar.SimilarFinder
+import tech.capullo.tubecapullo.data.similar.SimilarNames
 import tech.capullo.tubecapullo.data.youtube.YouTubeExtractorClient
 import tech.capullo.tubecapullo.data.youtube.YouTubeUrls
 import tech.capullo.tubecapullo.data.youtube.YtChapter
 import tech.capullo.tubecapullo.data.youtube.YtRelated
 import tech.capullo.tubecapullo.data.youtube.YtVideo
+import tech.capullo.tubecapullo.util.TitleCleaner
 import java.util.IdentityHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -43,6 +47,7 @@ class StationEngine @Inject constructor(
     private val settings: AppSettings,
     private val likedAlbums: LikedAlbums,
     private val snapshots: StationSnapshots,
+    private val similarFinder: SimilarFinder,
 ) : MediaSourceProvider {
     private class Slot(
         val video: YtVideo,
@@ -51,25 +56,40 @@ class StationEngine @Inject constructor(
         val blended: Boolean = false,
     )
 
-    private class Feed(val seed: YtVideo, val lists: SongLists) {
+    private class Feed(val seed: YtVideo, val lists: SongLists, similarVideos: List<YtVideo>) {
         val mix = Why(Provenance.MIX, seed.videoId, seed.title).let { why ->
             lists.mix.map { Slot(it, why) }
         }
         val related = Why(Provenance.RELATED, seed.videoId, seed.title).let { why ->
             lists.related.map { Slot(it, why) }
         }
+        val similar = Why(Provenance.SIMILAR, seed.videoId, seed.title).let { why ->
+            similarVideos.map { Slot(it, why) }
+        }
 
-        fun merged(random: Random): List<Slot> = pairUp(mix, related, random)
+        fun merged(random: Random): List<Slot> = interleave(listOf(mix, related, similar), random)
+
+        /**
+         * The first [count] songs of the merge. When a like asks for songs and Last.fm found
+         * some, one of them is always among the picks: that is the song YouTube would not
+         * have offered.
+         */
+        fun picks(random: Random, count: Int): List<Slot> {
+            val picks = merged(random).take(count)
+            if (count == 0 || similar.isEmpty() || picks.any { it.why.provenance == Provenance.SIMILAR }) return picks
+            return picks.dropLast(1) + similar.first()
+        }
 
         fun fields(added: List<Slot>): String {
             val fromMix = added.count { it.why.provenance == Provenance.MIX }
+            val fromSimilar = added.count { it.why.provenance == Provenance.SIMILAR }
             val empty = when {
                 mix.isEmpty() && related.isNotEmpty() -> " empty=mix"
                 related.isEmpty() && mix.isNotEmpty() -> " empty=related"
                 else -> ""
             }
             val dupes = if (lists.dupes > 0) " dupes=${lists.dupes}" else ""
-            return "mix=+$fromMix related=+${added.size - fromMix}$empty$dupes"
+            return "mix=+$fromMix related=+${added.size - fromMix - fromSimilar} similar=+$fromSimilar$empty$dupes"
         }
     }
 
@@ -663,7 +683,7 @@ class StationEngine @Inject constructor(
                 relayCollectionLocked()
             }
             pendingRollChip?.let { from ->
-                if (slot.why.provenance == Provenance.MIX || slot.why.provenance == Provenance.RELATED) {
+                if (slot.why.provenance.isRadioPick) {
                     pendingRollChip = null
                     log("roll-chip from=${kind(from)} at=${slot.video.videoId}")
                     _rollOvers.tryEmit(RollOver(from))
@@ -1033,7 +1053,7 @@ class StationEngine @Inject constructor(
                 }
                 val moveUp = src is PlaySource.SongRadio || src is PlaySource.SearchRadio
                 fetchSong(liked, "like", skipQueued = !moveUp) { feed ->
-                    val picks = feed.merged(random).take(count)
+                    val picks = feed.picks(random, count)
                     blendLocked(picks)
                     log("like mode=blend $at ${feed.fields(picks)}")
                     _likeEffects.tryEmit(LikeEffect.Blended(liked, picks.size))
@@ -1091,7 +1111,7 @@ class StationEngine @Inject constructor(
         val places = (maxOf(current, 0) + 1 until queue.size).filter { i ->
             val slot = queue[i]
             !slot.pinned && !slot.blended &&
-                (slot.why.provenance == Provenance.MIX || slot.why.provenance == Provenance.RELATED)
+                slot.why.provenance.isRadioPick
         }
         val shuffled = places.map { queue[it] }.shuffled(random)
         places.forEachIndexed { n, i -> queue[i] = shuffled[n] }
@@ -1111,7 +1131,7 @@ class StationEngine @Inject constructor(
             return true
         }
         scope.launch {
-            val (mix, related) = coroutineScope {
+            val (mix, related, names) = coroutineScope {
                 val mix = async {
                     runCatching { extractor.mix(seed.videoId) }
                         .onFailure { log("$what seed=${seed.videoId} mix-error=${q(it.message)}") }
@@ -1124,8 +1144,17 @@ class StationEngine @Inject constructor(
                         }
                         .getOrNull()
                 }
-                mix.await() to related.await()
+                val names = async {
+                    runCatching { similarFinder.names(seed) }
+                        .getOrElse { SimilarNames(emptyList(), "error") }
+                }
+                Triple(mix.await(), related.await(), names.await())
             }
+            val excluded = synchronized(lock) {
+                if (stale()) return@launch
+                excludedIdsLocked(skipQueued).toSet()
+            }
+            val found = findSimilar(seed, names, mix, related, excluded)
             synchronized(lock) {
                 if (stale()) return@launch
                 val lists = songLists(
@@ -1140,10 +1169,36 @@ class StationEngine @Inject constructor(
                             "dropped=${lists.gateDropped}",
                     )
                 }
-                land(Feed(seed, lists))
+                val listed = (lists.mix + lists.related).mapTo(HashSet()) { it.videoId }
+                val excludedNow = excludedIdsLocked(skipQueued)
+                val similar = found.videos.filter {
+                    it.inTrackWindow() && it.videoId !in excludedNow && it.videoId !in listed
+                }
+                log(
+                    "similar seed=${seed.videoId} via=${names.via} names=${names.tracks.size} " +
+                        "known=${found.skippedKnown} tried=${found.tried} searched=${found.searched} " +
+                        "found=${similar.size}",
+                )
+                land(Feed(seed, lists, similar))
                 publishLocked()
             }
         }
+    }
+
+    private suspend fun findSimilar(
+        seed: YtVideo,
+        names: SimilarNames,
+        mix: List<YtVideo>,
+        related: YtRelated?,
+        excluded: Set<String>,
+    ): SimilarFind {
+        if (names.tracks.isEmpty()) return SimilarFind(emptyList(), 0, 0, 0)
+        val offered = mix + related?.videos.orEmpty() + seed
+        val knownIds = excluded + offered.map { it.videoId }
+        val knownKeys = offered.mapNotNullTo(HashSet()) { TitleCleaner.key(it.title, it.uploader) }
+        return runCatching { similarFinder.resolve(names, knownIds, knownKeys, SIMILAR_PER_FEED) }
+            .onFailure { log("similar seed=${seed.videoId} resolve-error=${q(it.message)}") }
+            .getOrElse { SimilarFind(emptyList(), 0, 0, 0) }
     }
 
     private fun excludedIdsLocked(skipQueued: Boolean): MutableSet<String> {
@@ -1190,7 +1245,7 @@ class StationEngine @Inject constructor(
                     return@fetchSong
                 }
                 chaining = false
-                val picks = feed.merged(random).take(count)
+                val picks = feed.picks(random, count)
                 queue += picks
                 logLikedRadio(like.video, feed.fields(picks))
                 fillLikedRadioLocked()
@@ -1429,7 +1484,7 @@ class StationEngine @Inject constructor(
         "repeat=${saved.repeat} title=${q(saved.leftVideo.title)}"
 
     private fun mixSeedOf(slot: Slot?): String = slot?.why
-        ?.takeIf { it.provenance == Provenance.MIX || it.provenance == Provenance.RELATED }
+        ?.takeIf { it.provenance.isRadioPick }
         ?.fromVideoId ?: "-"
 
     private fun describeVideo(video: YtVideo): String = "${video.videoId} ${q(video.title)} uploader=${q(video.uploader)} dur=${video.durationSeconds}s"
@@ -1444,6 +1499,9 @@ class StationEngine @Inject constructor(
         private const val TAG = "TubeStation"
 
         internal const val CHAIN_BELOW = 5
+
+        /** GUESS: Last.fm songs per expansion; each new one costs a YouTube search. */
+        internal const val SIMILAR_PER_FEED = 4
 
         internal const val LIKED_RADIO_LOOKAHEAD = 6
 

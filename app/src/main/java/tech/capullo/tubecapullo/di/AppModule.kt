@@ -11,12 +11,16 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import okhttp3.OkHttpClient
+import tech.capullo.tubecapullo.BuildConfig
 import tech.capullo.tubecapullo.data.history.LikedAlbumDao
 import tech.capullo.tubecapullo.data.history.LikedTrackDao
 import tech.capullo.tubecapullo.data.history.LyricsDao
 import tech.capullo.tubecapullo.data.history.PlayHistoryDao
+import tech.capullo.tubecapullo.data.history.ResolvedTrackDao
 import tech.capullo.tubecapullo.data.history.StationSnapshotDao
 import tech.capullo.tubecapullo.data.history.TubeCapulloDatabase
+import tech.capullo.tubecapullo.data.similar.LastfmSimilarFinder
+import javax.inject.Named
 import javax.inject.Singleton
 import kotlin.random.Random
 
@@ -45,6 +49,7 @@ object AppModule {
             TubeCapulloDatabase.MIGRATION_4_5,
             TubeCapulloDatabase.MIGRATION_5_6,
             TubeCapulloDatabase.MIGRATION_6_7,
+            TubeCapulloDatabase.MIGRATION_7_8,
         )
         .build()
 
@@ -67,4 +72,12 @@ object AppModule {
     @Provides
     @Singleton
     fun provideLyricsDao(db: TubeCapulloDatabase): LyricsDao = db.lyricsDao()
+
+    @Provides
+    @Singleton
+    fun provideResolvedTrackDao(db: TubeCapulloDatabase): ResolvedTrackDao = db.resolvedTrackDao()
+
+    @Provides
+    @Named(LastfmSimilarFinder.BUILT_IN_KEY)
+    fun provideLastfmApiKey(): String = BuildConfig.LASTFM_API_KEY
 }

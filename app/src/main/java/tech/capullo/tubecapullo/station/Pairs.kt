@@ -65,17 +65,18 @@ internal fun songLists(
     )
 }
 
-internal fun <T> pairUp(mix: List<T>, related: List<T>, random: Random): List<T> = buildList(mix.size + related.size) {
-    val pairs = minOf(mix.size, related.size)
-    for (i in 0 until pairs) {
-        if (random.nextBoolean()) {
-            add(mix[i])
-            add(related[i])
-        } else {
-            add(related[i])
-            add(mix[i])
+/**
+ * One item of each list per round, the order inside a round random. With two lists this is the
+ * original Mix/related pairing; a list that runs out drops out of later rounds.
+ */
+internal fun <T> interleave(lists: List<List<T>>, random: Random): List<T> = buildList(lists.sumOf { it.size }) {
+    val rounds = lists.maxOfOrNull { it.size } ?: 0
+    for (i in 0 until rounds) {
+        val round = lists.mapNotNull { it.getOrNull(i) }
+        when (round.size) {
+            1 -> add(round[0])
+            2 -> if (random.nextBoolean()) addAll(round) else addAll(round.asReversed())
+            else -> addAll(round.shuffled(random))
         }
     }
-    addAll(mix.subList(pairs, mix.size))
-    addAll(related.subList(pairs, related.size))
 }

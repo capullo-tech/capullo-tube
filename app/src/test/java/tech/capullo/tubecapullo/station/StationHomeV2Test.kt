@@ -107,6 +107,7 @@ class StationHomeV2Test {
             settings,
             likedAlbums,
             store,
+            FakeSimilarFinder(),
         )
         if (settle) advanceUntilIdle()
         return engine
