@@ -138,7 +138,7 @@ class StationEngine @Inject constructor(
 
     private val forgottenIds = HashSet<Long>()
 
-    private var forgottenUpTo = Long.MIN_VALUE
+    private var forgottenBelow = Long.MIN_VALUE
 
     private val writeLock = Mutex()
     private val written = HashMap<Long, Long>()
@@ -218,7 +218,7 @@ class StationEngine @Inject constructor(
                     log("resume station=$id result=dropped reason=superseded")
                     return@launch
                 }
-                if (saved == null || saved.id == stationId || forgottenLocked(saved)) {
+                if (saved == null || saved.id == stationId || forgottenLocked(saved.id)) {
                     val reason = when {
                         saved == null -> "not-found"
                         saved.id == stationId -> "playing"
@@ -697,15 +697,15 @@ class StationEngine @Inject constructor(
 
     fun forgetAllStations() {
         synchronized(lock) {
-            lastSavedAt = maxOf(lastSavedAt, System.currentTimeMillis())
-            forgottenUpTo = lastSavedAt
-            log("snapshot forget all stack=${backStack.size} upTo=$forgottenUpTo")
+            forgottenBelow = nextStationId
+            val held = if (source != null) stationId.toString() else "-"
+            log("snapshot forget all stack=${backStack.size} below=$forgottenBelow held=$held")
             backStack.clear()
         }
         scope.launch { writeLock.withLock { snapshots.deleteAll() } }
     }
 
-    private fun forgottenLocked(snapshot: StationSnapshot): Boolean = snapshot.id in forgottenIds || snapshot.savedAtEpochMs <= forgottenUpTo
+    private fun forgottenLocked(id: Long): Boolean = id < forgottenBelow || id in forgottenIds
 
     private fun openRadio(
         request: Int,
@@ -903,6 +903,7 @@ class StationEngine @Inject constructor(
 
     private fun snapshotLocked(): StationSnapshot? {
         val src = source ?: return null
+        if (forgottenLocked(stationId)) return null
         val left = queue.getOrNull(current) ?: return null
         val slots = mutableListOf<SnapshotSlot>()
         val index = IdentityHashMap<Slot, Int>()
@@ -949,7 +950,7 @@ class StationEngine @Inject constructor(
     private fun write(snapshot: StationSnapshot) {
         scope.launch {
             writeLock.withLock {
-                if (synchronized(lock) { forgottenLocked(snapshot) }) return@withLock
+                if (synchronized(lock) { forgottenLocked(snapshot.id) }) return@withLock
                 if ((written[snapshot.id] ?: Long.MIN_VALUE) > snapshot.savedAtEpochMs) return@withLock
                 written[snapshot.id] = snapshot.savedAtEpochMs
                 snapshots.save(snapshot, SNAPSHOTS_KEPT)
@@ -958,11 +959,16 @@ class StationEngine @Inject constructor(
     }
 
     private fun hydrateStationsLocked(rows: List<StationSnapshot>) {
-        val known = backStack.mapTo(HashSet()) { it.id }.apply { add(stationId) }
-        val older = rows.filter { it.id !in known && !forgottenLocked(it) }.take(STATION_BACK_STACK).reversed()
-        backStack.addAll(0, older)
-        while (backStack.size > STATION_BACK_STACK) backStack.removeFirst()
         rows.maxOfOrNull { it.id }?.let { nextStationId = maxOf(nextStationId, it + 1) }
+        val known = backStack.mapTo(HashSet()) { it.id }.apply { add(stationId) }
+        val older = rows.filter { it.id !in known && !forgottenLocked(it.id) }
+        if (forgottenBelow > Long.MIN_VALUE) {
+            older.mapTo(forgottenIds) { it.id }
+            log("snapshot hydrated rows=${rows.size} dropped=${older.size} reason=cleared")
+            return
+        }
+        backStack.addAll(0, older.take(STATION_BACK_STACK).reversed())
+        while (backStack.size > STATION_BACK_STACK) backStack.removeFirst()
         rows.maxOfOrNull { it.savedAtEpochMs }?.let { lastSavedAt = maxOf(lastSavedAt, it) }
         log("snapshot hydrated rows=${rows.size} stack=${backStack.size}")
     }

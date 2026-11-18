@@ -399,21 +399,78 @@ class StationHomeV2Test {
     }
 
     @Test
-    fun `forgetting all stations empties Room and Previous, and later stations save again`() = runTest(StandardTestDispatcher()) {
+    fun `Clear empties Room and Previous, and a save already on its way does not land`() = runTest(StandardTestDispatcher()) {
         val engine = engine()
         change(engine, PlaySource.SongRadio(video("FIRST")))
         change(engine, playlist)
-        change(engine, PlaySource.SongRadio(video("SECOND")))
-        val secondId = engine.state.value.stationId
+        engine.start(PlaySource.SongRadio(video("SECOND")))
 
         engine.forgetAllStations()
+        advanceUntilIdle()
+        engine.onQueueAdvanced(0)
         advanceUntilIdle()
 
         assertTrue(rows.isEmpty())
         assertNull(engine.previous(positionMs = 0))
+    }
 
-        change(engine, PlaySource.SongRadio(video("THIRD")))
-        assertTrue(secondId in rows)
-        assertEquals(PlaySource.SongRadio(video("SECOND")), restoreNext(engine))
+    @Test
+    fun `the station playing at Clear saves nothing while it plays on`() = runTest(StandardTestDispatcher()) {
+        val engine = engine()
+        change(engine, playlist)
+        val id = engine.state.value.stationId
+        assertTrue(id in rows)
+
+        engine.forgetAllStations()
+        advanceUntilIdle()
+        engine.onProgress(engine.currentId()!!, StationEngine.SNAPSHOT_SAVE_MS + 5_000, 240_000)
+        next(engine, 2)
+        engine.persistNow()
+        advanceUntilIdle()
+
+        assertTrue(rows.isEmpty())
+        assertEquals(id, engine.state.value.stationId)
+    }
+
+    @Test
+    fun `after Clear the next station saves, and the one playing through Clear never comes back`() = runTest(StandardTestDispatcher()) {
+        val engine = engine()
+        change(engine, PlaySource.SongRadio(video("CLEARED")))
+        engine.forgetAllStations()
+        advanceUntilIdle()
+
+        change(engine, PlaySource.SongRadio(video("NEXT")))
+        val nextId = engine.state.value.stationId
+        engine.onProgress(engine.currentId()!!, StationEngine.SNAPSHOT_SAVE_MS + 5_000, 240_000)
+        change(engine, playlist)
+
+        assertEquals(setOf(nextId, engine.state.value.stationId), rows.keys)
+        assertEquals(PlaySource.SongRadio(video("NEXT")), restoreNext(engine))
+        assertNull("CLEARED is not in Previous", restoreNext(engine))
+    }
+
+    @Test
+    fun `Clear after the clock stepped back drops rows stamped ahead and keeps the earlier-stamped save`() = runTest(StandardTestDispatcher()) {
+        val before = engine()
+        change(before, PlaySource.SongRadio(video("FIRST")))
+        change(before, PlaySource.SongRadio(video("SECOND")))
+        val day = 24 * 60 * 60_000L
+        val ahead = rows.values.mapNotNull { StationSnapshotCodec.decode(it.second) }
+            .map { it.copy(id = it.id + day, savedAtEpochMs = it.savedAtEpochMs + day) }
+        rows.clear()
+        ahead.forEach { rows[it.id] = it.savedAtEpochMs to StationSnapshotCodec.encode(it) }
+
+        val after = engine(settle = false)
+        after.resume(ahead.first().id)
+        after.forgetAllStations()
+        advanceUntilIdle()
+        assertNull("a resume already on its way stays dropped", after.state.value.source)
+
+        change(after, PlaySource.SongRadio(video("AFTER")))
+        val afterId = after.state.value.stationId
+
+        assertEquals(setOf(afterId), rows.keys)
+        assertTrue(rows.getValue(afterId).first < ahead.minOf { it.savedAtEpochMs })
+        assertNull("nothing from before the Clear", after.previous(positionMs = 0))
     }
 }
