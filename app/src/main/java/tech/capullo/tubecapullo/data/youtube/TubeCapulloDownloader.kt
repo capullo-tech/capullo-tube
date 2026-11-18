@@ -6,6 +6,7 @@ import org.schabi.newpipe.extractor.downloader.Downloader
 import org.schabi.newpipe.extractor.downloader.Request
 import org.schabi.newpipe.extractor.downloader.Response
 import org.schabi.newpipe.extractor.exceptions.ReCaptchaException
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -17,6 +18,8 @@ class TubeCapulloDownloader @Inject constructor(http: OkHttpClient) : Downloader
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
+
+    private val statuses = ConcurrentHashMap<String, Int>()
 
     override fun execute(request: Request): Response {
         val url = request.url()
@@ -31,6 +34,7 @@ class TubeCapulloDownloader @Inject constructor(http: OkHttpClient) : Downloader
         }
 
         val response = client.newCall(builder.build()).execute()
+        statuses[response.request.url.host] = response.code
 
         if (response.code == 429) {
             response.close()
@@ -47,6 +51,8 @@ class TubeCapulloDownloader @Inject constructor(http: OkHttpClient) : Downloader
             response.request.url.toString(),
         )
     }
+
+    fun lastStatus(host: String): Int? = statuses[host]
 
     private companion object {
         const val USER_AGENT =

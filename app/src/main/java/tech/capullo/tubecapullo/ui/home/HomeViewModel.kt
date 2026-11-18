@@ -204,7 +204,7 @@ class HomeViewModel @Inject constructor(
                 runCatching { extractor.trendingMusic(region) }.fold(
                     onSuccess = { cards ->
                         if (cards.isEmpty()) {
-                            Log.w(TAG, "trending region=$region result=empty")
+                            Log.w(TAG, "trending region=$region result=empty http=${extractor.lastChartsStatus() ?: 0}")
                             TrendingFetch(region, emptyList(), EMPTY_CHART)
                         } else {
                             TrendingFetch(region, cards)
