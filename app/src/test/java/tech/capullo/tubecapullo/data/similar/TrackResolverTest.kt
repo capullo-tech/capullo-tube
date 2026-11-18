@@ -23,6 +23,8 @@ class TrackResolverTest {
         override suspend fun upsert(entity: ResolvedTrackEntity) {
             rows[entity.nameKey] = entity
         }
+        override suspend fun deleteExpired(missCutoff: Long, hitCutoff: Long) = 0
+        override suspend fun deleteAll() = 0
     }
     private val extractor = mockk<YouTubeExtractorClient>()
     private var clock = 1_000_000_000_000L

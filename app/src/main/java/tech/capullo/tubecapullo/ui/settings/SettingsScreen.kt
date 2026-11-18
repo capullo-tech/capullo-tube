@@ -326,7 +326,13 @@ fun SettingsScreen(
                 },
                 modifier = Modifier.clickable(
                     onClickLabel = "Open Last.fm",
-                    onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(LASTFM_URL))) },
+                    onClick = {
+                        try {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(LASTFM_URL)))
+                        } catch (e: ActivityNotFoundException) {
+                            // No browser (TV, restricted profile): the credit stays visible as text.
+                        }
+                    },
                 ),
             )
             HorizontalDivider()

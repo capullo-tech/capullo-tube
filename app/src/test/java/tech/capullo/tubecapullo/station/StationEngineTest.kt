@@ -1460,6 +1460,37 @@ class StationSimilarTest {
     }
 
     @Test
+    fun `a like waits one SIMILAR_WAIT_MS in all, even when names come late and lookups hang`() = runTest(StandardTestDispatcher()) {
+        var slow = false
+        val finder = object : SimilarFinder {
+            val fake = FakeSimilarFinder(::lastfm)
+            override suspend fun names(seed: YtVideo): SimilarNames {
+                if (slow) delay(StationEngine.SIMILAR_WAIT_MS - 100)
+                return fake.names(seed)
+            }
+            override suspend fun resolve(names: SimilarNames, knownIds: Set<String>, offered: List<YtVideo>, count: Int): SimilarFind {
+                if (slow) delay(60_000)
+                return fake.resolve(names, knownIds, offered, count)
+            }
+        }
+        val engine = engine(finder)
+        engine.start(PlaySource.SongRadio(video("SEED")))
+        advanceUntilIdle()
+        engine.advanceThrough(2)
+        advanceUntilIdle()
+        val liked = engine.state.value.current!!
+        val before = engine.queuedIds()
+        slow = true
+
+        engine.toggleLike(liked)
+        advanceTimeBy(StationEngine.SIMILAR_WAIT_MS + 1)
+        runCurrent()
+
+        assertNotEquals("landed within one deadline", before, engine.queuedIds())
+        assertTrue(engine.state.value.queued.take(AppSettings.DEFAULT_SONGS_PER_LIKE).all { it.why.provenance == Provenance.MIX })
+    }
+
+    @Test
     fun `a like asks Last fm for half its songs, at least one`() = runTest(StandardTestDispatcher()) {
         for ((n, asked) in listOf(2 to 1, 4 to 2, 6 to 3)) {
             songs.value = n

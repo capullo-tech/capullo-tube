@@ -24,15 +24,18 @@ class LastfmGateTest {
         override suspend fun upsert(entity: LastfmCacheEntity) {
             rows[entity.request] = entity
         }
+        override suspend fun deleteFetchedBefore(cutoff: Long) = 0
+        override suspend fun deleteAll() = 0
     }
     private val sent = mutableListOf<Pair<Long, String>>()
     private var answer = OK
+    private var status = 200
 
     private fun TestScope.client() = LastfmClient(OkHttpClient(), cache).also { client ->
         client.now = { currentTime }
         client.transport = { key, _, params ->
             sent += currentTime to (params.first().second + "@" + key)
-            answer
+            status to answer
         }
     }
 
@@ -68,6 +71,33 @@ class LastfmGateTest {
         answer = """{"error":11,"message":"Service Offline"}"""
         repeat(2) { runCatching { client.similarTracks("Muse", "Hysteria", 40, KEY) } }
         assertEquals(3, sent.size)
+    }
+
+    @Test
+    fun `an HTML error page or a captive portal is never cached and reads as an error`() = runTest {
+        val client = client()
+        for ((code, page) in listOf(502 to "<html>502 Bad Gateway</html>", 200 to "<html>Sign in to Wi-Fi</html>", 200 to "")) {
+            status = code
+            answer = page
+            assertTrue("$code $page", runCatching { client.similarTracks("Radiohead", "Creep", 40, KEY) }.exceptionOrNull() is LastfmException)
+        }
+        assertTrue(rows.isEmpty())
+
+        status = 200
+        answer = OK
+        assertEquals(1, client.similarTracks("Radiohead", "Creep", 40, KEY).size)
+    }
+
+    @Test
+    fun `an HTTP 429 without a JSON body still pauses Last fm`() = runTest {
+        val client = client()
+        status = 429
+        answer = "Too Many Requests"
+        runCatching { client.similarArtists("A", 10, KEY) }
+
+        status = 200
+        answer = OK
+        assertTrue(runCatching { client.similarArtists("B", 10, KEY) }.exceptionOrNull() is LastfmPaused)
     }
 
     @Test

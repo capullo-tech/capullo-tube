@@ -22,4 +22,15 @@ interface LastfmCacheDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entity: LastfmCacheEntity)
+
+    @Query(DELETE_FETCHED_BEFORE)
+    suspend fun deleteFetchedBefore(cutoff: Long): Int
+
+    @Query(DELETE_ALL)
+    suspend fun deleteAll(): Int
+
+    companion object {
+        const val DELETE_FETCHED_BEFORE = "DELETE FROM lastfm_cache WHERE fetchedAtEpochMs < :cutoff"
+        const val DELETE_ALL = "DELETE FROM lastfm_cache"
+    }
 }

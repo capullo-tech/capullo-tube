@@ -59,21 +59,28 @@ class LastfmClient @Inject constructor(okHttp: OkHttpClient, private val cache: 
             ?.takeIf { now() - it.fetchedAtEpochMs < TimeUnit.DAYS.toMillis(CACHE_DAYS) }
             ?.let { return it.body }
         gate.acquire(apiKey)
-        val body = transport(apiKey, method, params.toList())
-        val code = errorCode(body)
+        val (status, body) = transport(apiKey, method, params.toList())
+        val parsed = runCatching { Json.parseToJsonElement(body).jsonObject }.getOrNull()
+        val code = (parsed?.get("error") as? JsonPrimitive)?.contentOrNull?.toIntOrNull()
+            ?: if (status == HTTP_TOO_MANY_REQUESTS) LastfmGate.ERROR_RATE_LIMITED else null
         gate.onAnswer(apiKey, code)
-        if (code == null || code == ERROR_NOT_FOUND) cache.upsert(LastfmCacheEntity(request, body, now()))
+        // Only a real answer is kept: an HTML error page or a captive portal is not.
+        if (status in 200..299 && parsed != null && (code == null || code == ERROR_NOT_FOUND)) {
+            cache.upsert(LastfmCacheEntity(request, body, now()))
+        }
+        if (parsed == null) throw LastfmException(code ?: status, "not a Last.fm answer (HTTP $status)")
         return body
     }
 
-    internal var transport: suspend (String, String, List<Pair<String, String>>) -> String = { apiKey, method, params ->
-        http.get(BASE_URL) {
+    internal var transport: suspend (String, String, List<Pair<String, String>>) -> Pair<Int, String> = { apiKey, method, params ->
+        val response = http.get(BASE_URL) {
             parameter("method", method)
             params.forEach { (name, value) -> parameter(name, value) }
             parameter("autocorrect", "1")
             parameter("api_key", apiKey)
             parameter("format", "json")
-        }.bodyAsText()
+        }
+        response.status.value to response.bodyAsText()
     }
 
     internal companion object {
@@ -90,6 +97,8 @@ class LastfmClient @Inject constructor(okHttp: OkHttpClient, private val cache: 
 
         /** GUESS: similarity lists change slowly. */
         const val CACHE_DAYS = 30L
+
+        private const val HTTP_TOO_MANY_REQUESTS = 429
 
         fun errorCode(body: String): Int? = runCatching {
             (Json.parseToJsonElement(body).jsonObject["error"] as? JsonPrimitive)?.contentOrNull?.toIntOrNull()

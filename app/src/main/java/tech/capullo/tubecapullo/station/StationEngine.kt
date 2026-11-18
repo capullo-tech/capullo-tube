@@ -1142,9 +1142,7 @@ class StationEngine @Inject constructor(
         scope.launch {
             coroutineScope {
                 val names = async {
-                    withTimeoutOrNull(SIMILAR_WAIT_MS) {
-                        runCatching { similarFinder.names(seed) }.getOrElse { SimilarNames(emptyList(), "error") }
-                    } ?: SimilarNames(emptyList(), "timeout")
+                    runCatching { similarFinder.names(seed) }.getOrElse { SimilarNames(emptyList(), "error") }
                 }
                 val mix = async {
                     runCatching { extractor.mix(seed.videoId) }
@@ -1175,14 +1173,15 @@ class StationEngine @Inject constructor(
                     }
                     return lists
                 }
-                suspend fun similar(): Pair<SimilarNames, SimilarFind> {
+                // One deadline for the whole Last.fm step: a YouTube search is blocking I/O that
+                // cancellation cannot stop, so the wait is bounded, not the work.
+                val similarWork = async {
                     val excluded = synchronized(lock) { excludedIdsLocked(skipQueued).toSet() }
                     val found = names.await()
-                    val resolved = withTimeoutOrNull(SIMILAR_WAIT_MS) {
-                        findSimilar(seed, found, mixVideos, relatedVideos, excluded, similarCount)
-                    } ?: SimilarFind(emptyList(), 0, 0, 0)
-                    return found to resolved
+                    found to findSimilar(seed, found, mixVideos, relatedVideos, excluded, similarCount)
                 }
+                suspend fun similar(): Pair<SimilarNames, SimilarFind> = withTimeoutOrNull(if (similarLater) SIMILAR_LATE_MS else SIMILAR_WAIT_MS) { similarWork.await() }
+                    ?: (SimilarNames(emptyList(), "timeout") to SimilarFind(emptyList(), 0, 0, 0)).also { similarWork.cancel() }
                 fun usableLocked(found: SimilarFind): List<YtVideo> {
                     val queued = queue.mapTo(HashSet()) { it.video.videoId }
                     val excludedNow = excludedIdsLocked(skipQueued)
@@ -1577,6 +1576,9 @@ class StationEngine @Inject constructor(
 
         /** GUESS: how long a like waits for Last.fm before its songs land without it. */
         internal const val SIMILAR_WAIT_MS = 3_000L
+
+        /** GUESS: late Last.fm songs for a radio are dropped after this; the queue is long anyway. */
+        internal const val SIMILAR_LATE_MS = 20_000L
 
         internal const val LIKED_RADIO_LOOKAHEAD = 6
 

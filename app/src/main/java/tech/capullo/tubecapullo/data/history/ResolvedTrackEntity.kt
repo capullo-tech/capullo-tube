@@ -29,4 +29,16 @@ interface ResolvedTrackDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entity: ResolvedTrackEntity)
+
+    @Query(DELETE_EXPIRED)
+    suspend fun deleteExpired(missCutoff: Long, hitCutoff: Long): Int
+
+    @Query(DELETE_ALL)
+    suspend fun deleteAll(): Int
+
+    companion object {
+        const val DELETE_EXPIRED = "DELETE FROM resolved_track WHERE " +
+            "(videoId IS NULL AND resolvedAtEpochMs < :missCutoff) OR resolvedAtEpochMs < :hitCutoff"
+        const val DELETE_ALL = "DELETE FROM resolved_track"
+    }
 }
