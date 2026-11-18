@@ -105,6 +105,34 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
         _askForSharedLinks.value = enabled
     }
 
+    private val _lyricsCard = MutableStateFlow(prefs.getBoolean(KEY_LYRICS_CARD, false))
+
+    val lyricsCard: StateFlow<Boolean> = _lyricsCard.asStateFlow()
+
+    fun setLyricsCard(enabled: Boolean) {
+        prefs.edit { putBoolean(KEY_LYRICS_CARD, enabled) }
+        _lyricsCard.value = enabled
+    }
+
+    private val _lyricsOnline = MutableStateFlow(prefs.getBoolean(KEY_LYRICS_ONLINE, true))
+
+    val lyricsOnline: StateFlow<Boolean> = _lyricsOnline.asStateFlow()
+
+    fun setLyricsOnline(enabled: Boolean) {
+        prefs.edit { putBoolean(KEY_LYRICS_ONLINE, enabled) }
+        _lyricsOnline.value = enabled
+    }
+
+    private val _lyricsDelayMs = MutableStateFlow(lyricsDelayOf(prefs.getInt(KEY_LYRICS_DELAY_MS, 0)))
+
+    val lyricsDelayMs: StateFlow<Int> = _lyricsDelayMs.asStateFlow()
+
+    fun setLyricsDelayMs(delayMs: Int) {
+        val delay = lyricsDelayOf(delayMs)
+        prefs.edit { putInt(KEY_LYRICS_DELAY_MS, delay) }
+        _lyricsDelayMs.value = delay
+    }
+
     companion object {
         const val MAX_TRENDING_ROWS = 5
 
@@ -120,6 +148,10 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 
         const val SONGS_PER_LIKE_STEP = 2
 
+        const val MAX_LYRICS_DELAY_MS = 2_000
+
+        const val LYRICS_DELAY_STEP_MS = 100
+
         private const val PREFS_NAME = "app_settings"
 
         private const val KEY_CHART_REGION_LEGACY = "chart_region"
@@ -132,6 +164,9 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 
         private const val KEY_SONGS_PER_LIKE = "mix_songs"
         private const val KEY_ASK_FOR_SHARED_LINKS = "ask_for_shared_links"
+        private const val KEY_LYRICS_CARD = "lyrics_card"
+        private const val KEY_LYRICS_ONLINE = "lyrics_online"
+        private const val KEY_LYRICS_DELAY_MS = "lyrics_delay_ms"
     }
 }
 
@@ -149,6 +184,8 @@ internal fun songsPerLikeOf(count: Int): Int {
     val even = if (count % AppSettings.SONGS_PER_LIKE_STEP != 0) count + 1 else count
     return even.coerceIn(0, AppSettings.MAX_SONGS_PER_LIKE)
 }
+
+internal fun lyricsDelayOf(delayMs: Int): Int = delayMs.coerceIn(-AppSettings.MAX_LYRICS_DELAY_MS, AppSettings.MAX_LYRICS_DELAY_MS)
 
 internal fun decodeChartRegions(stored: String?, legacy: String?): List<String> = when {
     stored != null -> stored.split(CHART_REGION_SEPARATOR).filter { it.isNotBlank() }

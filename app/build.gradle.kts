@@ -122,6 +122,8 @@ dependencies {
 
     implementation(pins.newpipe.extractor)
     implementation(pins.okhttp)
+    implementation(libs.ktor.client.core)
+    implementation(libs.ktor.client.okhttp)
     implementation(pins.coil.compose)
 
     implementation(libs.room.runtime)

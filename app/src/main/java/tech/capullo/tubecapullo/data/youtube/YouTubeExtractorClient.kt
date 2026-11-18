@@ -32,6 +32,7 @@ import org.schabi.newpipe.extractor.services.youtube.extractors.kiosk.YoutubeTre
 import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory
 import org.schabi.newpipe.extractor.stream.AudioStream
 import org.schabi.newpipe.extractor.stream.DeliveryMethod
+import org.schabi.newpipe.extractor.stream.Description
 import org.schabi.newpipe.extractor.stream.StreamInfo
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
 import org.schabi.newpipe.extractor.stream.StreamSegment
@@ -46,6 +47,10 @@ class YouTubeExtractorClient @Inject constructor(private val downloader: TubeCap
     private val initialized = AtomicBoolean(false)
 
     private val streamCache = mutableMapOf<String, YtStream>()
+
+    private val descriptions = object : LinkedHashMap<String, Description>(DESCRIPTION_CACHE_SIZE, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Description>): Boolean = size > DESCRIPTION_CACHE_SIZE
+    }
 
     suspend fun search(query: String, limit: Int = 30): List<YtVideo> = extract("search") {
         searchItems(query, YoutubeSearchQueryHandlerFactory.VIDEOS).toVideos().take(limit)
@@ -170,6 +175,14 @@ class YouTubeExtractorClient @Inject constructor(private val downloader: TubeCap
         YtAlbum(info.toYtVideo(videoId), chapters(info.streamSegments.orEmpty()))
     }
 
+    suspend fun description(videoId: String): String {
+        val cached = synchronized(descriptions) { descriptions[videoId] }
+        val description = cached ?: extract("description") {
+            StreamInfo.getInfo(ServiceList.YouTube, YouTubeUrls.watchUrl(videoId)).description
+        } ?: return ""
+        return descriptionText(description.content.orEmpty(), html = description.type == Description.HTML)
+    }
+
     private fun StreamInfo.toYtVideo(videoId: String) = YtVideo(
         videoId = videoId,
         title = name.orEmpty().ifBlank { videoId },
@@ -187,6 +200,7 @@ class YouTubeExtractorClient @Inject constructor(private val downloader: TubeCap
 
         return extract("resolve") {
             val info = StreamInfo.getInfo(ServiceList.YouTube, YouTubeUrls.watchUrl(videoId))
+            info.description?.let { synchronized(descriptions) { descriptions[videoId] = it } }
             if (info.streamType == StreamType.LIVE_STREAM ||
                 info.streamType == StreamType.AUDIO_LIVE_STREAM
             ) {
@@ -313,6 +327,8 @@ class YouTubeExtractorClient @Inject constructor(private val downloader: TubeCap
     private companion object {
         const val EXPIRY_MARGIN_SECONDS = 5 * 60L
 
+        const val DESCRIPTION_CACHE_SIZE = 8
+
         const val MIX_RAW_FETCH_LIMIT = 100
 
         const val CHANNEL_UPLOADS_LIMIT = 200
@@ -362,5 +378,36 @@ internal fun chapters(segments: List<StreamSegment>): List<YtChapter> {
         }
     return chapters.takeIf { it.size >= MIN_CHAPTERS }.orEmpty()
 }
+
+internal fun descriptionText(content: String, html: Boolean): String {
+    if (!html) return content
+    val text = HTML_TAG.replace(HTML_BREAK.replace(content, "\n"), "")
+    return HTML_ENTITY.replace(text) { match ->
+        val name = match.groupValues[1]
+        when {
+            name.startsWith("#x", ignoreCase = true) ->
+                name.drop(2).toIntOrNull(16)?.let(::codePointText)
+            name.startsWith("#") -> name.drop(1).toIntOrNull()?.let(::codePointText)
+            else -> NAMED_ENTITIES[name]
+        } ?: match.value
+    }
+}
+
+private fun codePointText(codePoint: Int): String? {
+    if (!Character.isValidCodePoint(codePoint)) return null
+    return String(Character.toChars(codePoint))
+}
+
+private val HTML_BREAK = Regex("""<br\s*/?>|</p>""", RegexOption.IGNORE_CASE)
+private val HTML_TAG = Regex("""<[^>]+>""")
+private val HTML_ENTITY = Regex("""&(#[0-9]+|#[xX][0-9a-fA-F]+|[a-zA-Z]+);""")
+private val NAMED_ENTITIES = mapOf(
+    "amp" to "&",
+    "lt" to "<",
+    "gt" to ">",
+    "quot" to "\"",
+    "apos" to "'",
+    "nbsp" to " ",
+)
 
 private fun List<Image>.bestThumbnailUrl(): String? = maxByOrNull { if (it.height > 0) it.height else 0 }?.url

@@ -1,3 +1,5 @@
 package tech.capullo.tubecapullo.data.youtube
 
-internal fun probeClient(): YouTubeExtractorClient = YouTubeExtractorClient(TubeCapulloDownloader())
+import okhttp3.OkHttpClient
+
+internal fun probeClient(): YouTubeExtractorClient = YouTubeExtractorClient(TubeCapulloDownloader(OkHttpClient()))

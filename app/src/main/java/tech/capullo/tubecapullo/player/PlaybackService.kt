@@ -43,6 +43,7 @@ import tech.capullo.audio.contracts.NowPlaying
 import tech.capullo.audio.contracts.PlaybackController
 import tech.capullo.audio.player.FifoAudioBufferSink
 import tech.capullo.tubecapullo.MainActivity
+import tech.capullo.tubecapullo.data.lyrics.LyricsRepository
 import tech.capullo.tubecapullo.data.youtube.YouTubeExtractorClient
 import tech.capullo.tubecapullo.snapcast.SnapcastManager
 import tech.capullo.tubecapullo.station.RepeatMode
@@ -63,6 +64,8 @@ class PlaybackService : MediaSessionService() {
     @Inject lateinit var stationEngine: StationEngine
 
     @Inject lateinit var extractor: YouTubeExtractorClient
+
+    @Inject lateinit var lyrics: LyricsRepository
 
     private var loop: StationLoop? = null
 
@@ -241,6 +244,7 @@ class PlaybackService : MediaSessionService() {
         ).also { loop = it }
         stationLoop.onTrackChanged = { index ->
             val video = stationEngine.videoAt(index)
+            video?.let(lyrics::onTrackStarted)
             coordinator.updateState { it.copy(video = video, isBuffering = true, durationMs = 0) }
             val startAt = stationEngine.startPositionFor(index)
             coordinator.updatePosition(startAt ?: 0)

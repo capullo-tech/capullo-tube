@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -44,7 +45,9 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -82,7 +85,7 @@ import tech.capullo.tubecapullo.ui.upnext.UpNextText
 import tech.capullo.tubecapullo.util.ShareLink
 import kotlin.math.abs
 
-private val ART_SWIPE_THRESHOLD = 90.dp
+internal val ART_SWIPE_THRESHOLD = 90.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -97,10 +100,29 @@ fun PlayerScreen(
     val likedIds by viewModel.likedIds.collectAsStateWithLifecycle()
     val likedAlbumIds by viewModel.likedAlbumIds.collectAsStateWithLifecycle()
     val albumArt by viewModel.albumArt.collectAsStateWithLifecycle()
+    val lyrics by viewModel.lyrics.collectAsStateWithLifecycle()
+    val lyricsCard by viewModel.lyricsCard.collectAsStateWithLifecycle()
+    val lyricsOffsetMs by viewModel.lyricsOffsetMs.collectAsStateWithLifecycle()
     var upNextOpen by rememberSaveable { mutableStateOf(false) }
+    var lyricsOpen by rememberSaveable { mutableStateOf(false) }
     val likeChip = rememberLikeChipState(viewModel.likeEffects, viewModel.rollOvers)
 
     if (upNextOpen) UpNextSheet(onDismiss = { upNextOpen = false })
+
+    LaunchedEffect(lyrics) { if (lyrics == PlayerLyrics.None) lyricsOpen = false }
+    if (lyricsOpen && lyrics != PlayerLyrics.None) {
+        val shown = lyrics as? PlayerLyrics.Shown
+        LyricsSheet(
+            lyrics = shown?.lyrics,
+            songTitle = state.video?.let(UpNextText::clean).orEmpty(),
+            positionState = viewModel.position,
+            offsetMs = lyricsOffsetMs,
+            songOffsetMs = shown?.offsetMs ?: 0L,
+            onSeek = viewModel::seekTo,
+            onNudge = viewModel::nudgeLyrics,
+            onDismiss = { lyricsOpen = false },
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -115,7 +137,10 @@ fun PlayerScreen(
         },
     ) { padding ->
         val video = state.video
-        Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+        Box(
+            Modifier.fillMaxSize().padding(top = padding.calculateTopPadding()),
+            contentAlignment = Alignment.Center,
+        ) {
             if (video == null) {
                 Text(
                     "Nothing playing. Search for a song to start a station.",
@@ -134,8 +159,12 @@ fun PlayerScreen(
                     connectedOthers = clients.count { it.connected && it.id != viewModel.localClientId },
                     anyConnected = clients.any { it.connected },
                     likeChip = likeChip,
+                    lyrics = lyrics,
+                    lyricsCard = lyricsCard,
+                    lyricsOffsetMs = lyricsOffsetMs,
                     onOpenClients = onOpenMultiroom,
                     onOpenUpNext = { upNextOpen = true },
+                    onOpenLyrics = { lyricsOpen = true },
                 )
             }
         }
@@ -175,12 +204,18 @@ private fun PortraitPlayer(
     connectedOthers: Int,
     anyConnected: Boolean,
     likeChip: LikeChipState,
+    lyrics: PlayerLyrics,
+    lyricsCard: Boolean,
+    lyricsOffsetMs: Long,
     onOpenClients: () -> Unit,
     onOpenUpNext: () -> Unit,
+    onOpenLyrics: () -> Unit,
 ) {
     val context = LocalContext.current
     Column(
-        modifier = Modifier.fillMaxSize().padding(bottom = 8.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .then(if (lyricsCard) Modifier.navigationBarsPadding().padding(bottom = 8.dp) else Modifier),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         BoxWithConstraints(
@@ -242,6 +277,26 @@ private fun PortraitPlayer(
                     Icon(Icons.AutoMirrored.Filled.QueueMusic, contentDescription = "Queue")
                 }
             }
+        }
+
+        val slot = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp)
+        val cardSlot = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)
+        when {
+            lyricsCard -> if (lyrics == PlayerLyrics.None) {
+                LyricsCardSpace(cardSlot)
+            } else {
+                LyricsCard(
+                    lyrics = (lyrics as? PlayerLyrics.Shown)?.lyrics,
+                    positionState = viewModel.position,
+                    offsetMs = lyricsOffsetMs,
+                    onOpen = onOpenLyrics,
+                    modifier = cardSlot,
+                )
+            }
+            lyrics is PlayerLyrics.Shown -> LyricsTab(onOpen = onOpenLyrics, modifier = slot)
+            else -> Spacer(
+                slot.navigationBarsPadding().minimumInteractiveComponentSize().height(Dimens.PLAYER_LYRICS_TAB_HEIGHT),
+            )
         }
     }
 }

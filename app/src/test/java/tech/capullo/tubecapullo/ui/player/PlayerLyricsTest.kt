@@ -1,0 +1,44 @@
+package tech.capullo.tubecapullo.ui.player
+
+import org.junit.Assert.assertEquals
+import org.junit.Test
+import tech.capullo.tubecapullo.data.lyrics.LyricLine
+import tech.capullo.tubecapullo.data.lyrics.Lyrics
+import tech.capullo.tubecapullo.data.lyrics.LyricsSource
+import tech.capullo.tubecapullo.data.lyrics.LyricsState
+
+class PlayerLyricsTest {
+
+    private val lyrics = Lyrics(LyricsSource.LRCLIB_GET, synced = true, lines = listOf(LyricLine(0, "a")))
+
+    @Test
+    fun `lyrics show only for the playing track`() {
+        assertEquals(
+            PlayerLyrics.Shown(lyrics),
+            PlayerLyrics.next(PlayerLyrics.None, "A", LyricsState.Done("A", lyrics)),
+        )
+        assertEquals(
+            PlayerLyrics.Shown(lyrics, offsetMs = 1_500),
+            PlayerLyrics.next(PlayerLyrics.Shown(lyrics), "A", LyricsState.Done("A", lyrics, offsetMs = 1_500)),
+        )
+
+        assertEquals(PlayerLyrics.None, PlayerLyrics.next(PlayerLyrics.None, "B", LyricsState.Done("A", lyrics)))
+        assertEquals(PlayerLyrics.None, PlayerLyrics.next(PlayerLyrics.Shown(lyrics), null, LyricsState.Done("A", lyrics)))
+    }
+
+    @Test
+    fun `a shown card stays as pending while the next lookup runs`() {
+        val shown = PlayerLyrics.Shown(lyrics)
+        assertEquals(PlayerLyrics.Pending, PlayerLyrics.next(shown, "B", LyricsState.Loading("B")))
+        assertEquals(PlayerLyrics.Pending, PlayerLyrics.next(shown, "B", LyricsState.Done("A", lyrics)))
+        assertEquals(PlayerLyrics.Pending, PlayerLyrics.next(PlayerLyrics.Pending, "C", LyricsState.Loading("C")))
+
+        assertEquals(PlayerLyrics.None, PlayerLyrics.next(PlayerLyrics.None, "B", LyricsState.Loading("B")))
+    }
+
+    @Test
+    fun `a track without lyrics has no card`() {
+        assertEquals(PlayerLyrics.None, PlayerLyrics.next(PlayerLyrics.Pending, "B", LyricsState.Done("B", null)))
+        assertEquals(PlayerLyrics.None, PlayerLyrics.next(PlayerLyrics.Shown(lyrics), "B", LyricsState.Done("B", null)))
+    }
+}

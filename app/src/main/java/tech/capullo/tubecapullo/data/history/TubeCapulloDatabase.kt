@@ -9,8 +9,9 @@ import androidx.room.RoomDatabase
         LikedTrackEntity::class,
         LikedAlbumEntity::class,
         StationSnapshotEntity::class,
+        LyricsEntity::class,
     ],
-    version = 5,
+    version = 7,
     exportSchema = true,
 )
 abstract class TubeCapulloDatabase : RoomDatabase() {
@@ -21,6 +22,8 @@ abstract class TubeCapulloDatabase : RoomDatabase() {
     abstract fun likedAlbumDao(): LikedAlbumDao
 
     abstract fun stationSnapshotDao(): StationSnapshotDao
+
+    abstract fun lyricsDao(): LyricsDao
 
     companion object {
         val MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
@@ -64,6 +67,23 @@ abstract class TubeCapulloDatabase : RoomDatabase() {
                         "`savedAtEpochMs` INTEGER NOT NULL, `state` TEXT NOT NULL, " +
                         "PRIMARY KEY(`id`))",
                 )
+            }
+        }
+
+        val MIGRATION_5_6 = object : androidx.room.migration.Migration(5, 6) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `lyrics` (`videoId` TEXT NOT NULL, " +
+                        "`kind` TEXT NOT NULL, `source` TEXT, `text` TEXT, " +
+                        "`fetchedAtEpochMs` INTEGER NOT NULL, PRIMARY KEY(`videoId`))",
+                )
+            }
+        }
+
+        val MIGRATION_6_7 = object : androidx.room.migration.Migration(6, 7) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `lyrics` ADD COLUMN `offsetMs` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("DELETE FROM `lyrics` WHERE `videoId` NOT IN (SELECT `videoId` FROM `played_track`)")
             }
         }
     }
