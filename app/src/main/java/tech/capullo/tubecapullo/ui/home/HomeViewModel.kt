@@ -142,13 +142,17 @@ class HomeViewModel @Inject constructor(
             state.copy(isLoading = true, trending = state.trending.filter { it.error == null })
         }
         loadJob = viewModelScope.launch {
+            val started = System.nanoTime()
+            fun ms() = (System.nanoTime() - started) / 1_000_000
+            println("DIAG home load start")
             val related = RelatedFetches(this)
-            val trending = async { trendingFetches() }
-            val moreLike = async { orEmpty { moreLikeRows(related) } }
-            val albums = async { orEmpty { fullAlbumsRow(related) } }
+            val trending = async { trendingFetches().also { println("DIAG home trending done ms=${ms()} regions=${it.map { f -> "${f.region}:${f.cards.size}:${f.error}" }}") } }
+            val moreLike = async { orEmpty { moreLikeRows(related) }.also { println("DIAG home moreLike done ms=${ms()} rows=${it.size}") } }
+            val albums = async { orEmpty { fullAlbumsRow(related) }.also { println("DIAG home albums done ms=${ms()} cards=${it.size}") } }
             val rows = moreLike.await()
             val albumCards = albums.await()
             val charts = trending.await()
+            println("DIAG home load end ms=${ms()}")
             _uiState.update {
                 it.copy(moreLike = rows, fullAlbums = albumCards, trending = charts, isLoading = false)
             }
@@ -191,6 +195,7 @@ class HomeViewModel @Inject constructor(
     }
 
     private suspend fun trendingFetches(): List<TrendingFetch> = coroutineScope {
+        println("DIAG trending regions start")
         val regions = appSettings.chartRegions.value.ifEmpty {
             listOf(
                 defaultChartRegion(
@@ -199,9 +204,10 @@ class HomeViewModel @Inject constructor(
                 ),
             )
         }
+        println("DIAG trending regions=$regions")
         regions.map { region ->
             async {
-                runCatching { extractor.trendingMusic(region) }.fold(
+                runCatching { extractor.trendingMusic(region).also { println("DIAG trending region=$region ok cards=${it.size}") } }.fold(
                     onSuccess = { TrendingFetch(region, it) },
                     onFailure = {
                         if (it is CancellationException) throw it
