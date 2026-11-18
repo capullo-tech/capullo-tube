@@ -28,6 +28,7 @@ import tech.capullo.tubecapullo.data.history.LikedTracks
 import tech.capullo.tubecapullo.data.history.StationSnapshots
 import tech.capullo.tubecapullo.data.settings.AppSettings
 import tech.capullo.tubecapullo.data.settings.LikeMode
+import tech.capullo.tubecapullo.data.similar.SimilarFinder
 import tech.capullo.tubecapullo.data.youtube.YouTubeExtractorClient
 import tech.capullo.tubecapullo.data.youtube.YouTubeUrls
 import tech.capullo.tubecapullo.data.youtube.YtChapter
@@ -93,7 +94,7 @@ class StationHomeV2Test {
         return extractor
     }
 
-    private fun TestScope.engine(settle: Boolean = true): StationEngine {
+    private fun TestScope.engine(settle: Boolean = true, finder: SimilarFinder = FakeSimilarFinder()): StationEngine {
         val settings = mockk<AppSettings> {
             every { this@mockk.likeMode } returns this@StationHomeV2Test.likeMode
             every { songsPerLike } returns MutableStateFlow(AppSettings.DEFAULT_SONGS_PER_LIKE)
@@ -107,7 +108,7 @@ class StationHomeV2Test {
             settings,
             likedAlbums,
             store,
-            FakeSimilarFinder(),
+            finder,
         )
         if (settle) advanceUntilIdle()
         return engine
@@ -192,6 +193,24 @@ class StationHomeV2Test {
         assertEquals(left.current, after.state.value.current)
         assertEquals(left.queued, after.state.value.queued)
         assertEquals(StationEngine.SNAPSHOT_SAVE_MS + 5_000, after.startPositionFor(0))
+    }
+
+    @Test
+    fun `a radio with Last fm songs resumes from Room with their provenance`() = runTest(StandardTestDispatcher()) {
+        val lastfm = { seed: String -> (1..3).map { video("L$it-$seed".take(11)) } }
+        val before = engine(finder = FakeSimilarFinder(lastfm))
+        change(before, PlaySource.SongRadio(video("SEED")))
+        next(before, 1)
+        val left = before.state.value
+        assertTrue(left.queued.any { it.why.provenance == Provenance.SIMILAR })
+        before.onProgress(left.current!!.videoId, StationEngine.SNAPSHOT_SAVE_MS + 5_000, 240_000)
+        advanceUntilIdle()
+
+        val after = engine()
+        after.resume(left.stationId)
+        advanceUntilIdle()
+
+        assertEquals(left.queued, after.state.value.queued)
     }
 
     @Test

@@ -6,6 +6,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import tech.capullo.tubecapullo.BuildConfig
 import tech.capullo.tubecapullo.data.similar.SimilarDepth
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -135,7 +136,9 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
         _lyricsDelayMs.value = delay
     }
 
-    private val _similarOnline = MutableStateFlow(prefs.getBoolean(KEY_SIMILAR_ONLINE, true))
+    // Without a built-in key the feature starts off: Settings would otherwise offer songs it
+    // cannot fetch until the user adds a personal key.
+    private val _similarOnline = MutableStateFlow(prefs.getBoolean(KEY_SIMILAR_ONLINE, BuildConfig.LASTFM_API_KEY.isNotBlank()))
 
     val similarOnline: StateFlow<Boolean> = _similarOnline.asStateFlow()
 

@@ -197,3 +197,14 @@ suspends a key for every install using it. No rate headers. The terms ask for ca
 - The finder logs `via=paused` while the gate holds Last.fm back.
 - Device: razr 40 ultra, Android 15: 8 -> 9 kept the cached YouTube lookups; Creep's answer
   landed in `lastfm_cache`.
+
+## PR 2c: review fixes (as built)
+
+- A radio start or chain lands YouTube's lists at once; Last.fm songs join when they arrive,
+  one after every 2 of the seed's YouTube songs (log line ends in `late`). A like waits for
+  Last.fm at most 3 s, then lands YouTube-only. Razr: Mix landed 1.1 s before the Last.fm songs.
+- Last.fm songs asked per expansion: radio 4, a like N/2 (at least 1), Liked radio 1.
+- Without a built-in key the "Find similar songs online" switch starts off.
+- Settings: "Powered by AudioScrobbler" credit row linking to last.fm (API terms 2.7); the
+  pause countdown ticks every 30 s.
+- Test: a radio with Last.fm songs resumes from Room with SIMILAR provenance.

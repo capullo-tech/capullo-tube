@@ -9,11 +9,13 @@ import io.mockk.mockkStatic
 import io.mockk.unmockkStatic
 import io.mockk.verify
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -1384,7 +1386,7 @@ class StationSimilarTest {
     @After fun tearDown() = unmockkStatic(Log::class)
 
     @Test
-    fun `a song radio mixes Last fm's songs into the first rounds, attributed to the seed`() = runTest(StandardTestDispatcher()) {
+    fun `a song radio slots Last fm's songs after every two of the seed's YouTube songs`() = runTest(StandardTestDispatcher()) {
         val engine = engine()
         val seed = video("SEED")
         engine.start(PlaySource.SongRadio(seed))
@@ -1397,12 +1399,95 @@ class StationSimilarTest {
             similar.map { it.video.videoId },
         )
         assertTrue(similar.all { it.why == Why(Provenance.SIMILAR, seed.videoId, seed.title) })
-        val rounds = queued.take(2 * StationEngine.SIMILAR_PER_FEED)
+        val every = StationEngine.SIMILAR_EVERY
         assertEquals(
-            "Mix and Last.fm alternate, one of each per round",
-            StationEngine.SIMILAR_PER_FEED,
-            rounds.count { it.why.provenance == Provenance.SIMILAR },
+            (0 until StationEngine.SIMILAR_PER_FEED).map { k -> every * (k + 1) + k },
+            queued.withIndex().filter { it.value.why.provenance == Provenance.SIMILAR }.map { it.index },
         )
+    }
+
+    @Test
+    fun `a slow Last fm does not hold back the Mix, its songs join when they arrive`() = runTest(StandardTestDispatcher()) {
+        val slow = object : SimilarFinder {
+            val fake = FakeSimilarFinder(::lastfm)
+            override suspend fun names(seed: YtVideo): SimilarNames {
+                delay(2_000)
+                return fake.names(seed)
+            }
+            override suspend fun resolve(names: SimilarNames, knownIds: Set<String>, offered: List<YtVideo>, count: Int) = fake.resolve(names, knownIds, offered, count)
+        }
+        val engine = engine(slow)
+        val seed = video("SEED")
+        engine.start(PlaySource.SongRadio(seed))
+        advanceTimeBy(1_000)
+        runCurrent()
+
+        assertEquals(fakeMix(seed.videoId).drop(1).map { it.videoId }, engine.queuedIds())
+
+        advanceUntilIdle()
+        assertEquals(StationEngine.SIMILAR_PER_FEED, engine.state.value.queued.count { it.why.provenance == Provenance.SIMILAR })
+    }
+
+    @Test
+    fun `a like waits for Last fm at most SIMILAR_WAIT_MS, then lands with YouTube's songs`() = runTest(StandardTestDispatcher()) {
+        var hang = false
+        val stuck = object : SimilarFinder {
+            val fake = FakeSimilarFinder(::lastfm)
+            override suspend fun names(seed: YtVideo): SimilarNames {
+                if (hang) delay(60_000)
+                return fake.names(seed)
+            }
+            override suspend fun resolve(names: SimilarNames, knownIds: Set<String>, offered: List<YtVideo>, count: Int) = fake.resolve(names, knownIds, offered, count)
+        }
+        val engine = engine(stuck)
+        engine.start(PlaySource.SongRadio(video("SEED")))
+        advanceUntilIdle()
+        engine.advanceThrough(2)
+        advanceUntilIdle()
+        val liked = engine.state.value.current!!
+        val before = engine.queuedIds()
+        hang = true
+
+        engine.toggleLike(liked)
+        advanceTimeBy(StationEngine.SIMILAR_WAIT_MS - 1)
+        runCurrent()
+        assertEquals("still waiting", before, engine.queuedIds())
+
+        advanceTimeBy(2)
+        runCurrent()
+        val blended = engine.state.value.queued.take(AppSettings.DEFAULT_SONGS_PER_LIKE)
+        assertTrue(blended.all { it.why == Why(Provenance.MIX, liked.videoId, liked.title) })
+    }
+
+    @Test
+    fun `a like asks Last fm for half its songs, at least one`() = runTest(StandardTestDispatcher()) {
+        for ((n, asked) in listOf(2 to 1, 4 to 2, 6 to 3)) {
+            songs.value = n
+            val finder = FakeSimilarFinder(::lastfm)
+            val engine = engine(finder)
+            engine.start(PlaySource.SongRadio(video("SEED")))
+            advanceUntilIdle()
+            engine.advanceThrough(2)
+            advanceUntilIdle()
+
+            engine.toggleLike(engine.state.value.current!!)
+            advanceUntilIdle()
+
+            assertEquals("N=$n", asked, finder.resolveCalls.last().third)
+        }
+    }
+
+    @Test
+    fun `liked radio asks Last fm for one song per like`() = runTest(StandardTestDispatcher()) {
+        coEvery { likedTracks.all() } returns (1..3).map { video("LIKE$it") }
+        val finder = FakeSimilarFinder(::lastfm)
+        val engine = engine(finder)
+        advanceUntilIdle()
+        engine.start(PlaySource.LikedRadio)
+        advanceUntilIdle()
+
+        assertTrue(finder.resolveCalls.isNotEmpty())
+        assertTrue(finder.resolveCalls.all { it.third == StationEngine.SIMILAR_PER_LIKED_RADIO })
     }
 
     @Test

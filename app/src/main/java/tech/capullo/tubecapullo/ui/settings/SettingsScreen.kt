@@ -61,6 +61,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -71,6 +72,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.delay
 import tech.capullo.tubecapullo.data.settings.AppSettings
 import tech.capullo.tubecapullo.data.settings.HistoryRetention
 import tech.capullo.tubecapullo.data.settings.LikeMode
@@ -295,7 +297,14 @@ fun SettingsScreen(
                     leadingContent = { Icon(Icons.Default.Key, contentDescription = null) },
                     headlineContent = { Text("Last.fm API key") },
                     supportingContent = {
-                        val problem = lastfmProblem(lastfmStatus, viewModel.activeLastfmKey(lastfmApiKey), System.currentTimeMillis())
+                        val now by produceState(System.currentTimeMillis(), lastfmStatus) {
+                            while (System.currentTimeMillis() < lastfmStatus.pausedUntilMs) {
+                                value = System.currentTimeMillis()
+                                delay(PAUSE_TICK_MS)
+                            }
+                            value = System.currentTimeMillis()
+                        }
+                        val problem = lastfmProblem(lastfmStatus, viewModel.activeLastfmKey(lastfmApiKey), now)
                         Text(
                             lastfmKeyLabel(lastfmApiKey, viewModel.hasBuiltInLastfmKey) + ". Similar songs by Last.fm" +
                                 (problem?.let { "\n$it" } ?: ""),
@@ -307,6 +316,19 @@ fun SettingsScreen(
                     ),
                 )
             }
+            ListItem(
+                headlineContent = {
+                    Text(
+                        "Powered by AudioScrobbler",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
+                modifier = Modifier.clickable(
+                    onClickLabel = "Open Last.fm",
+                    onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(LASTFM_URL))) },
+                ),
+            )
             HorizontalDivider()
             SectionHeader("History")
             ListItem(
@@ -520,6 +542,10 @@ private val SimilarDepth.explanation: String
         SimilarDepth.FAMILIAR -> "Last.fm's closest songs, mostly well known"
         SimilarDepth.DEEP -> "Songs further down Last.fm's list, less known"
     }
+
+private const val PAUSE_TICK_MS = 30_000L
+
+private const val LASTFM_URL = "https://www.last.fm"
 
 internal fun lastfmProblem(status: LastfmStatus, activeKey: String?, nowMs: Long): String? {
     val rejected = activeKey?.let { status.rejectedKeys[it] }
