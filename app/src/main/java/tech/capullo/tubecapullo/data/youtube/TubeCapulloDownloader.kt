@@ -16,7 +16,6 @@ class TubeCapulloDownloader @Inject constructor(http: OkHttpClient) : Downloader
     private val client = http.newBuilder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
-        .callTimeout(45, TimeUnit.SECONDS)
         .build()
 
     override fun execute(request: Request): Response {
@@ -31,29 +30,14 @@ class TubeCapulloDownloader @Inject constructor(http: OkHttpClient) : Downloader
             values.forEach { builder.addHeader(name, it) }
         }
 
-        val started = System.nanoTime()
-        val tag = "DIAG http ${request.httpMethod()} ${url.substringAfter("://").substringBefore('?').take(80)}"
-        println("$tag start thread=${Thread.currentThread().name}")
-        val response = try {
-            client.newCall(builder.build()).execute()
-        } catch (e: Exception) {
-            println("$tag failed ms=${(System.nanoTime() - started) / 1_000_000} error=${e.javaClass.simpleName}: ${e.message}")
-            throw e
-        }
-        println("$tag headers code=${response.code} ms=${(System.nanoTime() - started) / 1_000_000}")
+        val response = client.newCall(builder.build()).execute()
 
         if (response.code == 429) {
             response.close()
             throw ReCaptchaException("reCaptcha Challenge requested", url)
         }
 
-        val body = try {
-            response.body?.string()
-        } catch (e: Exception) {
-            println("$tag body-failed ms=${(System.nanoTime() - started) / 1_000_000} error=${e.javaClass.simpleName}: ${e.message}")
-            throw e
-        }
-        println("$tag done bytes=${body?.length} ms=${(System.nanoTime() - started) / 1_000_000}")
+        val body = response.body?.string()
 
         return Response(
             response.code,
