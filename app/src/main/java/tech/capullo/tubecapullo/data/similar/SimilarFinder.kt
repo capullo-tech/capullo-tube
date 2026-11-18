@@ -25,11 +25,11 @@ interface SimilarFinder {
     suspend fun names(seed: YtVideo): SimilarNames
 
     /**
-     * Up to [count] YouTube videos for [names], skipping songs already in [knownIds] or whose
-     * cleaned title is in [knownKeys] (the seed's Mix and related): this list exists to add songs
-     * YouTube did not offer.
+     * Up to [count] YouTube videos for [names], skipping videos in [knownIds] and songs any of
+     * the [offered] videos (the seed, its Mix and related) already is, by artist and title, so
+     * a re-upload counts: this list exists to add songs YouTube did not offer.
      */
-    suspend fun resolve(names: SimilarNames, knownIds: Set<String>, knownKeys: Set<String>, count: Int): SimilarFind
+    suspend fun resolve(names: SimilarNames, knownIds: Set<String>, offered: List<YtVideo>, count: Int): SimilarFind
 }
 
 @Singleton
@@ -78,17 +78,16 @@ class LastfmSimilarFinder @Inject constructor(
     override suspend fun resolve(
         names: SimilarNames,
         knownIds: Set<String>,
-        knownKeys: Set<String>,
+        offered: List<YtVideo>,
         count: Int,
     ): SimilarFind {
         if (count <= 0) return SimilarFind(emptyList(), 0, 0, 0)
         val seen = HashSet(knownIds)
-        val keys = HashSet(knownKeys)
+        val keys = HashSet<String>()
+        val offeredSongs = offered.map(::SongNames)
         var skippedKnown = 0
         val candidates = names.tracks.filter { track ->
-            val known = SeedNames.key(track.title) in keys ||
-                SeedNames.key(SeedNames.bareTitle(track.title)) in keys ||
-                SeedNames.key(track.artist + track.title) in keys
+            val known = offeredSongs.any { it.matches(track.artist, track.title) }
             if (known) skippedKnown++
             !known
         }

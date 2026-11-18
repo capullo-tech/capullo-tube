@@ -30,7 +30,6 @@ import tech.capullo.tubecapullo.data.youtube.YouTubeUrls
 import tech.capullo.tubecapullo.data.youtube.YtChapter
 import tech.capullo.tubecapullo.data.youtube.YtRelated
 import tech.capullo.tubecapullo.data.youtube.YtVideo
-import tech.capullo.tubecapullo.util.TitleCleaner
 import java.util.IdentityHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -1193,10 +1192,11 @@ class StationEngine @Inject constructor(
         excluded: Set<String>,
     ): SimilarFind {
         if (names.tracks.isEmpty()) return SimilarFind(emptyList(), 0, 0, 0)
-        val offered = mix + related?.videos.orEmpty() + seed
+        // Related videos the gate drops will not play, so Last.fm may bring their song.
+        val gated = related?.videos.orEmpty().filter { passesRelatedGate(it, related!!.seedViews) }
+        val offered = mix + gated + seed
         val knownIds = excluded + offered.map { it.videoId }
-        val knownKeys = offered.mapNotNullTo(HashSet()) { TitleCleaner.key(it.title, it.uploader) }
-        return runCatching { similarFinder.resolve(names, knownIds, knownKeys, SIMILAR_PER_FEED) }
+        return runCatching { similarFinder.resolve(names, knownIds, offered, SIMILAR_PER_FEED) }
             .onFailure { log("similar seed=${seed.videoId} resolve-error=${q(it.message)}") }
             .getOrElse { SimilarFind(emptyList(), 0, 0, 0) }
     }

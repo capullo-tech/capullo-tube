@@ -107,22 +107,27 @@ class SimilarFinderTest {
     }
 
     @Test
-    fun `songs already in the Mix or related are skipped before any YouTube search`() = runTest {
-        val tracks = listOf(SimilarTrack("X", "Known", 1.0), SimilarTrack("X", "Fresh", 0.9))
-        coEvery { resolver.resolve("X", "Fresh") } returns Resolved(video("Fresh"), searched = true)
+    fun `songs already in the Mix or related are skipped before any YouTube search, re-uploads included`() = runTest {
+        val tracks = listOf(
+            SimilarTrack("Enanitos Verdes", "Lamento Boliviano", 1.0),
+            SimilarTrack("Gustavo Cerati", "Crimen", 0.9),
+        )
+        val reupload = YtVideo("9eW5zIOCjOw", "*LAMENTO BOLIVIANO* - ENANITOS VERDES - 1994", "PRIVADO 80s", 228, null)
+        val crimen = YtVideo("uLIs0j2WnlM", "Gustavo Cerati - Crimen (Official VIdeo)", "Gustavo Cerati", 251, null)
+        coEvery { resolver.resolve("Gustavo Cerati", "Crimen") } returns Resolved(crimen, searched = true)
 
-        val found = finder().resolve(SimilarNames(tracks, "track"), emptySet(), setOf("known"), count = 2)
+        val found = finder().resolve(SimilarNames(tracks, "track"), emptySet(), listOf(reupload), count = 2)
 
-        assertEquals(listOf("X - Fresh"), found.videos.map { it.title })
+        assertEquals(listOf(crimen), found.videos)
         assertEquals(1, found.skippedKnown)
-        coVerify(exactly = 0) { resolver.resolve("X", "Known") }
+        coVerify(exactly = 0) { resolver.resolve("Enanitos Verdes", any()) }
     }
 
     @Test
     fun `resolving stops at the wanted count`() = runTest {
         coEvery { resolver.resolve(any(), any()) } answers { Resolved(video(secondArg()), searched = true) }
 
-        val found = finder().resolve(SimilarNames(names(20), "track"), emptySet(), emptySet(), count = 4)
+        val found = finder().resolve(SimilarNames(names(20), "track"), emptySet(), emptyList(), count = 4)
 
         assertEquals(4, found.videos.size)
         assertEquals(4, found.searched)
@@ -133,7 +138,7 @@ class SimilarFinderTest {
     fun `YouTube searches are bounded when names do not resolve`() = runTest {
         coEvery { resolver.resolve(any(), any()) } returns Resolved(null, searched = true)
 
-        val found = finder().resolve(SimilarNames(names(40), "track"), emptySet(), emptySet(), count = 3)
+        val found = finder().resolve(SimilarNames(names(40), "track"), emptySet(), emptyList(), count = 3)
 
         assertTrue(found.videos.isEmpty())
         assertEquals(3 * LastfmSimilarFinder.RESOLVE_ATTEMPTS_PER_PICK, found.searched)
@@ -146,7 +151,7 @@ class SimilarFinderTest {
             if (n <= 10) Resolved(null, searched = false) else Resolved(video(secondArg()), searched = true)
         }
 
-        val found = finder().resolve(SimilarNames(names(20), "track"), emptySet(), emptySet(), count = 2)
+        val found = finder().resolve(SimilarNames(names(20), "track"), emptySet(), emptyList(), count = 2)
 
         assertEquals(listOf("X - Song 11", "X - Song 12"), found.videos.map { it.title })
     }
@@ -161,7 +166,7 @@ class SimilarFinderTest {
             }
         }
 
-        val found = finder().resolve(SimilarNames(names(4), "track"), setOf(video("Played").videoId), emptySet(), count = 3)
+        val found = finder().resolve(SimilarNames(names(4), "track"), setOf(video("Played").videoId), emptyList(), count = 3)
 
         assertEquals(listOf(shared), found.videos)
     }
@@ -171,7 +176,7 @@ class SimilarFinderTest {
         coEvery { resolver.resolve(any(), "Song 1") } throws IllegalStateException("bot check")
         coEvery { resolver.resolve(any(), "Song 2") } returns Resolved(video("Two"), searched = true)
 
-        val found = finder().resolve(SimilarNames(names(2), "track"), emptySet(), emptySet(), count = 2)
+        val found = finder().resolve(SimilarNames(names(2), "track"), emptySet(), emptyList(), count = 2)
 
         assertEquals(listOf("X - Two"), found.videos.map { it.title })
     }

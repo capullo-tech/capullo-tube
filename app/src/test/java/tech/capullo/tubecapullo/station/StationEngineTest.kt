@@ -40,7 +40,6 @@ import tech.capullo.tubecapullo.data.youtube.YtRelated
 import tech.capullo.tubecapullo.data.youtube.YtStream
 import tech.capullo.tubecapullo.data.youtube.YtVideo
 import tech.capullo.tubecapullo.data.youtube.YtVideoList
-import tech.capullo.tubecapullo.util.TitleCleaner
 import kotlin.random.Random
 
 private const val RANDOM_SEED = 7
@@ -1414,10 +1413,10 @@ class StationSimilarTest {
         engine.start(PlaySource.SongRadio(seed))
         advanceUntilIdle()
 
-        val (knownIds, knownKeys, count) = finder.resolveCalls.single()
+        val (knownIds, offered, count) = finder.resolveCalls.single()
         assertEquals(StationEngine.SIMILAR_PER_FEED, count)
         assertTrue(fakeMix(seed.videoId).all { it.videoId in knownIds })
-        assertTrue(fakeMix(seed.videoId).all { TitleCleaner.key(it.title, it.uploader) in knownKeys })
+        assertEquals(fakeMix(seed.videoId).map { it.videoId }.toSet(), offered.map { it.videoId }.toSet())
     }
 
     @Test
@@ -1426,7 +1425,7 @@ class StationSimilarTest {
         val inMix = fakeMix(seed.videoId)[3]
         val careless = object : SimilarFinder {
             override suspend fun names(seed: YtVideo) = SimilarNames(listOf(SimilarTrack("a", "b", 1.0)), "track")
-            override suspend fun resolve(names: SimilarNames, knownIds: Set<String>, knownKeys: Set<String>, count: Int) = SimilarFind(listOf(inMix), 1, 1, 0)
+            override suspend fun resolve(names: SimilarNames, knownIds: Set<String>, offered: List<YtVideo>, count: Int) = SimilarFind(listOf(inMix), 1, 1, 0)
         }
         val engine = engine(careless)
         engine.start(PlaySource.SongRadio(seed))
@@ -1440,7 +1439,7 @@ class StationSimilarTest {
     fun `when Last fm fails the radio is YouTube's Mix, as before`() = runTest(StandardTestDispatcher()) {
         val broken = object : SimilarFinder {
             override suspend fun names(seed: YtVideo): SimilarNames = throw IllegalStateException("offline")
-            override suspend fun resolve(names: SimilarNames, knownIds: Set<String>, knownKeys: Set<String>, count: Int): SimilarFind = throw IllegalStateException("offline")
+            override suspend fun resolve(names: SimilarNames, knownIds: Set<String>, offered: List<YtVideo>, count: Int): SimilarFind = throw IllegalStateException("offline")
         }
         val engine = engine(broken)
         val seed = video("SEED")

@@ -14,7 +14,7 @@ internal class FakeSimilarFinder(
     private val similar: (String) -> List<YtVideo> = { emptyList() },
 ) : SimilarFinder {
     val namedSeeds = mutableListOf<String>()
-    val resolveCalls = mutableListOf<Triple<Set<String>, Set<String>, Int>>()
+    val resolveCalls = mutableListOf<Triple<Set<String>, List<YtVideo>, Int>>()
 
     override suspend fun names(seed: YtVideo): SimilarNames {
         namedSeeds += seed.videoId
@@ -22,8 +22,8 @@ internal class FakeSimilarFinder(
         return SimilarNames(videos.map { SimilarTrack(seed.videoId, it.videoId, 1.0) }, if (videos.isEmpty()) "none" else "track")
     }
 
-    override suspend fun resolve(names: SimilarNames, knownIds: Set<String>, knownKeys: Set<String>, count: Int): SimilarFind {
-        resolveCalls += Triple(knownIds, knownKeys, count)
+    override suspend fun resolve(names: SimilarNames, knownIds: Set<String>, offered: List<YtVideo>, count: Int): SimilarFind {
+        resolveCalls += Triple(knownIds, offered, count)
         val seed = names.tracks.firstOrNull()?.artist ?: return SimilarFind(emptyList(), 0, 0, 0)
         val named = names.tracks.map { it.title }
         val videos = similar(seed).filter { it.videoId in named && it.videoId !in knownIds }.take(count)
