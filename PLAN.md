@@ -31,7 +31,7 @@ somewhere else.
    (3 instead of 2; the "Songs added per like" setting keeps working).
 3. Settings gets a Depth choice. Familiar: the top 10 similar songs. Deep: songs ranked 11 to 40.
    Last.fm returns a match score per song, so the dial costs nothing extra.
-4. Up next shows why a song is there: "Similar to Creep (Last.fm)".
+4. Up next shows why a song is there: "Similar to Creep".
 5. Later PR: Less like this on any row and in the Player. It removes the song, drops every queued
    song that came from it, and keeps that artist out of the radio for a while. ♥ Like also makes
    the liked song the point the radio continues from, and the Player says "steered by ♥ Creep".
@@ -208,3 +208,6 @@ suspends a key for every install using it. No rate headers. The terms ask for ca
 - Settings: "Powered by AudioScrobbler" credit row linking to last.fm (API terms 2.7); the
   pause countdown ticks every 30 s.
 - Test: a radio with Last.fm songs resumes from Room with SIMILAR provenance.
+
+- Attribution: only the credit row in Settings > Similar songs. Up next says "Similar to <seed>"
+  with no Last.fm mention.
