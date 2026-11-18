@@ -17,6 +17,7 @@ import tech.capullo.tubecapullo.data.youtube.YtVideo
 class SongActions(
     val goToRadio: (YtVideo) -> Unit,
     val playNext: ((YtVideo) -> Unit)?,
+    val removeFromHistory: ((YtVideo) -> Unit)? = null,
 )
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -42,6 +43,7 @@ fun SongActionsBox(
             onDismiss = { menuOpen = false },
             onPlayNext = actions.playNext?.let { playNext -> { playNext(video) } },
             onGoToRadio = { actions.goToRadio(video) },
+            onRemoveFromHistory = actions.removeFromHistory?.let { remove -> { remove(video) } },
         )
     }
 }
@@ -52,11 +54,13 @@ fun SongActionsMenu(
     onDismiss: () -> Unit,
     onPlayNext: (() -> Unit)?,
     onGoToRadio: (() -> Unit)?,
+    onRemoveFromHistory: (() -> Unit)? = null,
 ) {
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
         listOfNotNull(
             onPlayNext?.let { PLAY_NEXT to it },
             onGoToRadio?.let { GO_TO_RADIO to it },
+            onRemoveFromHistory?.let { REMOVE_FROM_HISTORY to it },
         ).forEach { (label, action) ->
             DropdownMenuItem(
                 text = { Text(label) },
@@ -70,6 +74,8 @@ fun SongActionsMenu(
 }
 
 const val SONG_OPTIONS = "Song options"
+
+const val REMOVE_FROM_HISTORY = "Remove from history"
 
 private const val PLAY_NEXT = "Play next"
 private const val GO_TO_RADIO = "Go to radio"

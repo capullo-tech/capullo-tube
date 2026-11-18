@@ -4,12 +4,13 @@ import android.util.Log
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
+import tech.capullo.tubecapullo.data.settings.HistoryRetention
 import tech.capullo.tubecapullo.data.youtube.YtVideo
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class PlayHistory @Inject constructor(private val dao: PlayHistoryDao) {
+class PlayHistory @Inject constructor(private val dao: PlayHistoryDao, private val lyricsDao: LyricsDao) {
     suspend fun record(video: YtVideo) {
         runCatching {
             dao.record(
@@ -25,6 +26,37 @@ class PlayHistory @Inject constructor(private val dao: PlayHistoryDao) {
             )
         }.onFailure {
             Log.w(TAG, "play-history write failed", it)
+        }
+    }
+
+    suspend fun prune(retention: HistoryRetention, keepLyricsOf: String?, nowEpochMs: Long = System.currentTimeMillis()) {
+        val cutoff = retention.cutoffEpochMs(nowEpochMs) ?: return
+        runCatching {
+            val removed = dao.deleteUnlikedPlayedBefore(cutoff)
+            lyricsDao.deleteUnplayed(keepLyricsOf.orEmpty())
+            Log.i(TAG, "play-history prune retention=$retention cutoff=$cutoff removed=$removed")
+        }.onFailure {
+            Log.w(TAG, "play-history prune failed", it)
+        }
+    }
+
+    suspend fun clear(keepLyricsOf: String?) {
+        runCatching {
+            val removed = dao.deleteAll()
+            lyricsDao.deleteUnplayed(keepLyricsOf.orEmpty())
+            Log.i(TAG, "play-history clear removed=$removed")
+        }.onFailure {
+            Log.w(TAG, "play-history clear failed", it)
+        }
+    }
+
+    suspend fun remove(videoId: String, keepLyricsOf: String?) {
+        runCatching {
+            val removed = dao.delete(videoId)
+            lyricsDao.deleteUnplayed(keepLyricsOf.orEmpty())
+            Log.i(TAG, "play-history remove id=$videoId removed=$removed")
+        }.onFailure {
+            Log.w(TAG, "play-history remove id=$videoId failed", it)
         }
     }
 

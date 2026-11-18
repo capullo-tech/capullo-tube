@@ -46,4 +46,23 @@ interface PlayHistoryDao {
             "OR videoId IN (SELECT videoId FROM liked_album)",
     )
     fun observeListenAgainPool(minPlays: Int): Flow<List<PlayedTrackEntity>>
+
+    @Query(DELETE_UNLIKED_PLAYED_BEFORE)
+    suspend fun deleteUnlikedPlayedBefore(cutoffEpochMs: Long): Int
+
+    @Query(DELETE_ALL)
+    suspend fun deleteAll(): Int
+
+    @Query(DELETE_BY_ID)
+    suspend fun delete(videoId: String): Int
+
+    companion object {
+        const val DELETE_UNLIKED_PLAYED_BEFORE = "DELETE FROM played_track WHERE lastPlayedAtEpochMs < :cutoffEpochMs " +
+            "AND videoId NOT IN (SELECT videoId FROM liked_track) " +
+            "AND videoId NOT IN (SELECT videoId FROM liked_album)"
+
+        const val DELETE_ALL = "DELETE FROM played_track"
+
+        const val DELETE_BY_ID = "DELETE FROM played_track WHERE videoId = :videoId"
+    }
 }

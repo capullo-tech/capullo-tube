@@ -326,6 +326,10 @@ class HomeViewModel @Inject constructor(
         player.resume(card.stationId)
     }
 
+    fun removeContinue(card: ContinueCard) {
+        stationEngine.forgetStation(card.stationId)
+    }
+
     fun playNext(video: YtVideo) = stationEngine.playNext(video)
 
     private suspend fun <T> orEmpty(block: suspend () -> List<T>): List<T> = runCatching {

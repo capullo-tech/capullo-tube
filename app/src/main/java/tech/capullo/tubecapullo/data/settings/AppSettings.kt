@@ -6,6 +6,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -133,6 +134,15 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
         _lyricsDelayMs.value = delay
     }
 
+    private val _historyRetention = MutableStateFlow(readEnum(KEY_HISTORY_RETENTION, HistoryRetention.FOREVER))
+
+    val historyRetention: StateFlow<HistoryRetention> = _historyRetention.asStateFlow()
+
+    fun setHistoryRetention(retention: HistoryRetention) {
+        prefs.edit { putString(KEY_HISTORY_RETENTION, retention.name) }
+        _historyRetention.value = retention
+    }
+
     companion object {
         const val MAX_TRENDING_ROWS = 5
 
@@ -167,6 +177,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
         private const val KEY_LYRICS_CARD = "lyrics_card"
         private const val KEY_LYRICS_ONLINE = "lyrics_online"
         private const val KEY_LYRICS_DELAY_MS = "lyrics_delay_ms"
+        private const val KEY_HISTORY_RETENTION = "history_retention"
     }
 }
 
@@ -176,6 +187,17 @@ enum class LikeMode {
     SAVE_ONLY,
 
     SWITCH_NOW,
+}
+
+enum class HistoryRetention(private val days: Long?) {
+    THREE_MONTHS(92),
+
+    ONE_YEAR(366),
+
+    FOREVER(null),
+    ;
+
+    fun cutoffEpochMs(nowEpochMs: Long): Long? = days?.let { nowEpochMs - TimeUnit.DAYS.toMillis(it) }
 }
 
 private const val CHART_REGION_SEPARATOR = ","
