@@ -16,6 +16,7 @@ class TubeCapulloDownloader @Inject constructor(http: OkHttpClient) : Downloader
     private val client = http.newBuilder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
+        .callTimeout(45, TimeUnit.SECONDS)
         .build()
 
     override fun execute(request: Request): Response {

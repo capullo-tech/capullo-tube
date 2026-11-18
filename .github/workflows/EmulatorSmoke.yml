@@ -226,6 +226,9 @@ jobs:
             echo "::error::smoke instrumentation failed on API ${{ matrix.api-level }} (transcript above)"
             exit 1
           fi
+          if grep -q 'smoke_warning=' "$RUNNER_TEMP/instrument.log"; then
+            echo "::warning::API ${{ matrix.api-level }}: $(grep -m1 -o 'smoke_warning=.*' "$RUNNER_TEMP/instrument.log" | cut -d= -f2-)"
+          fi
       - name: Collect in-test smoke evidence
         if: always()
         run: |
