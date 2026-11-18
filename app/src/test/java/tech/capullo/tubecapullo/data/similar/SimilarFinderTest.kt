@@ -93,6 +93,12 @@ class SimilarFinderTest {
     }
 
     @Test
+    fun `while the gate holds Last fm back, the radio gets no names and says why`() = runTest {
+        coEvery { lastfm.similarTracks(any(), any(), any(), any()) } throws LastfmPaused("rate-limited")
+        assertEquals(SimilarNames(emptyList(), "paused"), finder().names(creep))
+    }
+
+    @Test
     fun `a Last fm failure is an empty answer, not a crash`() = runTest {
         coEvery { lastfm.similarTracks(any(), any(), any(), any()) } throws LastfmException(29, "Rate Limit Exceeded")
         assertEquals(SimilarNames(emptyList(), "error"), finder().names(creep))

@@ -12,6 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import okhttp3.OkHttpClient
 import tech.capullo.tubecapullo.BuildConfig
+import tech.capullo.tubecapullo.data.history.LastfmCacheDao
 import tech.capullo.tubecapullo.data.history.LikedAlbumDao
 import tech.capullo.tubecapullo.data.history.LikedTrackDao
 import tech.capullo.tubecapullo.data.history.LyricsDao
@@ -50,6 +51,7 @@ object AppModule {
             TubeCapulloDatabase.MIGRATION_5_6,
             TubeCapulloDatabase.MIGRATION_6_7,
             TubeCapulloDatabase.MIGRATION_7_8,
+            TubeCapulloDatabase.MIGRATION_8_9,
         )
         .build()
 
@@ -76,6 +78,10 @@ object AppModule {
     @Provides
     @Singleton
     fun provideResolvedTrackDao(db: TubeCapulloDatabase): ResolvedTrackDao = db.resolvedTrackDao()
+
+    @Provides
+    @Singleton
+    fun provideLastfmCacheDao(db: TubeCapulloDatabase): LastfmCacheDao = db.lastfmCacheDao()
 
     @Provides
     @Named(LastfmSimilarFinder.BUILT_IN_KEY)

@@ -74,6 +74,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import tech.capullo.tubecapullo.data.settings.AppSettings
 import tech.capullo.tubecapullo.data.settings.HistoryRetention
 import tech.capullo.tubecapullo.data.settings.LikeMode
+import tech.capullo.tubecapullo.data.similar.LastfmGate
+import tech.capullo.tubecapullo.data.similar.LastfmStatus
 import tech.capullo.tubecapullo.data.similar.SimilarDepth
 import tech.capullo.tubecapullo.data.similar.isLastfmKeyShape
 
@@ -101,6 +103,7 @@ fun SettingsScreen(
     val similarOnline by viewModel.similarOnline.collectAsStateWithLifecycle()
     val similarDepth by viewModel.similarDepth.collectAsStateWithLifecycle()
     val lastfmApiKey by viewModel.lastfmApiKey.collectAsStateWithLifecycle()
+    val lastfmStatus by viewModel.lastfmStatus.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var showChartsDialog by rememberSaveable { mutableStateOf(false) }
     var showLikeModeDialog by rememberSaveable { mutableStateOf(false) }
@@ -292,7 +295,11 @@ fun SettingsScreen(
                     leadingContent = { Icon(Icons.Default.Key, contentDescription = null) },
                     headlineContent = { Text("Last.fm API key") },
                     supportingContent = {
-                        Text(lastfmKeyLabel(lastfmApiKey, viewModel.hasBuiltInLastfmKey) + ". Similar songs by Last.fm")
+                        val problem = lastfmProblem(lastfmStatus, viewModel.activeLastfmKey(lastfmApiKey), System.currentTimeMillis())
+                        Text(
+                            lastfmKeyLabel(lastfmApiKey, viewModel.hasBuiltInLastfmKey) + ". Similar songs by Last.fm" +
+                                (problem?.let { "\n$it" } ?: ""),
+                        )
                     },
                     modifier = Modifier.clickable(
                         onClickLabel = "Set your own Last.fm API key",
@@ -513,6 +520,16 @@ private val SimilarDepth.explanation: String
         SimilarDepth.FAMILIAR -> "Last.fm's closest songs, mostly well known"
         SimilarDepth.DEEP -> "Songs further down Last.fm's list, less known"
     }
+
+internal fun lastfmProblem(status: LastfmStatus, activeKey: String?, nowMs: Long): String? {
+    val rejected = activeKey?.let { status.rejectedKeys[it] }
+    return when {
+        rejected == LastfmGate.ERROR_SUSPENDED_KEY -> "Last.fm suspended this key. Add your own key to go on"
+        rejected != null -> "Last.fm does not accept this key. Check it, or clear it to use the app's key"
+        nowMs < status.pausedUntilMs -> "Last.fm asked to slow down: similar songs pause for ${(status.pausedUntilMs - nowMs + 59_999) / 60_000} min"
+        else -> null
+    }
+}
 
 internal fun lastfmKeyLabel(personal: String, hasBuiltIn: Boolean): String = when {
     personal.isNotBlank() -> "Your key ending ${personal.takeLast(4)}"

@@ -16,14 +16,24 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.OkHttpClient
+import tech.capullo.tubecapullo.data.history.LastfmCacheDao
+import tech.capullo.tubecapullo.data.history.LastfmCacheEntity
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
 class LastfmException(val code: Int, message: String) : Exception("Last.fm error $code: $message")
 
-/** Read-only Last.fm calls. Each takes the API key so a personal key can replace the built-in one. */
+/**
+ * Read-only Last.fm calls. Each takes the API key so a personal key can replace the built-in
+ * one. Answers are cached for [CACHE_DAYS] (the terms ask for caching) and every network call
+ * passes the [gate].
+ */
 @Singleton
-class LastfmClient @Inject constructor(okHttp: OkHttpClient) {
+class LastfmClient @Inject constructor(okHttp: OkHttpClient, private val cache: LastfmCacheDao) {
+    internal var now: () -> Long = System::currentTimeMillis
+
+    val gate = LastfmGate { now() }
 
     private val http = HttpClient(OkHttp) {
         engine { preconfigured = okHttp }
@@ -43,13 +53,28 @@ class LastfmClient @Inject constructor(okHttp: OkHttpClient) {
 
     suspend fun topTracks(artist: String, limit: Int, apiKey: String): List<SimilarTrack> = parseTopTracks(call(apiKey, "artist.getTopTracks", "artist" to artist, "limit" to "$limit"))
 
-    private suspend fun call(apiKey: String, method: String, vararg params: Pair<String, String>): String = http.get(BASE_URL) {
-        parameter("method", method)
-        params.forEach { (name, value) -> parameter(name, value) }
-        parameter("autocorrect", "1")
-        parameter("api_key", apiKey)
-        parameter("format", "json")
-    }.bodyAsText()
+    private suspend fun call(apiKey: String, method: String, vararg params: Pair<String, String>): String {
+        val request = method + params.joinToString("") { (name, value) -> "|$name=${SeedNames.key(value)}" }
+        cache.byRequest(request)
+            ?.takeIf { now() - it.fetchedAtEpochMs < TimeUnit.DAYS.toMillis(CACHE_DAYS) }
+            ?.let { return it.body }
+        gate.acquire(apiKey)
+        val body = transport(apiKey, method, params.toList())
+        val code = errorCode(body)
+        gate.onAnswer(apiKey, code)
+        if (code == null || code == ERROR_NOT_FOUND) cache.upsert(LastfmCacheEntity(request, body, now()))
+        return body
+    }
+
+    internal var transport: suspend (String, String, List<Pair<String, String>>) -> String = { apiKey, method, params ->
+        http.get(BASE_URL) {
+            parameter("method", method)
+            params.forEach { (name, value) -> parameter(name, value) }
+            parameter("autocorrect", "1")
+            parameter("api_key", apiKey)
+            parameter("format", "json")
+        }.bodyAsText()
+    }
 
     internal companion object {
         private const val BASE_URL = "https://ws.audioscrobbler.com/2.0/"
@@ -62,6 +87,13 @@ class LastfmClient @Inject constructor(okHttp: OkHttpClient) {
 
         /** "Track not found" / "Artist not found": an empty answer, not a failure. */
         const val ERROR_NOT_FOUND = 6
+
+        /** GUESS: similarity lists change slowly. */
+        const val CACHE_DAYS = 30L
+
+        fun errorCode(body: String): Int? = runCatching {
+            (Json.parseToJsonElement(body).jsonObject["error"] as? JsonPrimitive)?.contentOrNull?.toIntOrNull()
+        }.getOrNull()
 
         fun parseSimilarTracks(body: String): List<SimilarTrack> = items(body, "similartracks", "track").mapNotNull { track ->
             val name = track.text("name") ?: return@mapNotNull null

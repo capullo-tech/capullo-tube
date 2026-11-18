@@ -13,7 +13,7 @@ import javax.inject.Singleton
 /**
  * Last.fm's names for a seed. [via] says how they were found, for the station log:
  * `track` (the parsed names), `retry` (the bare names), `artist` (similar artists' top songs),
- * or why there are none (`off`, `no-key`, `unparsed`, `none`, `error`).
+ * or why there are none (`off`, `no-key`, `unparsed`, `none`, `paused` by the [LastfmGate], `error`).
  */
 data class SimilarNames(val tracks: List<SimilarTrack>, val via: String)
 
@@ -49,6 +49,8 @@ class LastfmSimilarFinder @Inject constructor(
             byTrack(queries, key)
                 ?: queries.lastOrNull { it.trusted }?.let { byArtist(it.artist, key) }
                 ?: SimilarNames(emptyList(), "none")
+        } catch (e: LastfmPaused) {
+            return SimilarNames(emptyList(), "paused")
         } catch (e: Exception) {
             return SimilarNames(emptyList(), "error")
         }

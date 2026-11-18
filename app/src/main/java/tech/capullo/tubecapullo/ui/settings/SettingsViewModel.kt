@@ -16,7 +16,10 @@ import tech.capullo.tubecapullo.data.lyrics.LyricsTiming
 import tech.capullo.tubecapullo.data.settings.AppSettings
 import tech.capullo.tubecapullo.data.settings.HistoryRetention
 import tech.capullo.tubecapullo.data.settings.LikeMode
+import tech.capullo.tubecapullo.data.similar.LastfmClient
+import tech.capullo.tubecapullo.data.similar.LastfmStatus
 import tech.capullo.tubecapullo.data.similar.SimilarDepth
+import tech.capullo.tubecapullo.data.similar.lastfmKeyOf
 import tech.capullo.tubecapullo.data.youtube.YouTubeExtractorClient
 import tech.capullo.tubecapullo.data.youtube.defaultChartRegion
 import tech.capullo.tubecapullo.links.YouTubeLinkAlias
@@ -46,6 +49,7 @@ class SettingsViewModel @Inject constructor(
     private val linkAlias: YouTubeLinkAlias,
     snapcastManager: SnapcastManager,
     private val playHistoryRetention: PlayHistoryRetention,
+    lastfmClient: LastfmClient,
 ) : ViewModel() {
     val chartRegions: StateFlow<List<String>> = appSettings.chartRegions
 
@@ -100,6 +104,11 @@ class SettingsViewModel @Inject constructor(
     fun setLastfmApiKey(key: String) = appSettings.setLastfmApiKey(key)
 
     val hasBuiltInLastfmKey: Boolean = BuildConfig.LASTFM_API_KEY.isNotBlank()
+
+    val lastfmStatus: StateFlow<LastfmStatus> = lastfmClient.gate.status
+
+    /** The key Last.fm calls go out with: the personal one, else the built-in one. */
+    fun activeLastfmKey(personal: String): String? = lastfmKeyOf(personal, BuildConfig.LASTFM_API_KEY)
 
     val lyricsDelayMs: StateFlow<Int> = appSettings.lyricsDelayMs
 

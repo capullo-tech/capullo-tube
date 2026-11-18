@@ -182,3 +182,18 @@ Verdict: go for PR 2, with the parsing retry and artist fallback above as part o
   the built-in key from `LASTFM_API_KEY` / `local.properties` `lastfm.apiKey`).
 - Home "More like" rows stay YouTube-only.
 - Device check: owner's razr, once the feature is mature.
+
+## PR 2b: Last.fm limits (as built)
+
+Facts (2026-11-18): the API terms (4.4) set limits "in our sole discretion" with no number; the
+widely cited figure is 5 requests a second per originating IP, averaged over 5 minutes. Error 29
+names the IP, so the limit is per phone, not per key; a personal key is not uncapped. Error 26
+suspends a key for every install using it. No rate headers. The terms ask for caching.
+
+- `LastfmGate` (both keys): calls at least 250 ms apart; error 29 pauses all calls 10 min;
+  error 10 or 26 stops that key for the session. Settings shows the reason under the key.
+- `lastfm_cache` (Room v9): every answer and every "not found" for 30 days, keyed by method and
+  normalized names, not by key. Liked radio cycling the same likes now costs no calls.
+- The finder logs `via=paused` while the gate holds Last.fm back.
+- Device: razr 40 ultra, Android 15: 8 -> 9 kept the cached YouTube lookups; Creep's answer
+  landed in `lastfm_cache`.

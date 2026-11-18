@@ -22,7 +22,8 @@ as clients. You pick one song. The app extends it into an endless radio:
 - **Similar songs** come from Last.fm. Last.fm receives the artist and title of each song a
   radio expands; each new suggestion is looked up once on YouTube and remembered. Settings >
   Similar songs turns this off, picks the Depth (Familiar or Deep), and takes an optional
-  personal Last.fm API key in place of the app's.
+  personal Last.fm API key in place of the app's. Last.fm answers are cached for 30 days, calls
+  are spaced, and a rate-limit answer pauses lookups for 10 minutes.
 
 Part of the [capullo-tech](https://github.com/capullo-tech) family (RadioCapullo, telecloud-radio).
 

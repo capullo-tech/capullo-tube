@@ -11,8 +11,9 @@ import androidx.room.RoomDatabase
         StationSnapshotEntity::class,
         LyricsEntity::class,
         ResolvedTrackEntity::class,
+        LastfmCacheEntity::class,
     ],
-    version = 8,
+    version = 9,
     exportSchema = true,
 )
 abstract class TubeCapulloDatabase : RoomDatabase() {
@@ -27,6 +28,8 @@ abstract class TubeCapulloDatabase : RoomDatabase() {
     abstract fun lyricsDao(): LyricsDao
 
     abstract fun resolvedTrackDao(): ResolvedTrackDao
+
+    abstract fun lastfmCacheDao(): LastfmCacheDao
 
     companion object {
         val MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
@@ -97,6 +100,15 @@ abstract class TubeCapulloDatabase : RoomDatabase() {
                         "`videoId` TEXT, `title` TEXT, `uploader` TEXT, " +
                         "`durationSeconds` INTEGER NOT NULL, `thumbnailUrl` TEXT, " +
                         "`resolvedAtEpochMs` INTEGER NOT NULL, PRIMARY KEY(`nameKey`))",
+                )
+            }
+        }
+
+        val MIGRATION_8_9 = object : androidx.room.migration.Migration(8, 9) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `lastfm_cache` (`request` TEXT NOT NULL, " +
+                        "`body` TEXT NOT NULL, `fetchedAtEpochMs` INTEGER NOT NULL, PRIMARY KEY(`request`))",
                 )
             }
         }

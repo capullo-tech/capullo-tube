@@ -177,4 +177,23 @@ class MigrationTest {
             )
         }
     }
+
+    @Test
+    fun `8 to 9 keeps every row of every table and adds lastfm_cache as Room expects it`() {
+        DriverManager.getConnection("jdbc:sqlite::memory:").use { db ->
+            db.create(8)
+            db.exec(
+                "INSERT INTO played_track VALUES ('dQw4w9WgXcQ', 'Never Gonna', 'Rick Astley', 213, 'https://i/1', 7, 5000)",
+                "INSERT INTO resolved_track VALUES ('foofighters|everlong', 'eBG7P-K-r1Y', 'Everlong', 'Foo Fighters', 250, NULL, 1)",
+            )
+            val tables = entities(8).map { it.text("tableName") }
+            val before = tables.associateWith { db.rows("SELECT * FROM `$it` ORDER BY 1") }
+
+            TubeCapulloDatabase.MIGRATION_8_9.migrate(database(db))
+
+            tables.forEach { assertEquals("table $it", before.getValue(it), db.rows("SELECT * FROM `$it` ORDER BY 1")) }
+            db.assertSchema(9)
+            db.exec("INSERT INTO lastfm_cache VALUES ('track.getSimilar|artist=radiohead|track=creep|limit=40', '{}', 1)")
+        }
+    }
 }
