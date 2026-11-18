@@ -202,7 +202,14 @@ class HomeViewModel @Inject constructor(
         regions.map { region ->
             async {
                 runCatching { extractor.trendingMusic(region) }.fold(
-                    onSuccess = { TrendingFetch(region, it) },
+                    onSuccess = { cards ->
+                        if (cards.isEmpty()) {
+                            Log.w(TAG, "trending region=$region result=empty")
+                            TrendingFetch(region, emptyList(), EMPTY_CHART)
+                        } else {
+                            TrendingFetch(region, cards)
+                        }
+                    },
                     onFailure = {
                         if (it is CancellationException) throw it
                         Log.w(
@@ -351,5 +358,7 @@ class HomeViewModel @Inject constructor(
         const val TAG = "TubeHome"
 
         const val LIKES_RELOAD_DEBOUNCE_MS = 1_000L
+
+        const val EMPTY_CHART = "Trending isn't available right now"
     }
 }
