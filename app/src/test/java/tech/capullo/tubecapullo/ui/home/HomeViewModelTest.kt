@@ -175,6 +175,18 @@ class HomeViewModelTest {
     }
 
     @Test
+    fun `a chart YouTube answers with no songs shows the error banner instead of a blank Home`() = runTest(dispatcher) {
+        moreLikeRows.value = 0
+        fullAlbums.value = false
+        coEvery { extractor.trendingMusic(any(), any()) } returns emptyList()
+        val home = viewModel()
+        advanceUntilIdle()
+
+        assertEquals(listOf("listen-again"), home.keys())
+        assertEquals("Trending isn't available right now", home.uiState.value.error)
+    }
+
+    @Test
     fun `zero More like rows hides the section and fetches nothing for it`() = runTest(dispatcher) {
         moreLikeRows.value = 0
         fullAlbums.value = false
