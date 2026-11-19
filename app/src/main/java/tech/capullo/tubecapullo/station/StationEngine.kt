@@ -1182,8 +1182,11 @@ class StationEngine @Inject constructor(
                 }
                 suspend fun similar(): Pair<SimilarNames, SimilarFind> = withTimeoutOrNull(if (similarLater) SIMILAR_LATE_MS else SIMILAR_WAIT_MS) { similarWork.await() }
                     ?: (SimilarNames(emptyList(), "timeout") to SimilarFind(emptyList(), 0, 0, 0)).also { similarWork.cancel() }
+
+                // A late insert must not duplicate a queued song. A like's picks may: like its
+                // YouTube picks, a queued song is moved up (skipQueued decides, as for them).
                 fun usableLocked(found: SimilarFind): List<YtVideo> {
-                    val queued = queue.mapTo(HashSet()) { it.video.videoId }
+                    val queued = if (similarLater) queue.mapTo(HashSet()) { it.video.videoId } else emptySet()
                     val excludedNow = excludedIdsLocked(skipQueued)
                     return found.videos.filter {
                         it.inTrackWindow() && it.videoId !in excludedNow && it.videoId !in queued

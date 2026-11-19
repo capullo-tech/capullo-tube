@@ -1491,6 +1491,27 @@ class StationSimilarTest {
     }
 
     @Test
+    fun `a like's Last fm pick that is already queued further on moves up, once`() = runTest(StandardTestDispatcher()) {
+        val seed = video("SEED")
+        val farDown = fakeMix(seed.videoId)[15]
+        val engine = engine(FakeSimilarFinder { id -> if (id == seed.videoId) emptyList() else listOf(farDown) })
+        engine.start(PlaySource.SongRadio(seed))
+        advanceUntilIdle()
+        engine.advanceThrough(2)
+        advanceUntilIdle()
+        val liked = engine.state.value.current!!
+        assertTrue("precondition: queued further on", farDown.videoId in engine.queuedIds().drop(3))
+
+        engine.toggleLike(liked)
+        advanceUntilIdle()
+
+        val queued = engine.state.value.queued
+        val blended = queued.take(AppSettings.DEFAULT_SONGS_PER_LIKE)
+        assertTrue(blended.any { it.video.videoId == farDown.videoId && it.why.provenance == Provenance.SIMILAR })
+        assertEquals(1, queued.count { it.video.videoId == farDown.videoId })
+    }
+
+    @Test
     fun `a like asks Last fm for half its songs, at least one`() = runTest(StandardTestDispatcher()) {
         for ((n, asked) in listOf(2 to 1, 4 to 2, 6 to 3)) {
             songs.value = n

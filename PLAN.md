@@ -211,3 +211,33 @@ suspends a key for every install using it. No rate headers. The terms ask for ca
 
 - Attribution: only the credit row in Settings > Similar songs. Up next says "Similar to <seed>"
   with no Last.fm mention.
+
+## Listening test: pass criteria (written 2026-11-19, before the test)
+
+Device: razr 40 ultra, Wi-Fi, build from the PR head. Settings: Find similar songs online on,
+Depth Familiar for sessions 1-2, Deep for session 3. Capture with
+`adb logcat -s TubeStation` for the whole session. Every number below is a GUESS.
+
+Sessions (about 20 minutes each, skip freely):
+1. Radio from an English pop/rock seed (e.g. "Radiohead - Creep").
+2. Radio from a Spanish/Latin seed (e.g. "Soda Stereo - De Música Ligera"), with 3 likes spread
+   over the session.
+3. Liked radio for 15 minutes, Depth Deep.
+
+| # | Check | Evidence | Pass |
+|---|---|---|---|
+| L1 | Last.fm songs actually play | `advance ... prov=SIMILAR` lines | at least 1 in every 4 songs in sessions 1-2 |
+| L2 | They fit the station | owner's call per SIMILAR song: fits / neutral / wrong | wrong <= 1 in 5 |
+| L3 | They are new | SIMILAR songs the owner would not have expected from YouTube's radio | at least half |
+| L4 | No duplicates | same song (any upload) twice in a session | none |
+| L5 | Wrong version | live/cover/karaoke/sped-up played as a SIMILAR song | <= 1 per session |
+| L6 | Start stays fast | `start` to first `chain` line | no slower than before (<= 6 s on Wi-Fi) |
+| L7 | Likes stay responsive | `like id=` to `like mode=blend` | <= YouTube fetch + 3 s, every like |
+| L8 | Every like brings a Last.fm song when Last.fm has one | `like mode=blend ... similar=+1` when `similar ... names>0` | 3 of 3 likes in session 2 |
+| L9 | Now Playing stays correct | title in Player/notification matches what is heard | always |
+| L10 | Last.fm limits never hit | no `via=paused`, no Settings warning | none |
+| L11 | Deep sounds deeper | session 3 SIMILAR songs less known than session 1's, owner's call | yes |
+
+Fail on L4, L9 or L10: fix before merging. Fail on L2, L3, L5 or L11: tune `DEPTH_FAMILIAR_RANKS`,
+`DEEP_MATCH_FLOOR` or the version penalties in a follow-up; not a merge blocker on its own.
+Inconclusive: Last.fm answered nothing for the seed (`via=none` / `unparsed`); pick another seed.
