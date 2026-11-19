@@ -72,10 +72,20 @@ class StationLoop(
             return Outcome.FAILED
         }
         if (request != generation) return Outcome.STALE
+        // The queue can grow under a resolve (late Last.fm songs are slotted in): advance to
+        // where the resolved song is now, not to the index it had.
+        val at = indexOf(id, near = index) ?: return Outcome.STALE
         playback.play(media)
-        currentIndex = index
-        source.onQueueAdvanced(index)
-        onTrackChanged?.invoke(index)
+        currentIndex = at
+        source.onQueueAdvanced(at)
+        onTrackChanged?.invoke(at)
         return Outcome.PLAYED
+    }
+
+    private fun indexOf(id: String, near: Int): Int? {
+        val q = source.queue()
+        if (q.idAt(near) == id) return near
+        return (near + 1 until q.size).firstOrNull { q.idAt(it) == id }
+            ?: (near - 1 downTo 0).firstOrNull { q.idAt(it) == id }
     }
 }

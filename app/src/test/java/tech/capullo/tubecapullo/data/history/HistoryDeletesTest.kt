@@ -30,6 +30,10 @@ class HistoryDeletesTest {
         }
         coEvery { deleteAll() } coAnswers { db.update(PlayHistoryDao.DELETE_ALL) }
         coEvery { delete(any()) } coAnswers { db.update(PlayHistoryDao.DELETE_BY_ID, firstArg<String>()) }
+        coEvery { byId(any()) } coAnswers {
+            val id = firstArg<String>()
+            if (id == "creep") PlayedTrackEntity("creep", "Radiohead - Creep", "Radiohead", 239, null, 3, 1) else null
+        }
     }
 
     private val lyricsDao = mockk<LyricsDao> {
@@ -42,6 +46,9 @@ class HistoryDeletesTest {
     private val lastfmCache = mockk<LastfmCacheDao> {
         coEvery { deleteFetchedBefore(any()) } coAnswers { db.update(LastfmCacheDao.DELETE_FETCHED_BEFORE, firstArg<Long>()) }
         coEvery { deleteAll() } coAnswers { db.update(LastfmCacheDao.DELETE_ALL) }
+        coEvery { deleteRequests(any()) } coAnswers {
+            firstArg<List<String>>().sumOf { db.update("DELETE FROM lastfm_cache WHERE request = :request", it) }
+        }
     }
 
     private val resolvedTracks = mockk<ResolvedTrackDao> {
@@ -236,5 +243,15 @@ class HistoryDeletesTest {
 
         assertEquals(emptyList<Any>(), db.ids("lastfm_cache", column = "request"))
         assertEquals(emptyList<Any>(), db.ids("resolved_track", column = "nameKey"))
+    }
+
+    @Test
+    fun `removing a song drops the Last fm answers its radio fetched, and only those`() = runTest {
+        val creep = "track.getSimilar|artist=radiohead|track=creep|limit=${tech.capullo.tubecapullo.data.similar.LastfmSimilarFinder.SIMILAR_NAMES}"
+        db.createStatement().use { it.execute("INSERT INTO lastfm_cache VALUES ('$creep', '{}', ${daysAgo(1)})") }
+
+        history.remove("creep", keepLyricsOf = null)
+
+        assertEquals(listOf<Any>("fresh", "stale"), db.ids("lastfm_cache", column = "request"))
     }
 }

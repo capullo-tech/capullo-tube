@@ -156,4 +156,33 @@ class StationLoopTest {
 
         assertEquals(listOf("https://example/fastfastfas"), playback.played)
     }
+
+    @Test
+    fun `a song inserted ahead while resolving does not shift which slot is marked playing`() = runTest {
+        val source = object : MediaSourceProvider {
+            val ids = mutableListOf("aaaaaaaaaaa", "bbbbbbbbbbb")
+            val advanced = mutableListOf<Int>()
+            override fun queue(): PlaybackQueue = object : PlaybackQueue {
+                override val size: Int get() = ids.size
+                override val currentIndex: Int = 0
+                override val isRotating: Boolean = false
+                override fun idAt(index: Int): String? = ids.getOrNull(index)
+            }
+            override suspend fun mediaRequestFor(id: String): MediaRequest {
+                if (id == "bbbbbbbbbbb") ids.add(1, "inserted000")
+                return MediaRequest("https://example/$id", "audio/mp4")
+            }
+            override fun onQueueAdvanced(index: Int) {
+                advanced += index
+            }
+        }
+        val playback = RecordingPlayback()
+        val loop = StationLoop(source, playback)
+
+        loop.advanceTo(1)
+
+        assertEquals(listOf("https://example/bbbbbbbbbbb"), playback.played)
+        assertEquals(listOf(2), source.advanced)
+        assertEquals(2, loop.currentIndex)
+    }
 }

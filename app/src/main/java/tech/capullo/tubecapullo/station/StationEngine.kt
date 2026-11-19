@@ -1231,7 +1231,7 @@ class StationEngine @Inject constructor(
 
     /**
      * Slots late Last.fm songs into the not-yet-played songs of [seed]'s feed: one after every
-     * two of its YouTube songs, the rest after its last one.
+     * two of its YouTube songs, the rest after its last one; dropped when none are left to play.
      */
     private fun insertSimilarLocked(seed: YtVideo, slots: List<Slot>) {
         if (slots.isEmpty()) return
@@ -1241,7 +1241,8 @@ class StationEngine @Inject constructor(
             slot.why.fromVideoId == seed.videoId && !slot.pinned && !slot.blended &&
                 (slot.why.provenance == Provenance.MIX || slot.why.provenance == Provenance.RELATED)
         }
-        val end = places.lastOrNull()?.plus(1) ?: queue.size
+        // A seed whose songs have all played gets none: Last.fm songs stay next to their seed.
+        val end = places.lastOrNull()?.plus(1) ?: return
         for (k in slots.indices.reversed()) {
             val at = places.getOrNull(SIMILAR_EVERY * k + SIMILAR_EVERY - 1)?.plus(1) ?: end
             queue.add(at, slots[k])

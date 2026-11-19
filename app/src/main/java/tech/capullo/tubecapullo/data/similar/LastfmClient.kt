@@ -18,6 +18,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.OkHttpClient
 import tech.capullo.tubecapullo.data.history.LastfmCacheDao
 import tech.capullo.tubecapullo.data.history.LastfmCacheEntity
+import tech.capullo.tubecapullo.data.youtube.YtVideo
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -35,13 +36,16 @@ class LastfmClient @Inject constructor(okHttp: OkHttpClient, private val cache: 
 
     val gate = LastfmGate { now() }
 
-    private val http = HttpClient(OkHttp) {
-        engine { preconfigured = okHttp }
-        expectSuccess = false
-        install(UserAgent) { agent = USER_AGENT }
-        install(HttpTimeout) {
-            connectTimeoutMillis = CONNECT_TIMEOUT_MS
-            requestTimeoutMillis = REQUEST_TIMEOUT_MS
+    // Built on the first call: the client is injected at app start, even with the feature off.
+    private val http by lazy {
+        HttpClient(OkHttp) {
+            engine { preconfigured = okHttp }
+            expectSuccess = false
+            install(UserAgent) { agent = USER_AGENT }
+            install(HttpTimeout) {
+                connectTimeoutMillis = CONNECT_TIMEOUT_MS
+                requestTimeoutMillis = REQUEST_TIMEOUT_MS
+            }
         }
     }
 
@@ -54,7 +58,7 @@ class LastfmClient @Inject constructor(okHttp: OkHttpClient, private val cache: 
     suspend fun topTracks(artist: String, limit: Int, apiKey: String): List<SimilarTrack> = parseTopTracks(call(apiKey, "artist.getTopTracks", "artist" to artist, "limit" to "$limit"))
 
     private suspend fun call(apiKey: String, method: String, vararg params: Pair<String, String>): String {
-        val request = method + params.joinToString("") { (name, value) -> "|$name=${SeedNames.key(value)}" }
+        val request = requestKey(method, params.toList())
         cache.byRequest(request)
             ?.takeIf { now() - it.fetchedAtEpochMs < TimeUnit.DAYS.toMillis(CACHE_DAYS) }
             ?.let { return it.body }
@@ -95,14 +99,20 @@ class LastfmClient @Inject constructor(okHttp: OkHttpClient, private val cache: 
         /** "Track not found" / "Artist not found": an empty answer, not a failure. */
         const val ERROR_NOT_FOUND = 6
 
+        fun requestKey(method: String, params: List<Pair<String, String>>): String = method + params.joinToString("") { (name, value) -> "|$name=${SeedNames.key(value)}" }
+
+        /** The cache rows a radio from [video] can have written: one per name try. */
+        fun similarRequestKeys(video: YtVideo): List<String> = SeedNames.queries(video).map { query ->
+            requestKey(
+                "track.getSimilar",
+                listOf("artist" to query.artist, "track" to query.title, "limit" to "${LastfmSimilarFinder.SIMILAR_NAMES}"),
+            )
+        }
+
         /** GUESS: similarity lists change slowly. */
         const val CACHE_DAYS = 30L
 
         private const val HTTP_TOO_MANY_REQUESTS = 429
-
-        fun errorCode(body: String): Int? = runCatching {
-            (Json.parseToJsonElement(body).jsonObject["error"] as? JsonPrimitive)?.contentOrNull?.toIntOrNull()
-        }.getOrNull()
 
         fun parseSimilarTracks(body: String): List<SimilarTrack> = items(body, "similartracks", "track").mapNotNull { track ->
             val name = track.text("name") ?: return@mapNotNull null

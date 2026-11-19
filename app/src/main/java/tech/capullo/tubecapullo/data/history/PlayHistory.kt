@@ -78,8 +78,10 @@ class PlayHistory @Inject constructor(
 
     suspend fun remove(videoId: String, keepLyricsOf: String?) {
         runCatching {
+            val played = dao.byId(videoId)
             val removed = dao.delete(videoId)
             lyricsDao.deleteUnplayed(keepLyricsOf.orEmpty())
+            played?.let { lastfmCache.deleteRequests(LastfmClient.similarRequestKeys(it.toYtVideo())) }
             Log.i(TAG, "play-history remove id=$videoId removed=$removed")
         }.onFailure {
             Log.w(TAG, "play-history remove id=$videoId failed", it)

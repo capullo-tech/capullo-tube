@@ -29,8 +29,12 @@ interface LastfmCacheDao {
     @Query(DELETE_ALL)
     suspend fun deleteAll(): Int
 
+    @Query(DELETE_REQUESTS)
+    suspend fun deleteRequests(requests: List<String>): Int
+
     companion object {
         const val DELETE_FETCHED_BEFORE = "DELETE FROM lastfm_cache WHERE fetchedAtEpochMs < :cutoff"
         const val DELETE_ALL = "DELETE FROM lastfm_cache"
+        const val DELETE_REQUESTS = "DELETE FROM lastfm_cache WHERE request IN (:requests)"
     }
 }
