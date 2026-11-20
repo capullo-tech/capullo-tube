@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 import tech.capullo.audio.contracts.MediaRequest
 import tech.capullo.audio.contracts.MediaSourceProvider
 import tech.capullo.audio.contracts.PlaybackQueue
@@ -22,6 +23,9 @@ import tech.capullo.tubecapullo.data.history.PlayHistory
 import tech.capullo.tubecapullo.data.history.StationSnapshots
 import tech.capullo.tubecapullo.data.settings.AppSettings
 import tech.capullo.tubecapullo.data.settings.LikeMode
+import tech.capullo.tubecapullo.data.similar.SimilarFind
+import tech.capullo.tubecapullo.data.similar.SimilarFinder
+import tech.capullo.tubecapullo.data.similar.SimilarNames
 import tech.capullo.tubecapullo.data.youtube.YouTubeExtractorClient
 import tech.capullo.tubecapullo.data.youtube.YouTubeUrls
 import tech.capullo.tubecapullo.data.youtube.YtChapter
@@ -43,6 +47,7 @@ class StationEngine @Inject constructor(
     private val settings: AppSettings,
     private val likedAlbums: LikedAlbums,
     private val snapshots: StationSnapshots,
+    private val similarFinder: SimilarFinder,
 ) : MediaSourceProvider {
     private class Slot(
         val video: YtVideo,
@@ -51,25 +56,40 @@ class StationEngine @Inject constructor(
         val blended: Boolean = false,
     )
 
-    private class Feed(val seed: YtVideo, val lists: SongLists) {
+    private class Feed(val seed: YtVideo, val lists: SongLists, similarVideos: List<YtVideo>) {
         val mix = Why(Provenance.MIX, seed.videoId, seed.title).let { why ->
             lists.mix.map { Slot(it, why) }
         }
         val related = Why(Provenance.RELATED, seed.videoId, seed.title).let { why ->
             lists.related.map { Slot(it, why) }
         }
+        val similar = Why(Provenance.SIMILAR, seed.videoId, seed.title).let { why ->
+            similarVideos.map { Slot(it, why) }
+        }
 
-        fun merged(random: Random): List<Slot> = pairUp(mix, related, random)
+        fun merged(random: Random): List<Slot> = interleave(listOf(mix, related, similar), random)
+
+        /**
+         * The first [count] songs of the merge. When a like asks for songs and Last.fm found
+         * some, one of them is always among the picks: that is the song YouTube would not
+         * have offered.
+         */
+        fun picks(random: Random, count: Int): List<Slot> {
+            val picks = merged(random).take(count)
+            if (count == 0 || similar.isEmpty() || picks.any { it.why.provenance == Provenance.SIMILAR }) return picks
+            return picks.dropLast(1) + similar.first()
+        }
 
         fun fields(added: List<Slot>): String {
             val fromMix = added.count { it.why.provenance == Provenance.MIX }
+            val fromSimilar = added.count { it.why.provenance == Provenance.SIMILAR }
             val empty = when {
                 mix.isEmpty() && related.isNotEmpty() -> " empty=mix"
                 related.isEmpty() && mix.isNotEmpty() -> " empty=related"
                 else -> ""
             }
             val dupes = if (lists.dupes > 0) " dupes=${lists.dupes}" else ""
-            return "mix=+$fromMix related=+${added.size - fromMix}$empty$dupes"
+            return "mix=+$fromMix related=+${added.size - fromMix - fromSimilar} similar=+$fromSimilar$empty$dupes"
         }
     }
 
@@ -663,7 +683,7 @@ class StationEngine @Inject constructor(
                 relayCollectionLocked()
             }
             pendingRollChip?.let { from ->
-                if (slot.why.provenance == Provenance.MIX || slot.why.provenance == Provenance.RELATED) {
+                if (slot.why.provenance.isRadioPick) {
                     pendingRollChip = null
                     log("roll-chip from=${kind(from)} at=${slot.video.videoId}")
                     _rollOvers.tryEmit(RollOver(from))
@@ -1009,7 +1029,7 @@ class StationEngine @Inject constructor(
     private fun chainLocked(seed: YtVideo, reason: String) {
         chaining = true
         chainSeed = seed
-        fetchSong(seed, "chain", skipQueued = true) { feed ->
+        fetchSong(seed, "chain", skipQueued = true, similarLater = true) { feed ->
             chaining = false
             val merged = feed.merged(random)
             val added = if (shuffle) merged.shuffled(random) else merged
@@ -1032,8 +1052,9 @@ class StationEngine @Inject constructor(
                     return
                 }
                 val moveUp = src is PlaySource.SongRadio || src is PlaySource.SearchRadio
-                fetchSong(liked, "like", skipQueued = !moveUp) { feed ->
-                    val picks = feed.merged(random).take(count)
+                val similar = (count / 2).coerceIn(1, SIMILAR_PER_FEED)
+                fetchSong(liked, "like", skipQueued = !moveUp, similarCount = similar) { feed ->
+                    val picks = feed.picks(random, count)
                     blendLocked(picks)
                     log("like mode=blend $at ${feed.fields(picks)}")
                     _likeEffects.tryEmit(LikeEffect.Blended(liked, picks.size))
@@ -1091,17 +1112,25 @@ class StationEngine @Inject constructor(
         val places = (maxOf(current, 0) + 1 until queue.size).filter { i ->
             val slot = queue[i]
             !slot.pinned && !slot.blended &&
-                (slot.why.provenance == Provenance.MIX || slot.why.provenance == Provenance.RELATED)
+                slot.why.provenance.isRadioPick
         }
         val shuffled = places.map { queue[it] }.shuffled(random)
         places.forEachIndexed { n, i -> queue[i] = shuffled[n] }
         return places.size
     }
 
+    /**
+     * Fetches a seed's Mix and related videos, and asks Last.fm for up to [similarCount] songs.
+     * With [similarLater] the YouTube lists land at once and Last.fm's songs are slotted in when
+     * they arrive (a radio start or a chain); otherwise the landing waits for Last.fm at most
+     * [SIMILAR_WAIT_MS] (a like, whose songs are picked from all three lists together).
+     */
     private fun fetchSong(
         seed: YtVideo,
         what: String,
         skipQueued: Boolean,
+        similarCount: Int = SIMILAR_PER_FEED,
+        similarLater: Boolean = false,
         land: (Feed) -> Unit,
     ) {
         val gen = generation
@@ -1111,7 +1140,10 @@ class StationEngine @Inject constructor(
             return true
         }
         scope.launch {
-            val (mix, related) = coroutineScope {
+            coroutineScope {
+                val names = async {
+                    runCatching { similarFinder.names(seed) }.getOrElse { SimilarNames(emptyList(), "error") }
+                }
                 val mix = async {
                     runCatching { extractor.mix(seed.videoId) }
                         .onFailure { log("$what seed=${seed.videoId} mix-error=${q(it.message)}") }
@@ -1124,26 +1156,118 @@ class StationEngine @Inject constructor(
                         }
                         .getOrNull()
                 }
-                mix.await() to related.await()
-            }
-            synchronized(lock) {
-                if (stale()) return@launch
-                val lists = songLists(
-                    seed,
-                    mix,
-                    related ?: YtRelated(seedViews = -1, videos = emptyList()),
-                    excludedIdsLocked(skipQueued),
-                )
-                if (related != null) {
+                val mixVideos = mix.await()
+                val relatedVideos = related.await()
+                fun listsLocked(): SongLists {
+                    val lists = songLists(
+                        seed,
+                        mixVideos,
+                        relatedVideos ?: YtRelated(seedViews = -1, videos = emptyList()),
+                        excludedIdsLocked(skipQueued),
+                    )
+                    if (relatedVideos != null) {
+                        log(
+                            "related gate seed=${seed.videoId} kept=${lists.gateKept} " +
+                                "dropped=${lists.gateDropped}",
+                        )
+                    }
+                    return lists
+                }
+                // One deadline for the whole Last.fm step: a YouTube search is blocking I/O that
+                // cancellation cannot stop, so the wait is bounded, not the work.
+                val similarWork = async {
+                    val excluded = synchronized(lock) { excludedIdsLocked(skipQueued).toSet() }
+                    val found = names.await()
+                    found to findSimilar(seed, found, mixVideos, relatedVideos, excluded, similarCount)
+                }
+                suspend fun similar(): Pair<SimilarNames, SimilarFind> = withTimeoutOrNull(if (similarLater) SIMILAR_LATE_MS else SIMILAR_WAIT_MS) { similarWork.await() }
+                    ?: (SimilarNames(emptyList(), "timeout") to SimilarFind(emptyList(), 0, 0, 0)).also { similarWork.cancel() }
+
+                // A late insert must not duplicate a queued song. A like's picks may: like its
+                // YouTube picks, a queued song is moved up (skipQueued decides, as for them).
+                fun usableLocked(found: SimilarFind): List<YtVideo> {
+                    val queued = if (similarLater) queue.mapTo(HashSet()) { it.video.videoId } else emptySet()
+                    val excludedNow = excludedIdsLocked(skipQueued)
+                    return found.videos.filter {
+                        it.inTrackWindow() && it.videoId !in excludedNow && it.videoId !in queued
+                    }
+                }
+                fun logSimilar(found: Pair<SimilarNames, SimilarFind>, used: Int) {
+                    val (n, f) = found
                     log(
-                        "related gate seed=${seed.videoId} kept=${lists.gateKept} " +
-                            "dropped=${lists.gateDropped}",
+                        "similar seed=${seed.videoId} via=${n.via} names=${n.tracks.size} " +
+                            "known=${f.skippedKnown} tried=${f.tried} searched=${f.searched} found=$used" +
+                            if (similarLater) " late" else "",
                     )
                 }
-                land(Feed(seed, lists))
-                publishLocked()
+
+                if (similarLater) {
+                    synchronized(lock) {
+                        if (stale()) return@coroutineScope
+                        land(Feed(seed, listsLocked(), emptyList()))
+                        publishLocked()
+                    }
+                    val found = similar()
+                    synchronized(lock) {
+                        if (stale()) return@coroutineScope
+                        val why = Why(Provenance.SIMILAR, seed.videoId, seed.title)
+                        val slots = usableLocked(found.second).map { Slot(it, why) }
+                        insertSimilarLocked(seed, slots)
+                        logSimilar(found, slots.size)
+                        if (slots.isNotEmpty()) publishLocked()
+                    }
+                } else {
+                    val found = similar()
+                    synchronized(lock) {
+                        if (stale()) return@coroutineScope
+                        val lists = listsLocked()
+                        val listed = (lists.mix + lists.related).mapTo(HashSet()) { it.videoId }
+                        val usable = usableLocked(found.second).filter { it.videoId !in listed }
+                        logSimilar(found, usable.size)
+                        land(Feed(seed, lists, usable))
+                        publishLocked()
+                    }
+                }
             }
         }
+    }
+
+    /**
+     * Slots late Last.fm songs into the not-yet-played songs of [seed]'s feed: one after every
+     * two of its YouTube songs, the rest after its last one; dropped when none are left to play.
+     */
+    private fun insertSimilarLocked(seed: YtVideo, slots: List<Slot>) {
+        if (slots.isEmpty()) return
+        val from = maxOf(current, 0) + 1
+        val places = (from until queue.size).filter { i ->
+            val slot = queue[i]
+            slot.why.fromVideoId == seed.videoId && !slot.pinned && !slot.blended &&
+                (slot.why.provenance == Provenance.MIX || slot.why.provenance == Provenance.RELATED)
+        }
+        // A seed whose songs have all played gets none: Last.fm songs stay next to their seed.
+        val end = places.lastOrNull()?.plus(1) ?: return
+        for (k in slots.indices.reversed()) {
+            val at = places.getOrNull(SIMILAR_EVERY * k + SIMILAR_EVERY - 1)?.plus(1) ?: end
+            queue.add(at, slots[k])
+        }
+    }
+
+    private suspend fun findSimilar(
+        seed: YtVideo,
+        names: SimilarNames,
+        mix: List<YtVideo>,
+        related: YtRelated?,
+        excluded: Set<String>,
+        count: Int,
+    ): SimilarFind {
+        if (names.tracks.isEmpty() || count <= 0) return SimilarFind(emptyList(), 0, 0, 0)
+        // Related videos the gate drops will not play, so Last.fm may bring their song.
+        val gated = related?.videos.orEmpty().filter { passesRelatedGate(it, related!!.seedViews) }
+        val offered = mix + gated + seed
+        val knownIds = excluded + offered.map { it.videoId }
+        return runCatching { similarFinder.resolve(names, knownIds, offered, count) }
+            .onFailure { log("similar seed=${seed.videoId} resolve-error=${q(it.message)}") }
+            .getOrElse { SimilarFind(emptyList(), 0, 0, 0) }
     }
 
     private fun excludedIdsLocked(skipQueued: Boolean): MutableSet<String> {
@@ -1184,13 +1308,13 @@ class StationEngine @Inject constructor(
             chaining = true
             chainSeed = like.video
             val layout = fillGeneration
-            fetchSong(like.video, "liked-radio", skipQueued = true) { feed ->
+            fetchSong(like.video, "liked-radio", skipQueued = true, similarCount = SIMILAR_PER_LIKED_RADIO) { feed ->
                 if (layout != fillGeneration) {
                     log("liked-radio like=${like.video.videoId} result=dropped reason=relaid")
                     return@fetchSong
                 }
                 chaining = false
-                val picks = feed.merged(random).take(count)
+                val picks = feed.picks(random, count)
                 queue += picks
                 logLikedRadio(like.video, feed.fields(picks))
                 fillLikedRadioLocked()
@@ -1429,7 +1553,7 @@ class StationEngine @Inject constructor(
         "repeat=${saved.repeat} title=${q(saved.leftVideo.title)}"
 
     private fun mixSeedOf(slot: Slot?): String = slot?.why
-        ?.takeIf { it.provenance == Provenance.MIX || it.provenance == Provenance.RELATED }
+        ?.takeIf { it.provenance.isRadioPick }
         ?.fromVideoId ?: "-"
 
     private fun describeVideo(video: YtVideo): String = "${video.videoId} ${q(video.title)} uploader=${q(video.uploader)} dur=${video.durationSeconds}s"
@@ -1444,6 +1568,21 @@ class StationEngine @Inject constructor(
         private const val TAG = "TubeStation"
 
         internal const val CHAIN_BELOW = 5
+
+        /** GUESS: Last.fm songs per expansion; each new one costs a YouTube search. */
+        internal const val SIMILAR_PER_FEED = 4
+
+        /** GUESS: a like in Liked radio adds N songs; one Last.fm song keeps a round's searches low. */
+        internal const val SIMILAR_PER_LIKED_RADIO = 1
+
+        /** A late Last.fm song goes after every this many YouTube songs of its seed. */
+        internal const val SIMILAR_EVERY = 2
+
+        /** GUESS: how long a like waits for Last.fm before its songs land without it. */
+        internal const val SIMILAR_WAIT_MS = 3_000L
+
+        /** GUESS: late Last.fm songs for a radio are dropped after this; the queue is long anyway. */
+        internal const val SIMILAR_LATE_MS = 20_000L
 
         internal const val LIKED_RADIO_LOOKAHEAD = 6
 

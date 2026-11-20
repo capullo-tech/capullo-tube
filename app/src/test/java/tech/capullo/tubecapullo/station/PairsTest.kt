@@ -38,14 +38,14 @@ class PairsTest {
         val mix = (1..5).map { "m$it" }
         val rel = (1..3).map { "r$it" }
 
-        val merged = pairUp(mix, rel, Random(1))
+        val merged = interleave(listOf(mix, rel), Random(1))
 
         assertEquals(8, merged.size)
         merged.take(6).chunked(2).forEachIndexed { i, pair ->
             assertEquals("pair $i: $merged", setOf(mix[i], rel[i]), pair.toSet())
         }
         assertEquals(listOf("m4", "m5"), merged.drop(6))
-        assertEquals(listOf("r2", "r3"), pairUp(listOf("m1"), rel, Random(1)).drop(2))
+        assertEquals(listOf("r2", "r3"), interleave(listOf(listOf("m1"), rel), Random(1)).drop(2))
     }
 
     @Test
@@ -53,20 +53,20 @@ class PairsTest {
         val mix = (1..20).map { "m$it" }
         val rel = (1..20).map { "r$it" }
 
-        val first = pairUp(mix, rel, Random(7))
+        val first = interleave(listOf(mix, rel), Random(7))
 
-        assertEquals(first, pairUp(mix, rel, Random(7)))
+        assertEquals(first, interleave(listOf(mix, rel), Random(7)))
         val leads = first.chunked(2).map { it.first().first() }
         assertTrue("Mix never led: $first", 'm' in leads)
         assertTrue("related never led: $first", 'r' in leads)
-        assertNotEquals("another seed, another order", first, pairUp(mix, rel, Random(8)))
+        assertNotEquals("another seed, another order", first, interleave(listOf(mix, rel), Random(8)))
     }
 
     @Test
     fun `when one list is empty the other fills every place, in its own order`() {
         val mix = listOf("m1", "m2", "m3")
-        assertEquals(mix, pairUp(mix, emptyList(), Random(1)))
-        assertEquals(mix, pairUp(emptyList(), mix, Random(1)))
+        assertEquals(mix, interleave(listOf(mix, emptyList()), Random(1)))
+        assertEquals(mix, interleave(listOf(emptyList(), mix), Random(1)))
     }
 
     @Test
@@ -150,5 +150,33 @@ class PairsTest {
 
         assertEquals("an id in both lists stays in the Mix", listOf(both, video("ok")), lists.mix)
         assertEquals(listOf(related("relok")), lists.related)
+    }
+
+    @Test
+    fun `three lists give one of each per round until a list runs out, each list in its own order`() {
+        val mix = listOf("m1", "m2", "m3", "m4", "m5")
+        val rel = listOf("r1", "r2")
+        val sim = listOf("s1", "s2", "s3")
+
+        val merged = interleave(listOf(mix, rel, sim), Random(3))
+
+        assertEquals(mix.size + rel.size + sim.size, merged.size)
+        assertEquals(setOf("m1", "r1", "s1"), merged.take(3).toSet())
+        assertEquals(setOf("m2", "r2", "s2"), merged.subList(3, 6).toSet())
+        assertEquals(setOf("m3", "s3"), merged.subList(6, 8).toSet())
+        assertEquals(listOf("m4", "m5"), merged.drop(8))
+        listOf(mix, rel, sim).forEach { list -> assertEquals(list, merged.filter { it in list }) }
+    }
+
+    @Test
+    fun `an empty third list leaves the Mix and related pairing exactly as before`() {
+        val mix = listOf("m1", "m2", "m3", "m4")
+        val rel = listOf("r1", "r2")
+        for (seed in 0..20) {
+            assertEquals(
+                interleave(listOf(mix, rel), Random(seed)),
+                interleave(listOf(mix, rel, emptyList()), Random(seed)),
+            )
+        }
     }
 }
