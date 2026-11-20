@@ -229,7 +229,7 @@ Sessions (about 20 minutes each, skip freely):
 | L1 | Last.fm songs actually play | `advance ... prov=SIMILAR` lines | at least 1 in every 4 songs in sessions 1-2 |
 | L2 | They fit the station | owner's call per SIMILAR song: fits / neutral / wrong | wrong <= 1 in 5 |
 | L3 | They are new | SIMILAR songs the owner would not have expected from YouTube's radio | at least half |
-| L4 | No duplicates | same song (any upload) twice in a session | none |
+| L4 | No duplicates | the same upload (video id) twice in a session; another version of a song is fine (owner, 2026-11-20) | none |
 | L5 | Wrong version | live/cover/karaoke/sped-up played as a SIMILAR song | <= 1 per session |
 | L6 | Start stays fast | `start` to first `chain` line | no slower than before (<= 6 s on Wi-Fi) |
 | L7 | Likes stay responsive | `like id=` to `like mode=blend` | <= YouTube fetch + 3 s, every like |
