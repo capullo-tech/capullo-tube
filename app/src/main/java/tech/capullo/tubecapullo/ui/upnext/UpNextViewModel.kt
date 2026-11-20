@@ -22,6 +22,8 @@ class UpNextViewModel @Inject constructor(
 
     fun remove(videoId: String) = stationEngine.removeUpcoming(videoId)
 
+    fun move(videoId: String, to: Int) = stationEngine.moveUpcoming(videoId, to)
+
     fun toggleLike(video: YtVideo) = stationEngine.toggleLike(video)
 
     fun toggleHeart(video: YtVideo) = stationEngine.toggleHeart(video)

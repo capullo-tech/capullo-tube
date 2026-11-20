@@ -1360,6 +1360,78 @@ class StationPairsTest {
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
+class StationMoveTest {
+    private val ten = (1..10).map { video("T$it") }
+
+    private fun extractor(): YouTubeExtractorClient {
+        val extractor = fakeExtractor()
+        coEvery { extractor.playlistInfo(any(), any()) } returns YtVideoList("Road trip", ten)
+        return extractor
+    }
+
+    private fun TestScope.engine() = StationEngine(
+        extractor(),
+        this,
+        mockk(relaxed = true),
+        mockk(relaxed = true),
+        Random(RANDOM_SEED),
+        fakeSettings(),
+        mockk(relaxed = true),
+        mockk(relaxed = true),
+        FakeSimilarFinder(),
+    )
+
+    @Before fun setUp() = silenceStationLog()
+
+    @After fun tearDown() = unmockkStatic(Log::class)
+
+    @Test
+    fun `a dragged radio song plays at its new place`() = runTest(StandardTestDispatcher()) {
+        val engine = engine()
+        engine.start(PlaySource.SongRadio(video("SEED")))
+        advanceUntilIdle()
+        engine.advanceThrough(1)
+        val before = engine.queuedIds()
+
+        engine.moveUpcoming(before[4], to = 0)
+
+        assertEquals(listOf(before[4]) + before.filterIndexed { i, _ -> i != 4 }, engine.queuedIds())
+        engine.onQueueAdvanced(1)
+        advanceUntilIdle()
+        assertEquals(before[4], engine.state.value.current?.videoId)
+    }
+
+    @Test
+    fun `a move in a playlist survives the next song`() = runTest(StandardTestDispatcher()) {
+        val engine = engine()
+        engine.start(PlaySource.Playlist(YouTubeUrls.playlistUrl(PLAYLIST_ID), "Trip"))
+        advanceUntilIdle()
+        engine.advanceThrough(1)
+        val before = engine.queuedIds()
+
+        engine.moveUpcoming(before.last(), to = 1)
+        engine.onQueueAdvanced(1)
+        advanceUntilIdle()
+
+        assertEquals(before.last(), engine.queuedIds().first())
+    }
+
+    @Test
+    fun `moving a song that is not upcoming, or past the end, changes nothing wrong`() = runTest(StandardTestDispatcher()) {
+        val engine = engine()
+        engine.start(PlaySource.SongRadio(video("SEED")))
+        advanceUntilIdle()
+        engine.advanceThrough(1)
+        val before = engine.queuedIds()
+
+        engine.moveUpcoming("not-queued0", to = 0)
+        assertEquals(before, engine.queuedIds())
+        engine.moveUpcoming(before.first(), to = 999)
+        assertEquals(before.drop(1) + before.first(), engine.queuedIds())
+    }
+}
+
+@OptIn(ExperimentalCoroutinesApi::class)
 class StationSimilarTest {
     private val likedTracks = mockk<LikedTracks>(relaxed = true)
     private val songs = MutableStateFlow(AppSettings.DEFAULT_SONGS_PER_LIKE)

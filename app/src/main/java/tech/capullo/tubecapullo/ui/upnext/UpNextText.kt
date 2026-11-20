@@ -1,5 +1,6 @@
 package tech.capullo.tubecapullo.ui.upnext
 
+import tech.capullo.tubecapullo.data.lyrics.LyricsQuery
 import tech.capullo.tubecapullo.data.youtube.YtVideo
 import tech.capullo.tubecapullo.station.LikeEffect
 import tech.capullo.tubecapullo.station.PlaySource
@@ -25,13 +26,29 @@ object UpNextText {
         is PlaySource.Album -> SourceTitle("Album", clean(source.video))
     }
 
-    fun provenance(why: Why, video: YtVideo): String {
-        val from = why.fromTitle?.let { TitleCleaner.clean(it, null) }
+    /**
+     * The reason line of an Up next row. Radio picks name their source (YouTube's Mix, its
+     * related videos, Last.fm's similar songs) and add the song they came from only when it
+     * is not the station's own seed, which the sheet's title already names. Songs a like
+     * brought say which like.
+     */
+    fun provenance(why: Why, video: YtVideo, stationSeedId: String? = null, blended: Boolean = false): String {
+        val song = why.fromTitle?.let(::songName)
         return when (why.provenance) {
             Provenance.SEED, Provenance.USER -> "You picked this"
-            Provenance.MIX -> if (from != null) "From the Mix of $from" else "From a Mix"
-            Provenance.RELATED -> if (from != null) "Related to $from" else "Related"
-            Provenance.SIMILAR -> if (from != null) "Similar to $from" else "Similar"
+            Provenance.MIX, Provenance.RELATED, Provenance.SIMILAR -> {
+                val source = when (why.provenance) {
+                    Provenance.MIX -> "Mix"
+                    Provenance.RELATED -> "Related"
+                    else -> "Similar"
+                }
+                when {
+                    song == null -> source
+                    blended -> "♥ $song"
+                    why.fromVideoId != null && why.fromVideoId == stationSeedId -> source
+                    else -> "$source · $song"
+                }
+            }
             Provenance.LIKED -> "Your like"
             Provenance.SEARCH -> "From your search"
             Provenance.PLAYLIST -> why.fromTitle?.let { "From $it" } ?: "From a playlist"
@@ -39,6 +56,17 @@ object UpNextText {
             Provenance.ALBUM -> "The album"
         }
     }
+
+    /** The video a station grows from, when it has one. */
+    fun stationSeedId(source: PlaySource?): String? = when (source) {
+        is PlaySource.SongRadio -> source.seed.videoId
+        is PlaySource.SearchRadio -> source.results.firstOrNull()?.videoId
+        is PlaySource.Album -> source.video.videoId
+        else -> null
+    }
+
+    /** "Radiohead - Creep (Official Video)" -> "Creep". */
+    private fun songName(title: String): String = LyricsQuery.of(title, null)?.title ?: TitleCleaner.clean(title, null)
 
     fun likeChip(effect: LikeEffect): String {
         val song = clean(effect.seed)

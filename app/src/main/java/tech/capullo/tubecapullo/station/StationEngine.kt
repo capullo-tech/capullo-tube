@@ -474,6 +474,32 @@ class StationEngine @Inject constructor(
         }
     }
 
+    /**
+     * Moves an upcoming song to [to], a position among the upcoming songs (0 = next). In a list
+     * the round follows the new order, so the move survives the next track change; songs
+     * added with Play next or by a like stay ahead of the list's own songs.
+     */
+    fun moveUpcoming(videoId: String, to: Int) {
+        synchronized(lock) {
+            val start = maxOf(current, 0) + 1
+            val from = (start until queue.size).firstOrNull { queue[it].video.videoId == videoId } ?: return
+            val slot = queue.removeAt(from)
+            val at = (start + to).coerceIn(start, queue.size)
+            queue.add(at, slot)
+            if (source?.isCollection == true) {
+                val restStart = minOf(maxOf(roundPos, 0) + 1, round.size)
+                val rest = round.subList(restStart, round.size)
+                val inRest = java.util.Collections.newSetFromMap(IdentityHashMap<Slot, Boolean>()).apply { addAll(rest) }
+                val reordered = queue.subList(start, queue.size).filter { it in inRest }
+                rest.clear()
+                rest += reordered
+            }
+            log("move id=$videoId from=${from - start} to=${at - start}")
+            persistLocked("move")
+            publishLocked()
+        }
+    }
+
     fun setShuffle(on: Boolean) {
         synchronized(lock) {
             val src = source
@@ -1514,7 +1540,7 @@ class StationEngine @Inject constructor(
             source = source,
             current = queue.getOrNull(now)?.video,
             earlier = earlier.toList(),
-            queued = queue.drop(now + 1).map { UpNextItem(it.video, it.why, it.pinned) },
+            queued = queue.drop(now + 1).map { UpNextItem(it.video, it.why, it.pinned, it.blended) },
             isCollection = source?.isCollection == true,
             shuffle = shuffle,
             repeat = repeat,

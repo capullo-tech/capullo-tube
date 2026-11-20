@@ -46,8 +46,9 @@ class UpNextTextTest {
         val song = "Daft Punk - One More Time (Official Video)"
         fun why(provenance: Provenance, fromTitle: String? = null) = UpNextText.provenance(Why(provenance, "x", fromTitle), track)
 
-        assertEquals("From the Mix of Daft Punk - One More Time", why(Provenance.MIX, song))
-        assertEquals("Related to Daft Punk - One More Time", why(Provenance.RELATED, song))
+        assertEquals("Mix · One More Time", why(Provenance.MIX, song))
+        assertEquals("Related · One More Time", why(Provenance.RELATED, song))
+        assertEquals("Similar · One More Time", why(Provenance.SIMILAR, song))
         assertEquals("Your like", why(Provenance.LIKED))
         assertEquals("From your search", why(Provenance.SEARCH))
         assertEquals("From Discovery", why(Provenance.PLAYLIST, "Discovery"))
@@ -67,8 +68,9 @@ class UpNextTextTest {
         val track = video("Song", uploader = null)
         fun why(provenance: Provenance) = UpNextText.provenance(Why(provenance, null, null), track)
 
-        assertEquals("From a Mix", why(Provenance.MIX))
+        assertEquals("Mix", why(Provenance.MIX))
         assertEquals("Related", why(Provenance.RELATED))
+        assertEquals("Similar", why(Provenance.SIMILAR))
         assertEquals("From a playlist", why(Provenance.PLAYLIST))
         assertEquals("From the channel", why(Provenance.CHANNEL))
     }
@@ -99,12 +101,28 @@ class UpNextTextTest {
     }
 
     @Test
-    fun `a Last fm pick names its seed only`() {
-        val song = video("Pixies - Where Is My Mind?", "Pixies")
-        assertEquals(
-            "Similar to Radiohead - Creep",
-            UpNextText.provenance(Why(Provenance.SIMILAR, "XFkzRNyygfk", "Radiohead - Creep (Official Video)"), song),
-        )
-        assertEquals("Similar", UpNextText.provenance(Why(Provenance.SIMILAR, null, null), song))
+    fun `a pick from the station's own seed names only its source, the title already names the seed`() {
+        val track = video("Song")
+        val creep = Why(Provenance.SIMILAR, "XFkzRNyygfk", "Radiohead - Creep (Official Video)")
+        assertEquals("Similar", UpNextText.provenance(creep, track, stationSeedId = "XFkzRNyygfk"))
+        assertEquals("Similar · Creep", UpNextText.provenance(creep, track, stationSeedId = "other"))
+        assertEquals("Similar · Creep", UpNextText.provenance(creep, track, stationSeedId = null))
+    }
+
+    @Test
+    fun `a song a like brought says which like, whatever its source`() {
+        val track = video("Song")
+        val feelGood = Why(Provenance.RELATED, "HyHNuVaZJ-k", "Gorillaz - Feel Good Inc. (Official Video)")
+        assertEquals("♥ Feel Good Inc.", UpNextText.provenance(feelGood, track, stationSeedId = "XFkzRNyygfk", blended = true))
+        assertEquals("♥ Feel Good Inc.", UpNextText.provenance(feelGood, track, stationSeedId = "HyHNuVaZJ-k", blended = true))
+    }
+
+    @Test
+    fun `the station seed is the radio's song, a search's first result or the album`() {
+        val seed = video("Seed")
+        assertEquals(seed.videoId, UpNextText.stationSeedId(PlaySource.SongRadio(seed)))
+        assertEquals(seed.videoId, UpNextText.stationSeedId(PlaySource.SearchRadio("q", listOf(seed))))
+        assertEquals(null, UpNextText.stationSeedId(PlaySource.LikedRadio))
+        assertEquals(null, UpNextText.stationSeedId(null))
     }
 }

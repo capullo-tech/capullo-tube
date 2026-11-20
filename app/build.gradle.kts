@@ -136,6 +136,7 @@ dependencies {
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.okhttp)
     implementation(pins.coil.compose)
+    implementation(pins.reorderable)
 
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)

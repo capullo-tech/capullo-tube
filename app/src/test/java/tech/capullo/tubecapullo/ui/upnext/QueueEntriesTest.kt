@@ -38,7 +38,7 @@ class QueueEntriesTest {
             listOf("PLAYED a", "PLAYED b", "CURRENT c", "UPCOMING d", "UPCOMING e"),
             rows(entries),
         )
-        assertEquals(3, initialIndex(entries))
+        assertEquals("the sheet opens on the playing song", 2, initialIndex(entries))
     }
 
     @Test
@@ -101,7 +101,7 @@ class QueueEntriesTest {
             ),
             rows(entries),
         )
-        assertEquals(4, initialIndex(entries))
+        assertEquals("the album row, its chapters below", 1, initialIndex(entries))
     }
 
     @Test
@@ -120,5 +120,23 @@ class QueueEntriesTest {
             rows(entries),
         )
         assertEquals(0, initialIndex(entries))
+    }
+
+    @Test
+    fun `an upcoming row keeps its key when the queue order changes`() {
+        val before = queueEntries(StationState(current = video("c"), queued = listOf(queued("d"), queued("e"))))
+        val after = queueEntries(StationState(current = video("c"), queued = listOf(queued("e"), queued("d"))))
+        assertEquals(before.map { it.key }.toSet(), after.map { it.key }.toSet())
+        assertEquals(before.last().key, after[1].key)
+    }
+
+    @Test
+    fun `upcoming position counts upcoming songs only`() {
+        val entries = queueEntries(
+            StationState(current = video("c"), earlier = listOf(video("a")), queued = listOf(queued("d"), queued("e"))),
+        )
+        assertEquals(0, upcomingPosition(entries, entries[2].key))
+        assertEquals(1, upcomingPosition(entries, entries[3].key))
+        assertEquals(null, upcomingPosition(entries, entries[1].key))
     }
 }
