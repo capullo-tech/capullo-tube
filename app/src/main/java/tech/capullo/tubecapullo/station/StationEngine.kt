@@ -934,6 +934,9 @@ class StationEngine @Inject constructor(
         dismissedIds.clear()
         current = -1
         history.clear()
+        // The queue's played rows belong to the station: a new or resumed one starts its own.
+        earlier.clear()
+        playing = null
         steppingBackTo = null
         chaining = false
         chainSeed = null
@@ -1033,6 +1036,7 @@ class StationEngine @Inject constructor(
         queue += slots[saved.left]
         queue += saved.upcoming.map(slots::get)
         history += saved.history.map(slots::get)
+        saved.history.forEach { pushEarlierLocked(slots[it].video) }
         dismissedIds += saved.dismissedIds
         chainSeed = saved.chainSeed
         likesRound += saved.likesRound
