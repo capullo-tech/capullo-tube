@@ -34,15 +34,33 @@ internal class SongNames(video: YtVideo) {
             .joinToString("|") { SeedNames.key(it) }
     }
 
-    fun matches(artist: String, title: String): Boolean {
-        val wantTitle = SeedNames.key(title)
-        val wantBare = SeedNames.key(SeedNames.bareTitle(title))
-        val wantArtist = SeedNames.key(SeedNames.firstArtist(artist))
-        if (wantTitle.isEmpty() || wantArtist.isEmpty()) return false
-        val titleOk = titles.any { got -> got.startsWith(wantTitle) || (wantBare.isNotEmpty() && got.startsWith(wantBare)) }
-        return titleOk && wantArtist in artists
+    fun matches(artist: String, title: String): Boolean = matches(SongKey(artist, title))
+
+    fun matches(song: SongKey): Boolean {
+        if (song.title.isEmpty() || song.artist.isEmpty()) return false
+        val titleOk = titles.any { got -> got.startsWith(song.title) || (song.bare.isNotEmpty() && got.startsWith(song.bare)) }
+        return titleOk && song.artist in artists
     }
 }
+
+/** A named song's match keys, computed once. */
+internal class SongKey(artist: String, title: String) {
+    val title = SeedNames.key(title)
+    val bare = SeedNames.key(SeedNames.bareTitle(title))
+    val artist = SeedNames.key(SeedNames.firstArtist(artist))
+
+    companion object {
+        /** The song a video is, when its title names an artist; null when it cannot tell. */
+        fun of(video: YtVideo): SongKey? = LyricsQuery.of(video.title, video.uploader)
+            ?.let { q -> q.artist?.let { SongKey(it, q.title) } }
+    }
+}
+
+/**
+ * True when [a] and [b] are different versions: one is marked live, acoustic, a remix, a
+ * cover and so on, and the other is not. A lyric video or a re-upload is the same version.
+ */
+internal fun differentVersions(a: String, b: String): Boolean = versionPenalty(a, b) > 0 || versionPenalty(b, a) > 0
 
 internal fun versionPenalty(videoTitle: String, wanted: String): Int {
     val got = videoTitle.lowercase()

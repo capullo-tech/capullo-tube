@@ -1164,11 +1164,12 @@ class StationEngine @Inject constructor(
                         mixVideos,
                         relatedVideos ?: YtRelated(seedViews = -1, videos = emptyList()),
                         excludedIdsLocked(skipQueued),
+                        heardLocked(),
                     )
                     if (relatedVideos != null) {
                         log(
                             "related gate seed=${seed.videoId} kept=${lists.gateKept} " +
-                                "dropped=${lists.gateDropped}",
+                                "dropped=${lists.gateDropped} repeats=${lists.repeats}",
                         )
                     }
                     return lists
@@ -1176,9 +1177,9 @@ class StationEngine @Inject constructor(
                 // One deadline for the whole Last.fm step: a YouTube search is blocking I/O that
                 // cancellation cannot stop, so the wait is bounded, not the work.
                 val similarWork = async {
-                    val excluded = synchronized(lock) { excludedIdsLocked(skipQueued).toSet() }
+                    val (excluded, heard) = synchronized(lock) { excludedIdsLocked(skipQueued).toSet() to heardLocked(queued = skipQueued) }
                     val found = names.await()
-                    found to findSimilar(seed, found, mixVideos, relatedVideos, excluded, similarCount)
+                    found to findSimilar(seed, found, mixVideos + heard, relatedVideos, excluded, similarCount)
                 }
                 suspend fun similar(): Pair<SimilarNames, SimilarFind> = withTimeoutOrNull(if (similarLater) SIMILAR_LATE_MS else SIMILAR_WAIT_MS) { similarWork.await() }
                     ?: (SimilarNames(emptyList(), "timeout") to SimilarFind(emptyList(), 0, 0, 0)).also { similarWork.cancel() }
@@ -1269,6 +1270,12 @@ class StationEngine @Inject constructor(
             .onFailure { log("similar seed=${seed.videoId} resolve-error=${q(it.message)}") }
             .getOrElse { SimilarFind(emptyList(), 0, 0, 0) }
     }
+
+    /**
+     * Songs played this session or playing, and with [queued] the queued ones: a re-upload of
+     * one of them is a repeat.
+     */
+    private fun heardLocked(queued: Boolean = true): List<YtVideo> = earlier.toList() + listOfNotNull(playing) + if (queued) queue.map { it.video } else emptyList()
 
     private fun excludedIdsLocked(skipQueued: Boolean): MutableSet<String> {
         val ids = HashSet<String>(playedIds)
