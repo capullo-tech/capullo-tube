@@ -179,4 +179,18 @@ class PairsTest {
             )
         }
     }
+
+    @Test
+    fun `a live take or another upload of the seed's song is dropped from the Mix and related`() {
+        val takeMeOut = video("seed", "Franz Ferdinand - Take Me Out (Video)", uploader = "Franz Ferdinand")
+        val live = related("live", "Franz Ferdinand - 'Take Me Out' (live for Like A Version)")
+        val matinee = related("mat", "Franz Ferdinand - The Dark Of The Matinée (Video)")
+        val mixCopy = video("mixcopy", "Take Me Out (Official Audio)", uploader = "Franz Ferdinand - Topic")
+        val mixOther = video("mixoth", "Franz Ferdinand - Do You Want To")
+
+        val lists = songLists(takeMeOut, listOf(mixCopy, mixOther), related(live, matinee), emptySet())
+
+        assertEquals(listOf(mixOther), lists.mix)
+        assertEquals(listOf(matinee), lists.related)
+    }
 }
