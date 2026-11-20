@@ -142,11 +142,10 @@ fun PlayerScreen(
             contentAlignment = Alignment.Center,
         ) {
             if (video == null) {
-                Text(
-                    "Nothing playing. Search for a song to start a station.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(32.dp),
-                )
+                // No station at all: nothing to show here, Home is where one starts. A station
+                // that is starting has a source but no video yet.
+                LaunchedEffect(station.source) { if (station.source == null) onBack() }
+                if (station.source != null) CircularProgressIndicator()
             } else {
                 val clients = snapState.groups.flatMap { it.clients }
                 PortraitPlayer(
