@@ -1,7 +1,5 @@
 package tech.capullo.tubecapullo.station
 
-import tech.capullo.tubecapullo.data.lyrics.LyricsQuery
-import tech.capullo.tubecapullo.data.similar.SongNames
 import tech.capullo.tubecapullo.data.youtube.YtRelated
 import tech.capullo.tubecapullo.data.youtube.YtVideo
 import tech.capullo.tubecapullo.util.TitleCleaner
@@ -37,18 +35,15 @@ internal fun songLists(
 ): SongLists {
     val gated = related.videos.filter { passesRelatedGate(it, related.seedViews) }
     val seedKey = TitleCleaner.key(seed.title, seed.uploader)
-    // Another upload of the seed's own song (a live take, a lyric video) is not a new song.
-    val seedSong = LyricsQuery.of(seed.title, seed.uploader)?.takeIf { it.artist != null }
-    fun isSeedSong(video: YtVideo) = (seedKey != null && TitleCleaner.key(video.title, video.uploader) == seedKey) ||
-        (seedSong != null && SongNames(video).matches(seedSong.artist!!, seedSong.title))
     val seen = HashSet<String>()
     fun allowed(video: YtVideo) = video.inTrackWindow() &&
         video.videoId != seed.videoId &&
         video.videoId !in excludedIds &&
-        !isSeedSong(video) &&
         seen.add(video.videoId)
     val mixFresh = mix.filter(::allowed)
-    val relatedFresh = gated.filter(::allowed)
+    val relatedFresh = gated
+        .filter { seedKey == null || TitleCleaner.key(it.title, it.uploader) != seedKey }
+        .filter(::allowed)
 
     val pool = mixFresh + relatedFresh
     val keys = pool.map { TitleCleaner.key(it.title, it.uploader) }
