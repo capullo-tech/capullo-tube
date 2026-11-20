@@ -475,26 +475,32 @@ class StationEngine @Inject constructor(
     }
 
     /**
-     * Moves an upcoming song to [to], a position among the upcoming songs (0 = next). In a list
-     * the round follows the new order, so the move survives the next track change; songs
-     * added with Play next or by a like stay ahead of the list's own songs.
+     * Moves an upcoming song to [to], a position among the upcoming songs (0 = next). A song
+     * dragged to the front (only Play next songs before it) is pinned like Play next, so songs
+     * a like adds later go after it. In a list the round follows the new order, so the move
+     * survives the next track change; songs added with Play next or by a like stay ahead of
+     * the list's own songs.
      */
     fun moveUpcoming(videoId: String, to: Int) {
         synchronized(lock) {
             val start = maxOf(current, 0) + 1
             val from = (start until queue.size).firstOrNull { queue[it].video.videoId == videoId } ?: return
-            val slot = queue.removeAt(from)
+            val moved = queue.removeAt(from)
             val at = (start + to).coerceIn(start, queue.size)
+            val toFront = (start until at).all { queue[it].pinned }
+            val slot = if (toFront && !moved.pinned) Slot(moved.video, moved.why, pinned = true, blended = moved.blended) else moved
             queue.add(at, slot)
             if (source?.isCollection == true) {
                 val restStart = minOf(maxOf(roundPos, 0) + 1, round.size)
                 val rest = round.subList(restStart, round.size)
+                // A pinned song is an extra, outside the list's round, like Play next.
+                if (slot !== moved) rest.removeAll { it === moved }
                 val inRest = java.util.Collections.newSetFromMap(IdentityHashMap<Slot, Boolean>()).apply { addAll(rest) }
                 val reordered = queue.subList(start, queue.size).filter { it in inRest }
                 rest.clear()
                 rest += reordered
             }
-            log("move id=$videoId from=${from - start} to=${at - start}")
+            log("move id=$videoId from=${from - start} to=${at - start}" + if (slot !== moved) " pinned" else "")
             persistLocked("move")
             publishLocked()
         }

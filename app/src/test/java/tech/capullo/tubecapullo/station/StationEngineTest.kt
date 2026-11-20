@@ -1417,6 +1417,52 @@ class StationMoveTest {
     }
 
     @Test
+    fun `a song dragged to play next stays next when a like adds songs`() = runTest(StandardTestDispatcher()) {
+        val engine = engine()
+        engine.start(PlaySource.SongRadio(video("SEED")))
+        advanceUntilIdle()
+        engine.advanceThrough(1)
+        val dragged = engine.queuedIds()[6]
+
+        engine.moveUpcoming(dragged, to = 0)
+        engine.toggleLike(engine.state.value.current!!)
+        advanceUntilIdle()
+
+        assertEquals(dragged, engine.queuedIds().first())
+        assertTrue(engine.state.value.queued.first().pinned)
+    }
+
+    @Test
+    fun `a song dragged further down is not pinned`() = runTest(StandardTestDispatcher()) {
+        val engine = engine()
+        engine.start(PlaySource.SongRadio(video("SEED")))
+        advanceUntilIdle()
+        engine.advanceThrough(1)
+        val dragged = engine.queuedIds()[0]
+
+        engine.moveUpcoming(dragged, to = 3)
+
+        assertEquals(dragged, engine.queuedIds()[3])
+        assertFalse(engine.state.value.queued[3].pinned)
+    }
+
+    @Test
+    fun `in a playlist a song dragged to next plays next and is not played twice`() = runTest(StandardTestDispatcher()) {
+        val engine = engine()
+        engine.start(PlaySource.Playlist(YouTubeUrls.playlistUrl(PLAYLIST_ID), "Trip"))
+        advanceUntilIdle()
+        engine.advanceThrough(1)
+        val dragged = engine.queuedIds().last()
+
+        engine.moveUpcoming(dragged, to = 0)
+        engine.onQueueAdvanced(1)
+        advanceUntilIdle()
+
+        assertEquals(dragged, engine.state.value.current?.videoId)
+        assertFalse(dragged in engine.queuedIds())
+    }
+
+    @Test
     fun `moving a song that is not upcoming, or past the end, changes nothing wrong`() = runTest(StandardTestDispatcher()) {
         val engine = engine()
         engine.start(PlaySource.SongRadio(video("SEED")))
