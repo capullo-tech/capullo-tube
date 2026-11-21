@@ -88,6 +88,8 @@ class YouTubeExtractorClient @Inject constructor(private val downloader: TubeCap
         KioskInfo.getInfo(kiosk).relatedItems.toVideos().take(limit)
     }
 
+    fun lastChartsStatus(): Int? = downloader.lastStatus(CHARTS_HOST)
+
     fun supportedRegions(): List<String> {
         val service = ServiceList.YouTube.supportedCountries.map { it.countryCode }
         val chart = chartCountryCodes ?: return service
@@ -334,6 +336,8 @@ class YouTubeExtractorClient @Inject constructor(private val downloader: TubeCap
         const val CHANNEL_UPLOADS_LIMIT = 200
 
         const val TRENDING_MUSIC_URL = "https://charts.youtube.com/charts/TrendingVideos/RightNow"
+
+        const val CHARTS_HOST = "charts.youtube.com"
 
         const val CHART_COUNTRIES_FIELD = "YT_CHARTS_SUPPORTED_COUNTRY_CODES"
 

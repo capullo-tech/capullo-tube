@@ -50,10 +50,18 @@ class MainSmokeTest {
             check(cardsLanded) { "trending section landed but no song card appeared in 30s" }
         } else {
             val texts = visibleAppTexts(device).joinToString(" | ")
-            println("trending unavailable, error banner shown: $texts")
+            val refusal = trendingRefusal()
+            println("trending unavailable, error banner shown: $texts | $refusal")
+            check(refusal != null) {
+                "Home showed its trending error banner, but no TubeHome line reports a refusal by YouTube:" +
+                    " a chart parsed to no songs over a served response is an app failure, not a blocked runner." +
+                    " | texts: [$texts] | TubeHome: [${trendingLog()}]"
+            }
             instrumentation.sendStatus(
                 0,
-                Bundle().apply { putString("smoke_warning", "trending unavailable, Home showed its error banner: $texts") },
+                Bundle().apply {
+                    putString("smoke_warning", "trending unavailable ($refusal), Home showed its error banner: $texts")
+                },
             )
         }
         shell("screencap -p /sdcard/smoke-content.png")
@@ -62,6 +70,21 @@ class MainSmokeTest {
         check(!windowVanished) { "app window vanished after first frame - launch was not stable" }
     }
 
+    private fun trendingRefusal(): String? = trendingLog()
+        .lineSequence()
+        .mapNotNull { line ->
+            REFUSED_STATUS.find(line)?.groupValues?.get(1)?.let { "http=$it" }
+                ?: REFUSED_ERROR.find(line)?.let { "error=${it.groupValues[1].trim()}" }
+        }
+        .lastOrNull()
+
+    private fun trendingLog(): String = shell("logcat -d -s TubeHome:W")
+        .lineSequence()
+        .filter { "trending region=" in it }
+        .toList()
+        .takeLast(LOG_LINES)
+        .joinToString("\n")
+
     private fun visibleAppTexts(device: UiDevice): List<String> = device.findObjects(By.pkg("tech.capullo.tubecapullo"))
         .mapNotNull { it.text }
         .filter { it.isNotBlank() }
@@ -69,4 +92,12 @@ class MainSmokeTest {
     private fun shell(command: String): String = InstrumentationRegistry.getInstrumentation()
         .uiAutomation.executeShellCommand(command)
         .use { fd -> ParcelFileDescriptor.AutoCloseInputStream(fd).readBytes().decodeToString() }
+
+    private companion object {
+        const val LOG_LINES = 10
+
+        val REFUSED_STATUS = Regex("""result=empty http=([45]\d\d)""")
+
+        val REFUSED_ERROR = Regex("""result=failed error=(.*(?i:recaptcha|bot.?check|403|429|blocked|refus).*)$""")
+    }
 }

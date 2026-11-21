@@ -110,6 +110,7 @@ class HomeViewModelTest {
         }
         coEvery { extractor.search(any(), any()) } returns emptyList()
         every { extractor.supportedRegions() } returns listOf("JP", "KR", "NI", "NO", "US")
+        every { extractor.lastChartsStatus() } returns 200
         coEvery { likedTracks.all() } answers { likes.value }
         every { likedTracks.observe() } returns likes
         every { likedTracks.observeEntries() } returns
@@ -183,6 +184,18 @@ class HomeViewModelTest {
         advanceUntilIdle()
 
         assertEquals(listOf("listen-again"), home.keys())
+        assertEquals("Trending isn't available right now", home.uiState.value.error)
+    }
+
+    @Test
+    fun `a refused chart shows the same banner, whatever the status behind it`() = runTest(dispatcher) {
+        moreLikeRows.value = 0
+        fullAlbums.value = false
+        coEvery { extractor.trendingMusic(any(), any()) } returns emptyList()
+        every { extractor.lastChartsStatus() } returns 403
+        val home = viewModel()
+        advanceUntilIdle()
+
         assertEquals("Trending isn't available right now", home.uiState.value.error)
     }
 
