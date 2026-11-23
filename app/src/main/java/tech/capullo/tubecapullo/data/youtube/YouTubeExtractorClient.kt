@@ -1,6 +1,7 @@
 package tech.capullo.tubecapullo.data.youtube
 
 import android.util.Log
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.schabi.newpipe.extractor.Image
@@ -81,11 +82,19 @@ class YouTubeExtractorClient @Inject constructor(private val downloader: TubeCap
         ServiceList.YouTube.searchQHFactory.fromQuery(query, listOf(contentFilter), ""),
     ).relatedItems
 
-    suspend fun trendingMusic(region: String?, limit: Int = 30): List<YtVideo> = extract("trending_music") {
-        val kiosk = ServiceList.YouTube.kioskList.getExtractorByUrl(TRENDING_MUSIC_URL, null)
-        region?.let { kiosk.forceContentCountry(ContentCountry(it)) }
-        kiosk.fetchPage()
-        KioskInfo.getInfo(kiosk).relatedItems.toVideos().take(limit)
+    suspend fun trendingMusic(region: String?, limit: Int = 30): YtChart {
+        val statuses = HashMap<String, Int>()
+        val videos = runCatching {
+            extract("trending_music") {
+                downloader.recordStatuses(statuses) {
+                    val kiosk = ServiceList.YouTube.kioskList.getExtractorByUrl(TRENDING_MUSIC_URL, null)
+                    region?.let { kiosk.forceContentCountry(ContentCountry(it)) }
+                    kiosk.fetchPage()
+                    KioskInfo.getInfo(kiosk).relatedItems.toVideos().take(limit)
+                }
+            }
+        }.onFailure { if (it is CancellationException) throw it }
+        return YtChart(videos, statuses[CHARTS_HOST] ?: 0)
     }
 
     fun supportedRegions(): List<String> {
@@ -334,6 +343,8 @@ class YouTubeExtractorClient @Inject constructor(private val downloader: TubeCap
         const val CHANNEL_UPLOADS_LIMIT = 200
 
         const val TRENDING_MUSIC_URL = "https://charts.youtube.com/charts/TrendingVideos/RightNow"
+
+        const val CHARTS_HOST = "charts.youtube.com"
 
         const val CHART_COUNTRIES_FIELD = "YT_CHARTS_SUPPORTED_COUNTRY_CODES"
 
