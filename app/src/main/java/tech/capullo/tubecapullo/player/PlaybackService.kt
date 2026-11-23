@@ -31,6 +31,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -40,8 +41,10 @@ import tech.capullo.audio.contracts.NowPlaying
 import tech.capullo.audio.contracts.PlaybackController
 import tech.capullo.audio.player.FifoAudioBufferSink
 import tech.capullo.audio.player.FifoFormat
+import tech.capullo.audio.tunnel.TunnelManager
 import tech.capullo.tubecapullo.MainActivity
 import tech.capullo.tubecapullo.data.lyrics.LyricsRepository
+import tech.capullo.tubecapullo.data.settings.AppSettings
 import tech.capullo.tubecapullo.data.youtube.YouTubeExtractorClient
 import tech.capullo.tubecapullo.snapcast.SnapcastManager
 import tech.capullo.tubecapullo.station.RepeatMode
@@ -64,6 +67,10 @@ class PlaybackService : MediaSessionService() {
     @Inject lateinit var extractor: YouTubeExtractorClient
 
     @Inject lateinit var lyrics: LyricsRepository
+
+    @Inject lateinit var appSettings: AppSettings
+
+    @Inject lateinit var tunnelManager: TunnelManager
 
     private var loop: StationLoop? = null
 
@@ -336,6 +343,15 @@ class PlaybackService : MediaSessionService() {
                 }
             }
         }
+        // The public link lives exactly as long as the broadcast with the setting on. The triple
+        // drops the group churn of snapcast state, which would otherwise re-run start() per update.
+        serviceScope.launch {
+            combine(appSettings.tunnelEnabled, snapcastManager.state) { enabled, snap ->
+                Triple(enabled, snap.isBroadcasting, snap.broadcastHttpPort)
+            }.distinctUntilChanged().collect { (enabled, broadcasting, httpPort) ->
+                if (enabled && broadcasting) tunnelManager.start(httpPort) else tunnelManager.stop()
+            }
+        }
     }
 
     private fun launchPlayerTickers(exo: ExoPlayer) {
@@ -466,6 +482,9 @@ class PlaybackService : MediaSessionService() {
         stationEngine.persistNow()
         stationEngine.onStationStarted = null
         serviceScope.cancel()
+        // serviceScope is gone, so the collector above can't see the broadcast end; without this
+        // the singleton would keep cloudflared up against a dead snapserver port.
+        tunnelManager.stop()
         snapcastManager.stopBroadcast()
         fifoSink?.close()
         fifoSink = null

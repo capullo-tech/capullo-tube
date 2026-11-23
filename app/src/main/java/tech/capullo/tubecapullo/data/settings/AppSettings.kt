@@ -176,6 +176,16 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
         _historyRetention.value = retention
     }
 
+    private val _tunnelEnabled = MutableStateFlow(prefs.getBoolean(KEY_TUNNEL_ENABLED, false))
+
+    /** Public link: a Cloudflare quick tunnel to the web player while broadcasting. */
+    val tunnelEnabled: StateFlow<Boolean> = _tunnelEnabled.asStateFlow()
+
+    fun setTunnelEnabled(enabled: Boolean) {
+        prefs.edit { putBoolean(KEY_TUNNEL_ENABLED, enabled) }
+        _tunnelEnabled.value = enabled
+    }
+
     companion object {
         const val MAX_TRENDING_ROWS = 5
 
@@ -214,6 +224,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
         private const val KEY_SIMILAR_ONLINE = "similar_online"
         private const val KEY_SIMILAR_DEPTH = "similar_depth"
         private const val KEY_LASTFM_API_KEY = "lastfm_api_key"
+        private const val KEY_TUNNEL_ENABLED = "tunnel_enabled"
     }
 }
 

@@ -79,6 +79,8 @@ too), and on Android 12+ tap **Open in CapulloTube** on the page it opens. The a
 song, plays the scanned station, and shows **Listening to** its address with a **Leave** button.
 Playing a song here also leaves.
 
+Off your Wi-Fi: turn on **Settings > Multiroom > Public link** and the multiroom QR gains a **Listen anywhere** tab with a temporary Cloudflare link. Anyone with the link can listen.
+
 ## How it works
 
 ```
