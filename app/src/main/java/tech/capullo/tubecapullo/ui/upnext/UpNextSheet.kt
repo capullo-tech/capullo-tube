@@ -132,10 +132,17 @@ fun UpNextSheet(onDismiss: () -> Unit, viewModel: UpNextViewModel = hiltViewMode
     LaunchedEffect(listState) {
         listState.interactionSource.interactions
             .filterIsInstance<DragInteraction.Start>()
-            .first()
-        userMoved = true
+            .collect { userMoved = true }
     }
+    // The playing song goes to the top when the sheet opens and whenever the song changes
+    // (a tap on a row, Next); between changes your own scrolling is left alone.
+    var shownPlaying by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(entries) {
+        val playingId = station.current?.videoId
+        if (playingId != shownPlaying) {
+            shownPlaying = playingId
+            userMoved = false
+        }
         if (userMoved || dragging) return@LaunchedEffect
         val target = initialIndex(entries)
         listState.scrollToItem(target)
