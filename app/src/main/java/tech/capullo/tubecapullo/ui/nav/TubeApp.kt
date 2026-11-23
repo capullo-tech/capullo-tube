@@ -67,10 +67,10 @@ fun TubeApp(
 
     val snackbarHostState = remember { SnackbarHostState() }
     val resolvingLink by links.resolving.collectAsStateWithLifecycle()
-    LinkEffects(links, navigator, snackbarHostState)
 
     var multiroomOpen by rememberSaveable { mutableStateOf(false) }
     val openMultiroom = { multiroomOpen = true }
+    LinkEffects(links, navigator, snackbarHostState, onOpenMultiroom = openMultiroom)
     val backdropBlur by animateDpAsState(
         if (multiroomOpen) MULTIROOM_BACKDROP_BLUR else 0.dp,
         label = "multiroomBackdropBlur",
@@ -113,6 +113,7 @@ fun TubeApp(
                     currentTab = navigator.currentTab,
                     onSelectTab = navigator::selectTab,
                     onOpenPlayer = openPlayer,
+                    onOpenMultiroom = openMultiroom,
                 )
             }
         },
@@ -162,12 +163,17 @@ private fun ShellBottomBar(
     currentTab: Tab,
     onSelectTab: (Tab) -> Unit,
     onOpenPlayer: () -> Unit,
+    onOpenMultiroom: () -> Unit,
 ) {
     val playerState by shell.playerState.collectAsStateWithLifecycle()
+    val snapcast by shell.snapcastState.collectAsStateWithLifecycle()
     val likedIds by shell.likedIds.collectAsStateWithLifecycle()
     val likedAlbumIds by shell.likedAlbumIds.collectAsStateWithLifecycle()
     val station by shell.station.collectAsStateWithLifecycle()
     Column {
+        snapcast.listeningTo?.let { host ->
+            ListeningBar(host, onOpen = onOpenMultiroom, onLeave = shell::leaveStation)
+        }
         playerState.video?.let { video ->
             NowPlayingBar(
                 video = video,

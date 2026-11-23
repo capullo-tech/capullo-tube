@@ -2,6 +2,7 @@ package tech.capullo.tubecapullo.links
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import tech.capullo.audio.snapcast.JoinTarget
 
 class IncomingLinksTest {
     private val id = "dQw4w9WgXcQ"
@@ -98,6 +99,26 @@ class IncomingLinksTest {
         assertEquals(LinkTarget.NotYouTube, IncomingLinks.find("  \n"))
         assertEquals(LinkTarget.NotYouTube, IncomingLinks.find("buy milk"))
         assertEquals(LinkTarget.NotYouTube, IncomingLinks.find("https://vimeo.com/76979871"))
+    }
+
+    @Test
+    fun `a station's join URL is a join, on the LAN and through the tunnel`() {
+        val lan = LinkTarget.Join(JoinTarget("192.168.1.20", 18732, secure = false))
+        assertEquals(lan, IncomingLinks.find("http://192.168.1.20:18732/join/"))
+        assertEquals(lan, IncomingLinks.find("Listen with me: http://192.168.1.20:18732/join."))
+        assertEquals(
+            LinkTarget.Join(JoinTarget("fe80::1", 18732, secure = false)),
+            IncomingLinks.find("(http://[fe80::1]:18732/join/)"),
+        )
+        assertEquals(
+            LinkTarget.Join(JoinTarget("calm-river-abc.trycloudflare.com", 443, secure = true)),
+            IncomingLinks.find("https://calm-river-abc.trycloudflare.com/join/"),
+        )
+    }
+
+    @Test
+    fun `a YouTube join path is YouTube, not a station`() {
+        assertEquals(LinkTarget.OtherYouTube, IncomingLinks.find("https://www.youtube.com/join/"))
     }
 
     @Test

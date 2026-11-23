@@ -334,6 +334,7 @@ class PlaybackService : MediaSessionService() {
                             exo.playWhenReady = !exo.playWhenReady
                         }
                     }
+                    PlaybackCoordinator.Command.PAUSE -> exo.playWhenReady = false
                     PlaybackCoordinator.Command.NEXT ->
                         serviceScope.launch { skipMutex.withLock { skipCurrent() } }
                     PlaybackCoordinator.Command.PREVIOUS ->
