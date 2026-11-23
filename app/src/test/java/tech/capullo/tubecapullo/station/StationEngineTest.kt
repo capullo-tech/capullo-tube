@@ -341,21 +341,23 @@ class StationEngineTest {
     }
 
     @Test
-    fun `a jump keeps the songs a like added and Play next songs, after the tapped one`() = runTest(StandardTestDispatcher()) {
+    fun `a jump skips the songs a like added above the tapped one too`() = runTest(StandardTestDispatcher()) {
         val engine = engine()
         engine.start(PlaySource.SongRadio(video("SEED")))
         advanceUntilIdle()
         engine.advanceThrough(2)
-        engine.toggleLike(engine.state.value.current!!)
+        val liked = engine.state.value.current!!
+        engine.toggleLike(liked)
         advanceUntilIdle()
-        val added = engine.state.value.queued.takeWhile { it.why.fromVideoId != "SEEDxxxxxxx" }.map { it.video.videoId }
-        assertEquals(AppSettings.DEFAULT_SONGS_PER_LIKE, added.size)
-        val tapped = engine.state.value.queued.last().video
+        val queued = engine.state.value.queued
+        val added = queued.takeWhile { it.why.fromVideoId == liked.videoId }.map { it.video.videoId }
+        assertTrue("precondition: the like added songs", added.isNotEmpty())
+        val tapped = queued[added.size + 2].video
 
         engine.onQueueAdvanced(engine.jumpTo(tapped)!!)
 
         assertEquals(tapped, engine.state.value.current)
-        assertEquals(added, engine.queuedIds().take(added.size))
+        assertTrue("the like's songs above the tap are skipped", engine.queuedIds().none { it in added })
     }
 
     @Test

@@ -371,15 +371,11 @@ class StationEngine @Inject constructor(
             var skipped = 0
             val slot = if (queued >= 0) {
                 row = "queue"
-                // Playing a song further down skips the station's songs before it, as in any
-                // player's queue: the station plays on from there and refills once few are left.
-                // Songs you added (Play next, a like's songs) are kept, after the tapped one.
-                val between = queue.subList(at, queued)
-                val kept = between.filter { it.pinned || it.blended }
-                skipped = between.size - kept.size
-                between.clear()
-                queue.addAll(at, kept)
-                queue.removeAt(at + kept.size)
+                // Playing a song further down skips every song before it, as in any player's
+                // queue: the station plays on from there and refills once few are left.
+                skipped = queued - at
+                queue.subList(at, queued).clear()
+                queue.removeAt(at)
             } else {
                 row = if (again) "earlier" else "other"
                 Slot(video, Why(Provenance.USER, null, null), pinned = true)
