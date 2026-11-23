@@ -13,6 +13,8 @@ desugarJdkLibs = "2.1.5"
 [libraries]
 capullo-audio = { module = "com.github.capullo-tech.capullo-audio:capullo-audio", version.ref = "capulloAudio" }
 capullo-audio-ui = { module = "com.github.capullo-tech.capullo-audio:capullo-audio-ui", version.ref = "capulloAudio" }
+# Same repo, same commit, same nested group - one pin covers all three modules.
+capullo-tunnel = { module = "com.github.capullo-tech.capullo-audio:capullo-tunnel", version.ref = "capulloAudio" }
 androidx-material3 = { group = "androidx.compose.material3", name = "material3" }
 androidx-compose-material-icons-core = { group = "androidx.compose.material", name = "material-icons-core", version.ref = "composeIcons" }
 androidx-compose-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended", version.ref = "composeIcons" }

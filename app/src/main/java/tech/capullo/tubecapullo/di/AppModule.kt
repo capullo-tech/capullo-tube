@@ -11,6 +11,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import okhttp3.OkHttpClient
+import tech.capullo.audio.tunnel.TunnelManager
 import tech.capullo.tubecapullo.BuildConfig
 import tech.capullo.tubecapullo.data.history.LastfmCacheDao
 import tech.capullo.tubecapullo.data.history.LikedAlbumDao
@@ -86,4 +87,9 @@ object AppModule {
     @Provides
     @Named(LastfmSimilarFinder.BUILT_IN_KEY)
     fun provideLastfmApiKey(): String = BuildConfig.LASTFM_API_KEY
+
+    // TunnelManager carries no DI annotations; @Singleton keeps it to one cloudflared process.
+    @Provides
+    @Singleton
+    fun provideTunnelManager(@ApplicationContext context: Context): TunnelManager = TunnelManager(context)
 }
