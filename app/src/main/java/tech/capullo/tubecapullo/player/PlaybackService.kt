@@ -13,9 +13,6 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
-import androidx.media3.common.audio.ChannelMixingAudioProcessor
-import androidx.media3.common.audio.ChannelMixingMatrix
-import androidx.media3.common.audio.SonicAudioProcessor
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -34,6 +31,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -42,8 +40,11 @@ import kotlinx.coroutines.sync.withLock
 import tech.capullo.audio.contracts.NowPlaying
 import tech.capullo.audio.contracts.PlaybackController
 import tech.capullo.audio.player.FifoAudioBufferSink
+import tech.capullo.audio.player.FifoFormat
+import tech.capullo.audio.tunnel.TunnelManager
 import tech.capullo.tubecapullo.MainActivity
 import tech.capullo.tubecapullo.data.lyrics.LyricsRepository
+import tech.capullo.tubecapullo.data.settings.AppSettings
 import tech.capullo.tubecapullo.data.youtube.YouTubeExtractorClient
 import tech.capullo.tubecapullo.snapcast.SnapcastManager
 import tech.capullo.tubecapullo.station.RepeatMode
@@ -66,6 +67,10 @@ class PlaybackService : MediaSessionService() {
     @Inject lateinit var extractor: YouTubeExtractorClient
 
     @Inject lateinit var lyrics: LyricsRepository
+
+    @Inject lateinit var appSettings: AppSettings
+
+    @Inject lateinit var tunnelManager: TunnelManager
 
     private var loop: StationLoop? = null
 
@@ -115,23 +120,15 @@ class PlaybackService : MediaSessionService() {
                 context: android.content.Context,
                 enableFloatOutput: Boolean,
                 enableAudioTrackPlaybackParams: Boolean,
-            ): AudioSink {
-                val mixer = ChannelMixingAudioProcessor().apply {
-                    putChannelMixingMatrix(ChannelMixingMatrix.create(1, 2))
-                    putChannelMixingMatrix(ChannelMixingMatrix.create(2, 2))
-                }
-                val resampler = SonicAudioProcessor().apply { setOutputSampleRateHz(48000) }
-                return DefaultAudioSink.Builder(context)
-                    .setEnableFloatOutput(false)
-                    .setAudioProcessorChain(
-                        DefaultAudioSink.DefaultAudioProcessorChain(
-                            mixer,
-                            resampler,
-                            TeeAudioProcessor(sink),
-                        ),
-                    )
-                    .build()
-            }
+            ): AudioSink = DefaultAudioSink.Builder(context)
+                .setEnableFloatOutput(false)
+                .setAudioProcessorChain(
+                    DefaultAudioSink.DefaultAudioProcessorChain(
+                        *FifoFormat.stage(),
+                        TeeAudioProcessor(sink),
+                    ),
+                )
+                .build()
         }
 
         val httpDataSourceFactory = DefaultHttpDataSource.Factory()
@@ -334,6 +331,7 @@ class PlaybackService : MediaSessionService() {
                             exo.playWhenReady = !exo.playWhenReady
                         }
                     }
+                    PlaybackCoordinator.Command.PAUSE -> exo.playWhenReady = false
                     PlaybackCoordinator.Command.NEXT ->
                         serviceScope.launch { skipMutex.withLock { skipCurrent() } }
                     PlaybackCoordinator.Command.PREVIOUS ->
@@ -343,6 +341,15 @@ class PlaybackService : MediaSessionService() {
                         coordinator.updateState { PlaybackCoordinator.State() }
                     }
                 }
+            }
+        }
+        // The public link lives exactly as long as the broadcast with the setting on. The triple
+        // drops the group churn of snapcast state, which would otherwise re-run start() per update.
+        serviceScope.launch {
+            combine(appSettings.tunnelEnabled, snapcastManager.state) { enabled, snap ->
+                Triple(enabled, snap.isBroadcasting, snap.broadcastHttpPort)
+            }.distinctUntilChanged().collect { (enabled, broadcasting, httpPort) ->
+                if (enabled && broadcasting) tunnelManager.start(httpPort) else tunnelManager.stop()
             }
         }
     }
@@ -479,6 +486,9 @@ class PlaybackService : MediaSessionService() {
         stationEngine.persistNow()
         stationEngine.onStationStarted = null
         serviceScope.cancel()
+        // serviceScope is gone, so the collector above can't see the broadcast end; without this
+        // the singleton would keep cloudflared up against a dead snapserver port.
+        tunnelManager.stop()
         snapcastManager.stopBroadcast()
         fifoSink?.close()
         fifoSink = null

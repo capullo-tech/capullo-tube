@@ -37,6 +37,7 @@ import tech.capullo.tubecapullo.data.youtube.defaultChartRegion
 import tech.capullo.tubecapullo.player.PlaybackCoordinator
 import tech.capullo.tubecapullo.station.PlaySource
 import tech.capullo.tubecapullo.station.StationEngine
+import java.io.IOException
 import java.util.Locale
 import javax.inject.Inject
 import kotlin.random.Random
@@ -208,20 +209,20 @@ class HomeViewModel @Inject constructor(
         }
         regions.map { region ->
             async {
-                runCatching { extractor.trendingMusic(region) }.fold(
+                val chart = extractor.trendingMusic(region)
+                chart.videos.fold(
                     onSuccess = { cards ->
                         if (cards.isEmpty()) {
-                            Log.w(TAG, "trending region=$region result=empty")
+                            Log.w(TAG, "trending region=$region result=empty http=${chart.httpStatus}")
                             TrendingFetch(region, emptyList(), EMPTY_CHART)
                         } else {
                             TrendingFetch(region, cards)
                         }
                     },
                     onFailure = {
-                        if (it is CancellationException) throw it
                         Log.w(
                             TAG,
-                            "trending region=$region result=failed " +
+                            "trending region=$region result=failed http=${chart.httpStatus}${it.ioFault()} " +
                                 "error=${it.message}",
                         )
                         TrendingFetch(region, emptyList(), it.readable())
@@ -360,6 +361,12 @@ class HomeViewModel @Inject constructor(
         is YouTubeError -> message ?: "YouTube request failed"
         else -> message ?: "Something went wrong"
     }
+
+    /** " io=<class>" when a transport fault (DNS miss, refused connection, timeout) is behind the failure. */
+    private fun Throwable.ioFault(): String = generateSequence(this) { it.cause }
+        .firstOrNull { it is IOException }
+        ?.let { " io=${it::class.simpleName}" }
+        .orEmpty()
 
     private data class ListenAgainDraw(val seed: Int, val nowEpochMs: Long)
 

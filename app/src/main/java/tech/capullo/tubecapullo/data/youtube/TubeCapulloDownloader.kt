@@ -18,6 +18,8 @@ class TubeCapulloDownloader @Inject constructor(http: OkHttpClient) : Downloader
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
 
+    private val recorder = ThreadLocal<MutableMap<String, Int>>()
+
     override fun execute(request: Request): Response {
         val url = request.url()
         val builder = OkRequest.Builder()
@@ -30,7 +32,9 @@ class TubeCapulloDownloader @Inject constructor(http: OkHttpClient) : Downloader
             values.forEach { builder.addHeader(name, it) }
         }
 
-        val response = client.newCall(builder.build()).execute()
+        val okRequest = builder.build()
+        val response = client.newCall(okRequest).execute()
+        recorder.get()?.put(okRequest.url.host, response.code)
 
         if (response.code == 429) {
             response.close()
@@ -46,6 +50,22 @@ class TubeCapulloDownloader @Inject constructor(http: OkHttpClient) : Downloader
             body,
             response.request.url.toString(),
         )
+    }
+
+    /**
+     * Runs [block], recording into [statuses] the HTTP status each host answered this thread's requests
+     * with. The key is the host that was asked, so a chart request redirected to a /sorry or consent
+     * page still answers for charts.youtube.com. NewPipe fetches synchronously on the caller's thread
+     * through this one global downloader, so concurrent callers each see only their own requests.
+     */
+    fun <T> recordStatuses(statuses: MutableMap<String, Int>, block: () -> T): T {
+        val outer = recorder.get()
+        recorder.set(statuses)
+        try {
+            return block()
+        } finally {
+            if (outer == null) recorder.remove() else recorder.set(outer)
+        }
     }
 
     private companion object {

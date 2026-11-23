@@ -33,6 +33,28 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
             </intent-filter>
+            <!-- A capullo station's join URL (capullo-audio JoinUrl): the LAN form on the
+                 broadcaster's random snapserver HTTP port (hence no android:port), and the
+                 public-link form through a Cloudflare quick tunnel. Two filters because the
+                 <data> elements of one filter are cross-multiplied. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="http" />
+                <data android:host="*" />
+                <data android:path="/join/" />
+                <data android:path="/join" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+                <data android:host="*.trycloudflare.com" />
+                <data android:path="/join/" />
+                <data android:path="/join" />
+            </intent-filter>
         </activity>
 
         <activity-alias

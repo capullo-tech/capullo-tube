@@ -2,6 +2,7 @@ package tech.capullo.tubecapullo.links
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import tech.capullo.audio.snapcast.JoinTarget
 
 class LinkActionTest {
     private val id = "dQw4w9WgXcQ"
@@ -59,6 +60,20 @@ class LinkActionTest {
                     "plays=$plays ask=$ask",
                     LinkAction.OpenPlaylist("RD$id"),
                     decideLinkAction(mix, plays, ask),
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `a join URL joins its station whether or not something plays or ask-first is on`() {
+        val station = JoinTarget("192.168.1.20", 18732, secure = false)
+        for (plays in bools) {
+            for (ask in bools) {
+                assertEquals(
+                    "plays=$plays ask=$ask",
+                    LinkAction.Join(station),
+                    decideLinkAction(LinkTarget.Join(station), plays, ask),
                 )
             }
         }

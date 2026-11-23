@@ -7,6 +7,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,12 +22,14 @@ import tech.capullo.audio.snapcast.ClientOnLatencyChanged
 import tech.capullo.audio.snapcast.ClientOnNameChanged
 import tech.capullo.audio.snapcast.ClientOnVolumeChanged
 import tech.capullo.audio.snapcast.Group
+import tech.capullo.audio.snapcast.JoinTarget
 import tech.capullo.audio.snapcast.ServerGetStatusResponse
 import tech.capullo.audio.snapcast.ServerOnUpdate
 import tech.capullo.audio.snapcast.ServerStatusResult
 import tech.capullo.audio.snapcast.SnapcastControlClient
 import tech.capullo.audio.snapcast.SnapclientProcess
 import tech.capullo.audio.snapcast.SnapcontrolPlugin
+import tech.capullo.audio.snapcast.SnapserverListenInfo
 import tech.capullo.audio.snapcast.SnapserverNsdRegistrar
 import tech.capullo.audio.snapcast.SnapserverPorts
 import tech.capullo.audio.snapcast.SnapserverProcess
@@ -43,6 +46,10 @@ class SnapcastManager @Inject constructor(
         val groups: List<Group> = emptyList(),
         val streamId: String = "",
         val broadcastHttpPort: Int = 0,
+        /** Host of the station this device joined from its join URL; null when it plays its own. */
+        val listeningTo: String? = null,
+        /** The local snapclient's connection, whichever station it plays. */
+        val clientConnection: SnapclientProcess.ConnectionState = SnapclientProcess.ConnectionState.STARTING,
     )
 
     private val _state = MutableStateFlow(SnapcastState())
@@ -59,8 +66,9 @@ class SnapcastManager @Inject constructor(
 
     private var snapclientProcess: SnapclientProcess? = null
     private var snapclientJob: Job? = null
-    private var currentSnapclientHost: String? = null
-    private var currentSnapclientPort: Int = 0
+    private var snapclientStateJob: Job? = null
+    private var currentSnapclient: ClientTarget? = null
+    private var joinJob: Job? = null
 
     private var audioFocus: AudioFocusController? = null
 
@@ -78,6 +86,8 @@ class SnapcastManager @Inject constructor(
     }
 
     fun startBroadcast(nowPlaying: StateFlow<NowPlaying>, controller: PlaybackController) {
+        // Playing here takes the speaker back from a joined station.
+        leave()
         if (_state.value.isBroadcasting) return
         val snapserver = snapserverProcess
             ?: SnapserverProcess(
@@ -95,7 +105,7 @@ class SnapcastManager @Inject constructor(
             socketName = snapserver.controlSocketName,
         ).also { it.start() }
         snapserverJob = scope.launch { snapserver.start() }
-        startLocalSnapclient("localhost", ports.streamPort)
+        startLocalSnapclient(ClientTarget("localhost", ports.streamPort))
         nsdRegistrar = SnapserverNsdRegistrar(context)
             .also { it.start(STREAM_NAME, ports.streamPort, ports.tcpPort, ports.httpPort) }
         startControl("localhost", ports.httpPort)
@@ -140,26 +150,67 @@ class SnapcastManager @Inject constructor(
         snapcontrolPlugin?.stop()
         snapcontrolPlugin = null
         stopControl()
-        stopLocalSnapclient()
+        // A joined station outlives our broadcast stack: its snapclient is not ours to stop.
+        if (_state.value.listeningTo == null) stopLocalSnapclient()
         snapserverJob?.cancel()
         snapserverJob = null
         snapserverProcess = null
         _state.update { it.copy(isBroadcasting = false, groups = emptyList(), streamId = "") }
     }
 
-    private fun startLocalSnapclient(host: String, port: Int) {
+    /**
+     * Listens to the station a join URL points at: this device's snapclient leaves our own snapserver
+     * for it. Our broadcast stack keeps running; the caller pauses local playback. Through the tunnel
+     * snapclient streams over `wss` on the tunnel's 443; on the LAN the station's `listen.json` names
+     * the stream port, with the URL's port-block guess as the fallback. Ended by [leave], or by
+     * playing something here ([startBroadcast]).
+     */
+    fun join(station: JoinTarget) {
+        Log.i(TAG, "join host=${station.host} httpPort=${station.httpPort} secure=${station.secure}")
+        joinJob?.cancel()
+        _state.update {
+            it.copy(listeningTo = station.host, clientConnection = SnapclientProcess.ConnectionState.STARTING)
+        }
+        joinJob = scope.launch {
+            val client = if (station.secure) {
+                ClientTarget(station.host, station.port, station.scheme)
+            } else {
+                val ports = SnapserverListenInfo.fetch(station.host, station.httpPort) ?: station.ports
+                ClientTarget(station.host, ports?.streamPort ?: station.port)
+            }
+            ensureActive()
+            Log.i(TAG, "join dial=${client.scheme}://${client.host}:${client.port}")
+            startLocalSnapclient(client)
+        }
+    }
+
+    /** Stops listening to a joined station; our own broadcast, if running, gets the speaker back. */
+    fun leave() {
+        if (_state.value.listeningTo == null) return
+        Log.i(TAG, "leave host=${_state.value.listeningTo}")
+        joinJob?.cancel()
+        joinJob = null
+        _state.update { it.copy(listeningTo = null) }
+        val server = snapserverProcess
+        if (_state.value.isBroadcasting && server != null) {
+            startLocalSnapclient(ClientTarget("localhost", server.ports.streamPort))
+        } else {
+            stopLocalSnapclient()
+        }
+    }
+
+    private fun startLocalSnapclient(target: ClientTarget) {
         destroySnapclientProcess()
-        currentSnapclientHost = host
-        currentSnapclientPort = port
-        launchSnapclientProcess(host, port)
+        currentSnapclient = target
+        launchSnapclientProcess(target)
         val focus = audioFocus ?: AudioFocusController(
             context,
             onPause = { scope.launch { destroySnapclientProcess() } },
             onResume = {
                 scope.launch {
-                    val h = currentSnapclientHost
-                    if (h != null && snapclientProcess == null) {
-                        launchSnapclientProcess(h, currentSnapclientPort)
+                    val t = currentSnapclient
+                    if (t != null && snapclientProcess == null) {
+                        launchSnapclientProcess(t)
                     }
                 }
             },
@@ -167,12 +218,17 @@ class SnapcastManager @Inject constructor(
         focus.request()
     }
 
-    private fun launchSnapclientProcess(host: String, port: Int) {
+    private fun launchSnapclientProcess(target: ClientTarget) {
         val sc = SnapclientProcess(context).also { snapclientProcess = it }
-        snapclientJob = scope.launch { sc.start(host, port) }
+        snapclientStateJob = scope.launch {
+            sc.connectionState.collect { c -> _state.update { it.copy(clientConnection = c) } }
+        }
+        snapclientJob = scope.launch { sc.start(target.host, target.port, scheme = target.scheme) }
     }
 
     private fun destroySnapclientProcess() {
+        snapclientStateJob?.cancel()
+        snapclientStateJob = null
         snapclientJob?.cancel()
         snapclientJob = null
         snapclientProcess?.destroy()
@@ -181,7 +237,7 @@ class SnapcastManager @Inject constructor(
 
     private fun stopLocalSnapclient() {
         destroySnapclientProcess()
-        currentSnapclientHost = null
+        currentSnapclient = null
         audioFocus?.abandon()
     }
 
@@ -257,6 +313,9 @@ class SnapcastManager @Inject constructor(
         scope.launch { controlClient?.sendGroupSetClients(targetGroupId, connectedIds) }
         Log.d(TAG, "Merging ${groupsWithConnected.size} groups → $targetGroupId (${connectedIds.size} clients)")
     }
+
+    /** Where the local snapclient dials: our own snapserver, or a joined station. */
+    private data class ClientTarget(val host: String, val port: Int, val scheme: String = "tcp")
 
     companion object {
         private const val TAG = "SnapcastManager"

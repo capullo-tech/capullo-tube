@@ -105,6 +105,9 @@ dependencies {
     coreLibraryDesugaring(pins.desugar.jdk.libs.nio)
     implementation(pins.capullo.audio)
     implementation(pins.capullo.audio.ui)
+    // Public-link tunnel: TunnelManager + the cloudflared .so per ABI, carried by the AAR. Opt-in,
+    // hence a separate coordinate: it costs ~8 MB per ABI and an app is free not to have a tunnel.
+    implementation(pins.capullo.tunnel)
 
     ksp(libs.hilt.android.compiler)
     ksp(libs.room.compiler)

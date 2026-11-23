@@ -19,6 +19,7 @@ import tech.capullo.tubecapullo.data.youtube.YouTubeExtractorClient
 import tech.capullo.tubecapullo.data.youtube.YouTubeUrls
 import tech.capullo.tubecapullo.data.youtube.YtVideo
 import tech.capullo.tubecapullo.player.PlaybackCoordinator
+import tech.capullo.tubecapullo.snapcast.SnapcastManager
 import tech.capullo.tubecapullo.station.PlaySource
 import tech.capullo.tubecapullo.station.StationEngine
 import tech.capullo.tubecapullo.ui.nav.Route
@@ -40,6 +41,8 @@ sealed interface LinkEffect {
     data class Snackbar(val text: String) : LinkEffect
 
     data class Toast(val text: String) : LinkEffect
+
+    data object OpenMultiroom : LinkEffect
 }
 
 @HiltViewModel
@@ -49,6 +52,7 @@ class LinksViewModel @Inject constructor(
     private val stationEngine: StationEngine,
     private val settings: AppSettings,
     private val playlistLinks: PlaylistLinkRequests,
+    private val snapcast: SnapcastManager,
 ) : ViewModel() {
     private val _resolving = MutableStateFlow(false)
 
@@ -90,6 +94,11 @@ class LinksViewModel @Inject constructor(
             is LinkAction.OpenPlaylist -> {
                 playlistLinks.post(YouTubeUrls.playlistUrl(action.playlistId))
                 _effects.trySend(LinkEffect.Open(Route.Search))
+            }
+            is LinkAction.Join -> {
+                player.pause()
+                snapcast.join(action.station)
+                _effects.trySend(LinkEffect.OpenMultiroom)
             }
             is LinkAction.ForVideo -> resolve(action)
         }
@@ -164,6 +173,7 @@ class LinksViewModel @Inject constructor(
         get() = when (this) {
             is LinkTarget.Video -> videoId
             is LinkTarget.Playlist -> playlistId
+            is LinkTarget.Join -> "${station.host}:${station.httpPort}"
             LinkTarget.OtherYouTube, LinkTarget.NotYouTube -> "-"
         }
 
@@ -171,6 +181,7 @@ class LinksViewModel @Inject constructor(
         get() = when (this) {
             is LinkTarget.Video -> "video"
             is LinkTarget.Playlist -> "playlist"
+            is LinkTarget.Join -> "join"
             LinkTarget.OtherYouTube, LinkTarget.NotYouTube -> "none"
         }
 
