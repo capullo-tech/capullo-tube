@@ -176,6 +176,37 @@ class StationHomeV2Test {
     }
 
     @Test
+    fun `a resumed station shows its own played songs, a new station none`() = runTest(StandardTestDispatcher()) {
+        val engine = engine()
+        change(engine, playlist)
+        val played = listOf(engine.state.value.current!!.videoId) + next(engine, 2).dropLast(1)
+        val listId = engine.state.value.stationId
+
+        change(engine, PlaySource.SongRadio(video("ELSEWHERE")))
+        assertEquals("a new station starts with nothing played", emptyList<String>(), engine.state.value.earlier.map { it.videoId })
+
+        engine.resume(listId)
+        advanceUntilIdle()
+        assertEquals(played, engine.state.value.earlier.map { it.videoId })
+    }
+
+    @Test
+    fun `after an app restart Continue brings back the station's played songs`() = runTest(StandardTestDispatcher()) {
+        val before = engine()
+        change(before, playlist)
+        next(before, 3)
+        val left = before.state.value
+        before.onProgress(left.current!!.videoId, StationEngine.SNAPSHOT_SAVE_MS + 5_000, 240_000)
+        advanceUntilIdle()
+
+        val after = engine()
+        after.resume(left.stationId)
+        advanceUntilIdle()
+
+        assertEquals(left.earlier.map { it.videoId }, after.state.value.earlier.map { it.videoId })
+    }
+
+    @Test
     fun `a station played before an app restart resumes from Room exactly`() = runTest(StandardTestDispatcher()) {
         val before = engine()
         change(before, playlist)

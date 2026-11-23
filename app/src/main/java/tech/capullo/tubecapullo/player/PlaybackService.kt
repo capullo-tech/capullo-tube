@@ -376,8 +376,12 @@ class PlaybackService : MediaSessionService() {
     }
 
     private fun watchForStall(exo: ExoPlayer, position: Long) {
+        // Idle with nothing failed while meant to play is a stall too: on the OPPO a song once
+        // went idle right after its track change and stayed silent with no error to react to.
+        val idleSilently = exo.playbackState == Player.STATE_IDLE && exo.playerError == null &&
+            exo.mediaItemCount > 0 && coordinator.state.value.video != null
         val wantsToPlay = exo.playWhenReady &&
-            (exo.playbackState == Player.STATE_BUFFERING || exo.playbackState == Player.STATE_READY)
+            (exo.playbackState == Player.STATE_BUFFERING || exo.playbackState == Player.STATE_READY || idleSilently)
         val progress = position to exo.bufferedPosition
         if (!wantsToPlay || exo.isPlaying || progress != stallProgress) {
             stallProgress = progress

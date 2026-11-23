@@ -12,6 +12,7 @@ sqliteJdbc = "3.41.2.2"
 hiltNavigationCompose = "1.3.0"
 uiautomator = "2.3.0"
 desugarJdkLibs = "2.1.5"
+reorderable = "3.1.0"
 
 [libraries]
 capullo-audio = { module = "com.github.capullo-tech.capullo-audio:capullo-audio", version.ref = "capulloAudio" }
@@ -28,4 +29,5 @@ androidx-test-uiautomator = { group = "androidx.test.uiautomator", name = "uiaut
 mockk = { group = "io.mockk", name = "mockk", version.ref = "mockk" }
 sqlite-jdbc = { module = "org.xerial:sqlite-jdbc", version.ref = "sqliteJdbc" }
 androidx-hilt-lifecycle-viewmodel-compose = { module = "androidx.hilt:hilt-lifecycle-viewmodel-compose", version.ref = "hiltNavigationCompose" }
+reorderable = { module = "sh.calvin.reorderable:reorderable", version.ref = "reorderable" }
 desugar-jdk-libs-nio = { module = "com.android.tools:desugar_jdk_libs_nio", version.ref = "desugarJdkLibs" }

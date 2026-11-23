@@ -368,16 +368,21 @@ class StationEngine @Inject constructor(
             val inTail = queue.subList(at, queue.size).indexOfFirst { it.video.videoId == id }
             val queued = if (again || inTail < 0) -1 else at + inTail
             val row: String
+            var skipped = 0
             val slot = if (queued >= 0) {
                 row = "queue"
-                queue.removeAt(queued)
+                // Playing a song further down skips every song before it, as in any player's
+                // queue: the station plays on from there and refills once few are left.
+                skipped = queued - at
+                queue.subList(at, queued).clear()
+                queue.removeAt(at)
             } else {
                 row = if (again) "earlier" else "other"
                 Slot(video, Why(Provenance.USER, null, null), pinned = true)
             }
             dismissedIds -= id
             queue.add(at, slot)
-            log("jump id=$id from=$from row=$row at=$at title=${q(video.title)}")
+            log("jump id=$id from=$from row=$row at=$at skipped=$skipped title=${q(video.title)}")
             publishLocked()
             return at
         }
@@ -470,6 +475,38 @@ class StationEngine @Inject constructor(
             likesRound.removeAll { it.videoId == videoId }
             log("remove id=$videoId queued=$removed")
             growLocked()
+            publishLocked()
+        }
+    }
+
+    /**
+     * Moves an upcoming song to [to], a position among the upcoming songs (0 = next). A song
+     * dragged to the front (only Play next songs before it) is pinned like Play next, so songs
+     * a like adds later go after it. In a list the round follows the new order, so the move
+     * survives the next track change; songs added with Play next or by a like stay ahead of
+     * the list's own songs.
+     */
+    fun moveUpcoming(videoId: String, to: Int) {
+        synchronized(lock) {
+            val start = maxOf(current, 0) + 1
+            val from = (start until queue.size).firstOrNull { queue[it].video.videoId == videoId } ?: return
+            val moved = queue.removeAt(from)
+            val at = (start + to).coerceIn(start, queue.size)
+            val toFront = (start until at).all { queue[it].pinned }
+            val slot = if (toFront && !moved.pinned) Slot(moved.video, moved.why, pinned = true, blended = moved.blended) else moved
+            queue.add(at, slot)
+            if (source?.isCollection == true) {
+                val restStart = minOf(maxOf(roundPos, 0) + 1, round.size)
+                val rest = round.subList(restStart, round.size)
+                // A pinned song is an extra, outside the list's round, like Play next.
+                if (slot !== moved) rest.removeAll { it === moved }
+                val inRest = java.util.Collections.newSetFromMap(IdentityHashMap<Slot, Boolean>()).apply { addAll(rest) }
+                val reordered = queue.subList(start, queue.size).filter { it in inRest }
+                rest.clear()
+                rest += reordered
+            }
+            log("move id=$videoId from=${from - start} to=${at - start}" + if (slot !== moved) " pinned" else "")
+            persistLocked("move")
             publishLocked()
         }
     }
@@ -902,6 +939,9 @@ class StationEngine @Inject constructor(
         dismissedIds.clear()
         current = -1
         history.clear()
+        // The queue's played rows belong to the station: a new or resumed one starts its own.
+        earlier.clear()
+        playing = null
         steppingBackTo = null
         chaining = false
         chainSeed = null
@@ -1001,6 +1041,7 @@ class StationEngine @Inject constructor(
         queue += slots[saved.left]
         queue += saved.upcoming.map(slots::get)
         history += saved.history.map(slots::get)
+        saved.history.forEach { pushEarlierLocked(slots[it].video) }
         dismissedIds += saved.dismissedIds
         chainSeed = saved.chainSeed
         likesRound += saved.likesRound
@@ -1514,7 +1555,7 @@ class StationEngine @Inject constructor(
             source = source,
             current = queue.getOrNull(now)?.video,
             earlier = earlier.toList(),
-            queued = queue.drop(now + 1).map { UpNextItem(it.video, it.why, it.pinned) },
+            queued = queue.drop(now + 1).map { UpNextItem(it.video, it.why, it.pinned, it.blended) },
             isCollection = source?.isCollection == true,
             shuffle = shuffle,
             repeat = repeat,

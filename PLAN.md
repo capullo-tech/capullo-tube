@@ -229,7 +229,7 @@ Sessions (about 20 minutes each, skip freely):
 | L1 | Last.fm songs actually play | `advance ... prov=SIMILAR` lines | at least 1 in every 4 songs in sessions 1-2 |
 | L2 | They fit the station | owner's call per SIMILAR song: fits / neutral / wrong | wrong <= 1 in 5 |
 | L3 | They are new | SIMILAR songs the owner would not have expected from YouTube's radio | at least half |
-| L4 | No duplicates | the same upload (video id) twice in a session; another version of a song is fine (owner, 2026-11-20) | none |
+| L4 | No duplicates | the same recording twice, any upload of it; a marked different version (live, acoustic, remix, cover) is fine (owner, 2026-11-20) | none |
 | L5 | Wrong version | live/cover/karaoke/sped-up played as a SIMILAR song | <= 1 per session |
 | L6 | Start stays fast | `start` to first `chain` line | no slower than before (<= 6 s on Wi-Fi) |
 | L7 | Likes stay responsive | `like id=` to `like mode=blend` | <= YouTube fetch + 3 s, every like |
@@ -248,9 +248,9 @@ Inconclusive: Last.fm answered nothing for the seed (`via=none` / `unparsed`); p
 |---|---|---|---|
 | L1 Last.fm songs play | 5 of 16 | 2 of 6 | 9 of 23 |
 | L2 fit | all fit | Estallando fits | ADMO, Charly García, La parte de adelante, Canción para Naufragios, Nos Siguen Pegando Abajo, Crimen fit; Psychosocial off (came from a like, not counted) |
-| L4 same upload twice | none | Prófugos re-upload: fixed (8f7bd0f) | none (the two repeats are Continue resuming the song it left) |
+| L4 same recording twice | none | Prófugos re-upload: fixed (534b6cb) | none (the two repeats are Continue resuming the song it left) |
 | L6 start | Mix 4 s, Last.fm +1.3 s | Mix 4 s, Last.fm +1.6 s | Mix 4 s, Last.fm +1 s |
-| L8 a like brings a Last.fm song | 3 of 3 | 2 of 2 | 6 of 6 likes (6 per like now gives 3, f74f13c) |
+| L8 a like brings a Last.fm song | 3 of 3 | 2 of 2 | 6 of 6 likes (6 per like now gives 3, c59e345) |
 | L9 Now Playing matches | always | always | always; one silent stall on Crimen, now recovered (watchdog) |
 | L10 Last.fm limits | none | none | none |
 | L11 Deep less obvious | | | yes, once the 0.1 floor was removed (Redonditos fell back to rank 1) |

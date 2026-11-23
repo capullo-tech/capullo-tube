@@ -164,7 +164,7 @@ fun SettingsScreen(
                 explanation = if (moreLikeRows == 0) {
                     "Off: Home shows no More like rows"
                 } else {
-                    "Home rows of songs like your newest likes"
+                    "Home rows of songs like where your Continue cards left off"
                 },
                 value = moreLikeRows,
                 max = AppSettings.MAX_MORE_LIKE_ROWS,
@@ -256,7 +256,7 @@ fun SettingsScreen(
             StepperItem(
                 icon = Icons.Default.Radio,
                 title = "Songs added per like",
-                explanation = "After a liked song, and between songs in Liked radio",
+                explanation = "Also used between likes in Liked radio",
                 value = songsPerLike,
                 max = AppSettings.MAX_SONGS_PER_LIKE,
                 step = AppSettings.SONGS_PER_LIKE_STEP,
@@ -528,19 +528,19 @@ fun SettingsScreen(
 
 private val LikeMode.label: String
     get() = when (this) {
-        LikeMode.BLEND -> "Blend in"
-        LikeMode.SAVE_ONLY -> "Save only"
-        LikeMode.SWITCH_NOW -> "Switch now"
+        LikeMode.BLEND -> "Add similar songs"
+        LikeMode.SAVE_ONLY -> "Just save"
+        LikeMode.SWITCH_NOW -> "Start a radio"
     }
 
 private fun LikeMode.explanation(songsPerLike: Int): String = when (this) {
     LikeMode.BLEND -> if (songsPerLike == 0) {
-        "Songs added per like is 0, so the like is only saved"
+        "Songs added per like is 0, so it just saves"
     } else {
-        "$songsPerLike songs like it play next, then the queue goes on"
+        "$songsPerLike similar songs play next"
     }
-    LikeMode.SAVE_ONLY -> "The like is saved; the queue does not change"
-    LikeMode.SWITCH_NOW -> "Songs like it play after this song; a list becomes a radio"
+    LikeMode.SAVE_ONLY -> "The queue stays as it is"
+    LikeMode.SWITCH_NOW -> "A radio from the liked song replaces what's next"
 }
 
 private val HistoryRetention.label: String

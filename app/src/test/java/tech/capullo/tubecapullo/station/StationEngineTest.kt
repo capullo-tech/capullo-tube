@@ -320,8 +320,9 @@ class StationEngineTest {
     }
 
     @Test
-    fun `a jump in a radio plays the tapped track, then the queue goes on`() = runTest(StandardTestDispatcher()) {
-        val engine = engine()
+    fun `a jump in a radio plays the tapped track, skips the ones before it, and refills when few are left`() = runTest(StandardTestDispatcher()) {
+        val mixSeeds = mutableListOf<String>()
+        val engine = engine(fakeExtractor(mixSeeds))
         engine.start(PlaySource.SongRadio(video("SEED")))
         advanceUntilIdle()
         engine.advanceThrough(1)
@@ -331,9 +332,45 @@ class StationEngineTest {
         val at = engine.jumpTo(tapped)!!
         assertEquals(tapped.videoId, engine.queue().idAt(at))
         engine.onQueueAdvanced(at)
+        advanceUntilIdle()
 
         assertEquals(tapped, engine.state.value.current)
-        assertEquals(before - tapped.videoId, engine.queuedIds().take(before.size - 1))
+        assertTrue("skipped songs are gone", engine.queuedIds().none { it in before })
+        assertEquals("the radio chained from the tapped track", tapped.videoId, mixSeeds.last())
+        assertTrue(engine.queuedIds().isNotEmpty())
+    }
+
+    @Test
+    fun `a jump skips the songs a like added above the tapped one too`() = runTest(StandardTestDispatcher()) {
+        val engine = engine()
+        engine.start(PlaySource.SongRadio(video("SEED")))
+        advanceUntilIdle()
+        engine.advanceThrough(2)
+        val liked = engine.state.value.current!!
+        engine.toggleLike(liked)
+        advanceUntilIdle()
+        val queued = engine.state.value.queued
+        val added = queued.takeWhile { it.why.fromVideoId == liked.videoId }.map { it.video.videoId }
+        assertTrue("precondition: the like added songs", added.isNotEmpty())
+        val tapped = queued[added.size + 2].video
+
+        engine.onQueueAdvanced(engine.jumpTo(tapped)!!)
+
+        assertEquals(tapped, engine.state.value.current)
+        assertTrue("the like's songs above the tap are skipped", engine.queuedIds().none { it in added })
+    }
+
+    @Test
+    fun `a jump to the next song skips nothing`() = runTest(StandardTestDispatcher()) {
+        val engine = engine()
+        engine.start(PlaySource.SongRadio(video("SEED")))
+        advanceUntilIdle()
+        engine.advanceThrough(1)
+        val before = engine.queuedIds()
+
+        engine.onQueueAdvanced(engine.jumpTo(engine.state.value.queued.first().video)!!)
+
+        assertEquals(before.drop(1), engine.queuedIds().take(before.size - 1))
     }
 
     @Test
@@ -627,6 +664,24 @@ class StationLikedRadioTest {
     @Before fun setUp() = silenceStationLog()
 
     @After fun tearDown() = unmockkStatic(Log::class)
+
+    @Test
+    fun `tapping the last queued song in liked radio skips to it and the round refills`() = runTest(StandardTestDispatcher()) {
+        val engine = engine(likes)
+        walk(engine, picks = 1)
+        val before = engine.queuedIds()
+        val tapped = engine.state.value.queued.last().video
+
+        engine.onQueueAdvanced(engine.jumpTo(tapped)!!)
+        advanceUntilIdle()
+
+        assertEquals(tapped, engine.state.value.current)
+        assertTrue(engine.queuedIds().none { it in before })
+        assertTrue(
+            "the lookahead is refilled with the next likes",
+            engine.queuedIds().size >= StationEngine.LIKED_RADIO_LOOKAHEAD,
+        )
+    }
 
     @Test
     fun `each like is followed by N tracks of its own Mix, in Mix order`() = runTest(StandardTestDispatcher()) {
@@ -1356,6 +1411,124 @@ class StationPairsTest {
             assertTrue("a unit without a like first: $played", like in likeIds)
             assertPairs(mixIds(like).take(n / 2), relatedHead(like, n / 2), unit.drop(1))
         }
+    }
+}
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class StationMoveTest {
+    private val ten = (1..10).map { video("T$it") }
+
+    private fun extractor(): YouTubeExtractorClient {
+        val extractor = fakeExtractor()
+        coEvery { extractor.playlistInfo(any(), any()) } returns YtVideoList("Road trip", ten)
+        return extractor
+    }
+
+    private fun TestScope.engine() = StationEngine(
+        extractor(),
+        this,
+        mockk(relaxed = true),
+        mockk(relaxed = true),
+        Random(RANDOM_SEED),
+        fakeSettings(),
+        mockk(relaxed = true),
+        mockk(relaxed = true),
+        FakeSimilarFinder(),
+    )
+
+    @Before fun setUp() = silenceStationLog()
+
+    @After fun tearDown() = unmockkStatic(Log::class)
+
+    @Test
+    fun `a dragged radio song plays at its new place`() = runTest(StandardTestDispatcher()) {
+        val engine = engine()
+        engine.start(PlaySource.SongRadio(video("SEED")))
+        advanceUntilIdle()
+        engine.advanceThrough(1)
+        val before = engine.queuedIds()
+
+        engine.moveUpcoming(before[4], to = 0)
+
+        assertEquals(listOf(before[4]) + before.filterIndexed { i, _ -> i != 4 }, engine.queuedIds())
+        engine.onQueueAdvanced(1)
+        advanceUntilIdle()
+        assertEquals(before[4], engine.state.value.current?.videoId)
+    }
+
+    @Test
+    fun `a move in a playlist survives the next song`() = runTest(StandardTestDispatcher()) {
+        val engine = engine()
+        engine.start(PlaySource.Playlist(YouTubeUrls.playlistUrl(PLAYLIST_ID), "Trip"))
+        advanceUntilIdle()
+        engine.advanceThrough(1)
+        val before = engine.queuedIds()
+
+        engine.moveUpcoming(before.last(), to = 1)
+        engine.onQueueAdvanced(1)
+        advanceUntilIdle()
+
+        assertEquals(before.last(), engine.queuedIds().first())
+    }
+
+    @Test
+    fun `a song dragged to play next stays next when a like adds songs`() = runTest(StandardTestDispatcher()) {
+        val engine = engine()
+        engine.start(PlaySource.SongRadio(video("SEED")))
+        advanceUntilIdle()
+        engine.advanceThrough(1)
+        val dragged = engine.queuedIds()[6]
+
+        engine.moveUpcoming(dragged, to = 0)
+        engine.toggleLike(engine.state.value.current!!)
+        advanceUntilIdle()
+
+        assertEquals(dragged, engine.queuedIds().first())
+        assertTrue(engine.state.value.queued.first().pinned)
+    }
+
+    @Test
+    fun `a song dragged further down is not pinned`() = runTest(StandardTestDispatcher()) {
+        val engine = engine()
+        engine.start(PlaySource.SongRadio(video("SEED")))
+        advanceUntilIdle()
+        engine.advanceThrough(1)
+        val dragged = engine.queuedIds()[0]
+
+        engine.moveUpcoming(dragged, to = 3)
+
+        assertEquals(dragged, engine.queuedIds()[3])
+        assertFalse(engine.state.value.queued[3].pinned)
+    }
+
+    @Test
+    fun `in a playlist a song dragged to next plays next and is not played twice`() = runTest(StandardTestDispatcher()) {
+        val engine = engine()
+        engine.start(PlaySource.Playlist(YouTubeUrls.playlistUrl(PLAYLIST_ID), "Trip"))
+        advanceUntilIdle()
+        engine.advanceThrough(1)
+        val dragged = engine.queuedIds().last()
+
+        engine.moveUpcoming(dragged, to = 0)
+        engine.onQueueAdvanced(1)
+        advanceUntilIdle()
+
+        assertEquals(dragged, engine.state.value.current?.videoId)
+        assertFalse(dragged in engine.queuedIds())
+    }
+
+    @Test
+    fun `moving a song that is not upcoming, or past the end, changes nothing wrong`() = runTest(StandardTestDispatcher()) {
+        val engine = engine()
+        engine.start(PlaySource.SongRadio(video("SEED")))
+        advanceUntilIdle()
+        engine.advanceThrough(1)
+        val before = engine.queuedIds()
+
+        engine.moveUpcoming("not-queued0", to = 0)
+        assertEquals(before, engine.queuedIds())
+        engine.moveUpcoming(before.first(), to = 999)
+        assertEquals(before.drop(1) + before.first(), engine.queuedIds())
     }
 }
 

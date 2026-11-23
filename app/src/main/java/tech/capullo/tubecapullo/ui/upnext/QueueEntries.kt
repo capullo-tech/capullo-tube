@@ -16,6 +16,7 @@ internal data class TrackEntry(
     val pinned: Boolean,
     val state: RowState,
     override val key: String,
+    val blended: Boolean = false,
 ) : QueueEntry {
     val removable: Boolean get() = state == RowState.UPCOMING
 }
@@ -52,8 +53,12 @@ internal fun queueEntries(state: StationState): List<QueueEntry> = buildList {
             add(ChapterEntry(i + 1, chapter.title, chapter.startMs, rowState, "chapter-$i"))
         }
     }
-    state.queued.forEachIndexed { i, item ->
-        add(TrackEntry(item.video, item.why, item.pinned, RowState.UPCOMING, "up-$i"))
+    // Keys follow the song, not its place, so a dragged row keeps its identity.
+    val seen = HashMap<String, Int>()
+    state.queued.forEach { item ->
+        val n = seen.merge(item.video.videoId, 1, Int::plus)!!
+        val key = if (n == 1) "up-${item.video.videoId}" else "up-${item.video.videoId}-$n"
+        add(TrackEntry(item.video, item.why, item.pinned, RowState.UPCOMING, key, item.blended))
     }
     if (none { it.rowState == RowState.UPCOMING }) {
         val reason = when {
@@ -65,8 +70,16 @@ internal fun queueEntries(state: StationState): List<QueueEntry> = buildList {
     }
 }
 
-internal fun initialIndex(entries: List<QueueEntry>): Int {
-    val upcoming = entries.indexOfFirst { it.rowState == RowState.UPCOMING }
-    if (upcoming >= 0) return upcoming
-    return entries.indexOfFirst { it.rowState == RowState.CURRENT }.coerceAtLeast(0)
+/** The sheet opens on the playing song (an album's row, its chapters below it). */
+internal fun initialIndex(entries: List<QueueEntry>): Int = entries.indexOfFirst { it.rowState == RowState.CURRENT }.coerceAtLeast(0)
+
+/** [key]'s place among the upcoming songs, 0 = next; null for any other row. */
+internal fun upcomingPosition(entries: List<QueueEntry>, key: Any): Int? {
+    var n = 0
+    for (entry in entries) {
+        if (entry !is TrackEntry || entry.state != RowState.UPCOMING) continue
+        if (entry.key == key) return n
+        n++
+    }
+    return null
 }
