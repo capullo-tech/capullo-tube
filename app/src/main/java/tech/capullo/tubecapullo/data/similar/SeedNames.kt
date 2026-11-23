@@ -3,6 +3,7 @@ package tech.capullo.tubecapullo.data.similar
 import tech.capullo.tubecapullo.data.lyrics.LyricsQuery
 import tech.capullo.tubecapullo.data.youtube.YtVideo
 import tech.capullo.tubecapullo.util.TitleCleaner
+import java.text.Normalizer
 
 /**
  * [trusted] is false when the artist is only the uploader's name (a label such as T-Series
@@ -51,7 +52,9 @@ object SeedNames {
         return text.replace(SPACES, " ").trim().trimEnd('-', '–', '—', ':', ',').trim()
     }
 
-    fun key(name: String): String = name.lowercase().filter { it.isLetterOrDigit() }
+    /** Letters and digits, lowercase, accents folded: "Prófugos" and "Profugos" share a key. */
+    fun key(name: String): String = Normalizer.normalize(name.lowercase(), Normalizer.Form.NFD)
+        .filter { it.isLetterOrDigit() }
 
     private const val TOPIC_SUFFIX = " - Topic"
 

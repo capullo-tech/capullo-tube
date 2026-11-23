@@ -81,6 +81,9 @@ class PlayHistory @Inject constructor(
             val played = dao.byId(videoId)
             val removed = dao.delete(videoId)
             lyricsDao.deleteUnplayed(keepLyricsOf.orEmpty())
+            // Only the song's own answers go. The artist fallback's rows (artist.getSimilar,
+            // artist.getTopTracks) key on the artist, are shared by every song of that artist,
+            // and expire with the rest of the cache, or go with Clear play history.
             played?.let { lastfmCache.deleteRequests(LastfmClient.similarRequestKeys(it.toYtVideo())) }
             Log.i(TAG, "play-history remove id=$videoId removed=$removed")
         }.onFailure {

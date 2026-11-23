@@ -28,6 +28,8 @@ jobs:
         run: ./gradlew spotlessCheck --no-configuration-cache
       - name: Check lint
         run: ./gradlew :app:lintDebug
+      - name: Unit tests
+        run: ./gradlew :app:testDebugUnitTest
       - name: Upload lint report
         if: failure()
         uses: actions/upload-artifact@v4

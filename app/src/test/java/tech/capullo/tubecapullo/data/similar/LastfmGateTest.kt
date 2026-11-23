@@ -26,6 +26,7 @@ class LastfmGateTest {
         }
         override suspend fun deleteFetchedBefore(cutoff: Long) = 0
         override suspend fun deleteAll() = 0
+        override suspend fun deleteRequests(requests: List<String>) = 0
     }
     private val sent = mutableListOf<Pair<Long, String>>()
     private var answer = OK

@@ -1608,6 +1608,24 @@ class StationSimilarTest {
     }
 
     @Test
+    fun `a blend like of 6 brings 3 Last fm songs when YouTube's related list is full too`() = runTest(StandardTestDispatcher()) {
+        songs.value = AppSettings.MAX_SONGS_PER_LIKE
+        val engine = engine(extractor = fakeExtractor(related = ::fakeRelated))
+        engine.start(PlaySource.SongRadio(video("SEED")))
+        advanceUntilIdle()
+        engine.advanceThrough(2)
+        advanceUntilIdle()
+        val liked = engine.state.value.current!!
+
+        engine.toggleLike(liked)
+        advanceUntilIdle()
+
+        val blended = engine.state.value.queued.take(AppSettings.MAX_SONGS_PER_LIKE)
+        assertTrue(blended.all { it.why.fromVideoId == liked.videoId })
+        assertEquals(AppSettings.MAX_SONGS_PER_LIKE / 2, blended.count { it.why.provenance == Provenance.SIMILAR })
+    }
+
+    @Test
     fun `a blend like with no Last fm songs is YouTube's picks only`() = runTest(StandardTestDispatcher()) {
         val engine = engine(FakeSimilarFinder())
         engine.start(PlaySource.SongRadio(video("SEED")))
