@@ -320,8 +320,9 @@ class StationEngineTest {
     }
 
     @Test
-    fun `a jump in a radio plays the tapped track, then the queue goes on`() = runTest(StandardTestDispatcher()) {
-        val engine = engine()
+    fun `a jump in a radio plays the tapped track, skips the ones before it, and refills when few are left`() = runTest(StandardTestDispatcher()) {
+        val mixSeeds = mutableListOf<String>()
+        val engine = engine(fakeExtractor(mixSeeds))
         engine.start(PlaySource.SongRadio(video("SEED")))
         advanceUntilIdle()
         engine.advanceThrough(1)
@@ -331,9 +332,25 @@ class StationEngineTest {
         val at = engine.jumpTo(tapped)!!
         assertEquals(tapped.videoId, engine.queue().idAt(at))
         engine.onQueueAdvanced(at)
+        advanceUntilIdle()
 
         assertEquals(tapped, engine.state.value.current)
-        assertEquals(before - tapped.videoId, engine.queuedIds().take(before.size - 1))
+        assertTrue("skipped songs are gone", engine.queuedIds().none { it in before })
+        assertEquals("the radio chained from the tapped track", tapped.videoId, mixSeeds.last())
+        assertTrue(engine.queuedIds().isNotEmpty())
+    }
+
+    @Test
+    fun `a jump to the next song skips nothing`() = runTest(StandardTestDispatcher()) {
+        val engine = engine()
+        engine.start(PlaySource.SongRadio(video("SEED")))
+        advanceUntilIdle()
+        engine.advanceThrough(1)
+        val before = engine.queuedIds()
+
+        engine.onQueueAdvanced(engine.jumpTo(engine.state.value.queued.first().video)!!)
+
+        assertEquals(before.drop(1), engine.queuedIds().take(before.size - 1))
     }
 
     @Test
@@ -627,6 +644,24 @@ class StationLikedRadioTest {
     @Before fun setUp() = silenceStationLog()
 
     @After fun tearDown() = unmockkStatic(Log::class)
+
+    @Test
+    fun `tapping the last queued song in liked radio skips to it and the round refills`() = runTest(StandardTestDispatcher()) {
+        val engine = engine(likes)
+        walk(engine, picks = 1)
+        val before = engine.queuedIds()
+        val tapped = engine.state.value.queued.last().video
+
+        engine.onQueueAdvanced(engine.jumpTo(tapped)!!)
+        advanceUntilIdle()
+
+        assertEquals(tapped, engine.state.value.current)
+        assertTrue(engine.queuedIds().none { it in before })
+        assertTrue(
+            "the lookahead is refilled with the next likes",
+            engine.queuedIds().size >= StationEngine.LIKED_RADIO_LOOKAHEAD,
+        )
+    }
 
     @Test
     fun `each like is followed by N tracks of its own Mix, in Mix order`() = runTest(StandardTestDispatcher()) {

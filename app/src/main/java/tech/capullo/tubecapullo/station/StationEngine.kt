@@ -368,16 +368,21 @@ class StationEngine @Inject constructor(
             val inTail = queue.subList(at, queue.size).indexOfFirst { it.video.videoId == id }
             val queued = if (again || inTail < 0) -1 else at + inTail
             val row: String
+            var skipped = 0
             val slot = if (queued >= 0) {
                 row = "queue"
-                queue.removeAt(queued)
+                // Playing a song further down skips the ones before it, as in any player's
+                // queue: the station plays on from there and refills once few are left.
+                skipped = queued - at
+                queue.subList(at, queued).clear()
+                queue.removeAt(at)
             } else {
                 row = if (again) "earlier" else "other"
                 Slot(video, Why(Provenance.USER, null, null), pinned = true)
             }
             dismissedIds -= id
             queue.add(at, slot)
-            log("jump id=$id from=$from row=$row at=$at title=${q(video.title)}")
+            log("jump id=$id from=$from row=$row at=$at skipped=$skipped title=${q(video.title)}")
             publishLocked()
             return at
         }
