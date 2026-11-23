@@ -6,6 +6,8 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import tech.capullo.tubecapullo.BuildConfig
+import tech.capullo.tubecapullo.data.similar.SimilarDepth
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -134,6 +136,37 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
         _lyricsDelayMs.value = delay
     }
 
+    // Without a built-in key the feature starts off: Settings would otherwise offer songs it
+    // cannot fetch until the user adds a personal key.
+    private val _similarOnline = MutableStateFlow(prefs.getBoolean(KEY_SIMILAR_ONLINE, BuildConfig.LASTFM_API_KEY.isNotBlank()))
+
+    val similarOnline: StateFlow<Boolean> = _similarOnline.asStateFlow()
+
+    fun setSimilarOnline(enabled: Boolean) {
+        prefs.edit { putBoolean(KEY_SIMILAR_ONLINE, enabled) }
+        _similarOnline.value = enabled
+    }
+
+    private val _similarDepth = MutableStateFlow(readEnum(KEY_SIMILAR_DEPTH, SimilarDepth.FAMILIAR))
+
+    val similarDepth: StateFlow<SimilarDepth> = _similarDepth.asStateFlow()
+
+    fun setSimilarDepth(depth: SimilarDepth) {
+        prefs.edit { putString(KEY_SIMILAR_DEPTH, depth.name) }
+        _similarDepth.value = depth
+    }
+
+    private val _lastfmApiKey = MutableStateFlow(prefs.getString(KEY_LASTFM_API_KEY, null).orEmpty())
+
+    /** The user's own Last.fm key; empty means the built-in key. */
+    val lastfmApiKey: StateFlow<String> = _lastfmApiKey.asStateFlow()
+
+    fun setLastfmApiKey(key: String) {
+        val trimmed = key.trim()
+        prefs.edit { putString(KEY_LASTFM_API_KEY, trimmed) }
+        _lastfmApiKey.value = trimmed
+    }
+
     private val _historyRetention = MutableStateFlow(readEnum(KEY_HISTORY_RETENTION, HistoryRetention.FOREVER))
 
     val historyRetention: StateFlow<HistoryRetention> = _historyRetention.asStateFlow()
@@ -178,6 +211,9 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
         private const val KEY_LYRICS_ONLINE = "lyrics_online"
         private const val KEY_LYRICS_DELAY_MS = "lyrics_delay_ms"
         private const val KEY_HISTORY_RETENTION = "history_retention"
+        private const val KEY_SIMILAR_ONLINE = "similar_online"
+        private const val KEY_SIMILAR_DEPTH = "similar_depth"
+        private const val KEY_LASTFM_API_KEY = "lastfm_api_key"
     }
 }
 

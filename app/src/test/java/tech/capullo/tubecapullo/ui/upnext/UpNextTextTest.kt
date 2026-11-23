@@ -97,4 +97,14 @@ class UpNextTextTest {
         assertEquals(nothing, UpNextText.likeChip(LikeEffect.Blended(seed, added = 0)))
         assertEquals(nothing, UpNextText.likeChip(LikeEffect.Switched(seed, added = 0)))
     }
+
+    @Test
+    fun `a Last fm pick names its seed only`() {
+        val song = video("Pixies - Where Is My Mind?", "Pixies")
+        assertEquals(
+            "Similar to Radiohead - Creep",
+            UpNextText.provenance(Why(Provenance.SIMILAR, "XFkzRNyygfk", "Radiohead - Creep (Official Video)"), song),
+        )
+        assertEquals("Similar", UpNextText.provenance(Why(Provenance.SIMILAR, null, null), song))
+    }
 }

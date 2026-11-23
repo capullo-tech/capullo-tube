@@ -30,6 +30,10 @@ class HistoryDeletesTest {
         }
         coEvery { deleteAll() } coAnswers { db.update(PlayHistoryDao.DELETE_ALL) }
         coEvery { delete(any()) } coAnswers { db.update(PlayHistoryDao.DELETE_BY_ID, firstArg<String>()) }
+        coEvery { byId(any()) } coAnswers {
+            val id = firstArg<String>()
+            if (id == "creep") PlayedTrackEntity("creep", "Radiohead - Creep", "Radiohead", 239, null, 3, 1) else null
+        }
     }
 
     private val lyricsDao = mockk<LyricsDao> {
@@ -39,7 +43,22 @@ class HistoryDeletesTest {
         }
     }
 
-    private val history = PlayHistory(dao, lyricsDao)
+    private val lastfmCache = mockk<LastfmCacheDao> {
+        coEvery { deleteFetchedBefore(any()) } coAnswers { db.update(LastfmCacheDao.DELETE_FETCHED_BEFORE, firstArg<Long>()) }
+        coEvery { deleteAll() } coAnswers { db.update(LastfmCacheDao.DELETE_ALL) }
+        coEvery { deleteRequests(any()) } coAnswers {
+            firstArg<List<String>>().sumOf { db.update("DELETE FROM lastfm_cache WHERE request = :request", it) }
+        }
+    }
+
+    private val resolvedTracks = mockk<ResolvedTrackDao> {
+        coEvery { deleteExpired(any(), any()) } coAnswers {
+            db.update(ResolvedTrackDao.DELETE_EXPIRED, firstArg<Long>(), secondArg<Long>())
+        }
+        coEvery { deleteAll() } coAnswers { db.update(ResolvedTrackDao.DELETE_ALL) }
+    }
+
+    private val history = PlayHistory(dao, lyricsDao, lastfmCache, resolvedTracks)
 
     private val untouched = listOf("liked_track", "liked_album", "station_snapshot")
 
@@ -80,7 +99,7 @@ class HistoryDeletesTest {
         mockkStatic(Log::class)
         every { Log.i(any(), any()) } returns 0
         every { Log.w(any(), any<String>(), any()) } returns 0
-        val schema = File("schemas/tech.capullo.tubecapullo.data.history.TubeCapulloDatabase/7.json")
+        val schema = File("schemas/tech.capullo.tubecapullo.data.history.TubeCapulloDatabase/9.json")
         Json.parseToJsonElement(schema.readText()).jsonObject.getValue("database").jsonObject.getValue("entities").jsonArray
             .map { it.jsonObject }
             .forEach { entity ->
@@ -106,6 +125,11 @@ class HistoryDeletesTest {
                 lyrics("likedAlbum"),
                 lyrics("playing"),
                 lyrics("orphan"),
+                "INSERT INTO lastfm_cache VALUES ('fresh', '{}', ${daysAgo(5)}), ('stale', '{}', ${daysAgo(40)})",
+                "INSERT INTO resolved_track VALUES ('hitNew', 'a', 't', 'u', 200, NULL, ${daysAgo(40)}), " +
+                    "('hitOld', 'b', 't', 'u', 200, NULL, ${daysAgo(200)}), " +
+                    "('missNew', NULL, NULL, NULL, 0, NULL, ${daysAgo(5)}), " +
+                    "('missOld', NULL, NULL, NULL, 0, NULL, ${daysAgo(40)})",
             ).forEach { statement.execute(it) }
         }
     }
@@ -203,5 +227,31 @@ class HistoryDeletesTest {
         assertEquals(3, db.update(StationSnapshotDao.DELETE_ALL))
 
         assertEquals(emptyList<Any>(), db.ids("station_snapshot", column = "id"))
+    }
+
+    @Test
+    fun `pruning drops expired Last fm answers and lookups even when history is kept forever`() = runTest {
+        history.prune(HistoryRetention.FOREVER, keepLyricsOf = null, nowEpochMs = now)
+
+        assertEquals(listOf<Any>("fresh"), db.ids("lastfm_cache", column = "request"))
+        assertEquals(listOf<Any>("hitNew", "missNew"), db.ids("resolved_track", column = "nameKey"))
+    }
+
+    @Test
+    fun `clearing history also clears the Last fm answers and lookups`() = runTest {
+        history.clear(keepLyricsOf = null)
+
+        assertEquals(emptyList<Any>(), db.ids("lastfm_cache", column = "request"))
+        assertEquals(emptyList<Any>(), db.ids("resolved_track", column = "nameKey"))
+    }
+
+    @Test
+    fun `removing a song drops the Last fm answers its radio fetched, and only those`() = runTest {
+        val creep = "track.getSimilar|artist=radiohead|track=creep|limit=${tech.capullo.tubecapullo.data.similar.LastfmSimilarFinder.SIMILAR_NAMES}"
+        db.createStatement().use { it.execute("INSERT INTO lastfm_cache VALUES ('$creep', '{}', ${daysAgo(1)})") }
+
+        history.remove("creep", keepLyricsOf = null)
+
+        assertEquals(listOf<Any>("fresh", "stale"), db.ids("lastfm_cache", column = "request"))
     }
 }

@@ -1,4 +1,13 @@
 import com.android.build.api.artifact.SingleArtifact
+import java.util.Properties
+
+// Last.fm read-only key: LASTFM_API_KEY in the environment (CI secret), else lastfm.apiKey in
+// local.properties. Without one the app builds and similar songs stay off until the user adds
+// a personal key in Settings.
+val lastfmApiKey: String = System.getenv("LASTFM_API_KEY")?.takeIf { it.isNotBlank() }
+    ?: rootProject.file("local.properties").takeIf { it.exists() }
+        ?.let { file -> Properties().apply { file.inputStream().use(::load) }.getProperty("lastfm.apiKey") }
+    ?: ""
 
 plugins {
     alias(libs.plugins.android.application)
@@ -19,6 +28,7 @@ android {
         versionCode = 2
         versionName = "0.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("String", "LASTFM_API_KEY", "\"$lastfmApiKey\"")
     }
 
     val releaseKeystore = System.getenv("RELEASE_KEYSTORE_FILE")
@@ -57,6 +67,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     packaging {
         resources {

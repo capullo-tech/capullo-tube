@@ -152,4 +152,48 @@ class MigrationTest {
             )
         }
     }
+
+    @Test
+    fun `7 to 8 keeps every row of every table and adds resolved_track as Room expects it`() {
+        DriverManager.getConnection("jdbc:sqlite::memory:").use { db ->
+            db.create(7)
+            db.exec(
+                "INSERT INTO liked_track VALUES ('9bZkp7q19f0', 'Gangnam Style', NULL, 252, NULL, 2000)",
+                "INSERT INTO played_track VALUES ('dQw4w9WgXcQ', 'Never Gonna', 'Rick Astley', 213, 'https://i/1', 7, 5000)",
+                "INSERT INTO liked_album VALUES ('AAAAAAAAAAA', 'Album', NULL, 2700, NULL, 1)",
+                "INSERT INTO station_snapshot VALUES (1, 2, '{}')",
+                "INSERT INTO lyrics VALUES ('dQw4w9WgXcQ', 'synced', 'lrclib-get', '[00:01.00]a', 1, 250)",
+            )
+            val tables = entities(7).map { it.text("tableName") }
+            val before = tables.associateWith { db.rows("SELECT * FROM `$it` ORDER BY 1") }
+
+            TubeCapulloDatabase.MIGRATION_7_8.migrate(database(db))
+
+            tables.forEach { assertEquals("table $it", before.getValue(it), db.rows("SELECT * FROM `$it` ORDER BY 1")) }
+            db.assertSchema(8)
+            db.exec(
+                "INSERT INTO resolved_track VALUES ('foofighters|everlong', 'eBG7P-K-r1Y', 'Everlong', 'Foo Fighters', 250, NULL, 1)",
+                "INSERT INTO resolved_track VALUES ('rubengonzalez|fabiando', NULL, NULL, NULL, 0, NULL, 2)",
+            )
+        }
+    }
+
+    @Test
+    fun `8 to 9 keeps every row of every table and adds lastfm_cache as Room expects it`() {
+        DriverManager.getConnection("jdbc:sqlite::memory:").use { db ->
+            db.create(8)
+            db.exec(
+                "INSERT INTO played_track VALUES ('dQw4w9WgXcQ', 'Never Gonna', 'Rick Astley', 213, 'https://i/1', 7, 5000)",
+                "INSERT INTO resolved_track VALUES ('foofighters|everlong', 'eBG7P-K-r1Y', 'Everlong', 'Foo Fighters', 250, NULL, 1)",
+            )
+            val tables = entities(8).map { it.text("tableName") }
+            val before = tables.associateWith { db.rows("SELECT * FROM `$it` ORDER BY 1") }
+
+            TubeCapulloDatabase.MIGRATION_8_9.migrate(database(db))
+
+            tables.forEach { assertEquals("table $it", before.getValue(it), db.rows("SELECT * FROM `$it` ORDER BY 1")) }
+            db.assertSchema(9)
+            db.exec("INSERT INTO lastfm_cache VALUES ('track.getSimilar|artist=radiohead|track=creep|limit=40', '{}', 1)")
+        }
+    }
 }

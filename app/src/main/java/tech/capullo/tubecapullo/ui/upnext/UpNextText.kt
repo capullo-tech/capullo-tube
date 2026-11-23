@@ -31,6 +31,7 @@ object UpNextText {
             Provenance.SEED, Provenance.USER -> "You picked this"
             Provenance.MIX -> if (from != null) "From the Mix of $from" else "From a Mix"
             Provenance.RELATED -> if (from != null) "Related to $from" else "Related"
+            Provenance.SIMILAR -> if (from != null) "Similar to $from" else "Similar"
             Provenance.LIKED -> "Your like"
             Provenance.SEARCH -> "From your search"
             Provenance.PLAYLIST -> why.fromTitle?.let { "From $it" } ?: "From a playlist"

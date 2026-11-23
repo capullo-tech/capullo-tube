@@ -10,6 +10,8 @@ enum class Provenance {
 
     RELATED,
 
+    SIMILAR,
+
     LIKED,
 
     SEARCH,
@@ -22,6 +24,10 @@ enum class Provenance {
 
     ALBUM,
 }
+
+/** Songs a radio found from a seed: YouTube's Mix and related, and Last.fm's similar songs. */
+val Provenance.isRadioPick: Boolean
+    get() = this == Provenance.MIX || this == Provenance.RELATED || this == Provenance.SIMILAR
 
 enum class RepeatMode {
     OFF,
