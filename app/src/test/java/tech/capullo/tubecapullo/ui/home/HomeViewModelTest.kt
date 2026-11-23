@@ -319,7 +319,7 @@ class HomeViewModelTest {
         coVerify(exactly = 2) { extractor.relatedStreams(any()) }
 
         val locale = Locale.getDefault()
-        Locale.setDefault(Locale.TAIWAN)
+        Locale.setDefault(Locale.Builder().setLanguage("mn").setRegion("MN").build())
         try {
             chartRegions.value = emptyList()
             advanceUntilIdle()
@@ -327,8 +327,8 @@ class HomeViewModelTest {
             Locale.setDefault(locale)
         }
 
-        assertEquals(listOf("continue", "listen-again", "liked-left1", "trending-JP"), home.keys())
-        coVerify(exactly = 1) { extractor.trendingMusic("JP", any()) }
+        assertEquals(listOf("continue", "listen-again", "liked-left1", "trending-KR"), home.keys())
+        coVerify(exactly = 1) { extractor.trendingMusic("KR", any()) }
     }
 
     @Test

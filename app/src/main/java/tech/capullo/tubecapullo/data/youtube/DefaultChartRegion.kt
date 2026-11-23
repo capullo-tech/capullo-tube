@@ -9,18 +9,11 @@ fun defaultChartRegion(localeCountry: String?, supported: Set<String>): String {
 internal const val FALLBACK_CHART_REGION = "NI"
 
 internal val CLOSEST_CHART_REGION: Map<String, List<String>> = mapOf(
-    "TW" to listOf("JP", "KR"),
-    "HK" to listOf("JP", "KR"),
-    "MO" to listOf("JP", "KR"),
-    "CN" to listOf("JP", "KR"),
+    "MO" to listOf("HK", "TW"),
+    "CN" to listOf("HK", "TW"),
     "MN" to listOf("KR", "JP"),
-    "SG" to listOf("ID", "AU"),
-    "MY" to listOf("ID", "AU"),
-    "TH" to listOf("ID", "AU"),
-    "VN" to listOf("ID", "AU"),
-    "PH" to listOf("ID", "AU"),
-    "KH" to listOf("ID", "AU"),
-    "BN" to listOf("ID", "AU"),
+    "KH" to listOf("TH", "VN"),
+    "BN" to listOf("MY", "SG"),
     "PK" to listOf("IN"),
     "BD" to listOf("IN"),
     "LK" to listOf("IN"),

@@ -1,6 +1,5 @@
 package tech.capullo.tubecapullo.data.youtube
 
-import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -23,13 +22,12 @@ import org.schabi.newpipe.extractor.exceptions.ReCaptchaException
 import org.schabi.newpipe.extractor.exceptions.SignInConfirmNotBotException
 import org.schabi.newpipe.extractor.exceptions.SoundCloudGoPlusContentException
 import org.schabi.newpipe.extractor.exceptions.YoutubeMusicPremiumContentException
-import org.schabi.newpipe.extractor.kiosk.KioskInfo
 import org.schabi.newpipe.extractor.localization.ContentCountry
 import org.schabi.newpipe.extractor.localization.Localization
 import org.schabi.newpipe.extractor.playlist.PlaylistInfo
 import org.schabi.newpipe.extractor.playlist.PlaylistInfoItem
 import org.schabi.newpipe.extractor.search.SearchInfo
-import org.schabi.newpipe.extractor.services.youtube.extractors.kiosk.YoutubeTrendingMusicExtractor
+import org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper
 import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory
 import org.schabi.newpipe.extractor.stream.AudioStream
 import org.schabi.newpipe.extractor.stream.DeliveryMethod
@@ -82,39 +80,36 @@ class YouTubeExtractorClient @Inject constructor(private val downloader: TubeCap
         ServiceList.YouTube.searchQHFactory.fromQuery(query, listOf(contentFilter), ""),
     ).relatedItems
 
-    suspend fun trendingMusic(region: String?, limit: Int = 30): YtChart {
+    /**
+     * A region's trending music videos: the "Trending 20" chart YouTube Music's Charts page links for
+     * that region (see [MusicCharts]), read as the playlist it is. A page that links no trending chart
+     * is an empty list; a refused one is a failure.
+     */
+    suspend fun trendingMusic(region: String, limit: Int = 30): YtChart {
         val statuses = HashMap<String, Int>()
         val videos = runCatching {
             extract("trending_music") {
                 downloader.recordStatuses(statuses) {
-                    val kiosk = ServiceList.YouTube.kioskList.getExtractorByUrl(TRENDING_MUSIC_URL, null)
-                    region?.let { kiosk.forceContentCountry(ContentCountry(it)) }
-                    kiosk.fetchPage()
-                    KioskInfo.getInfo(kiosk).relatedItems.toVideos().take(limit)
+                    val clientVersion = YoutubeParsingHelper.getYoutubeMusicClientVersion()
+                    val response = downloader.postWithContentTypeJson(
+                        MusicCharts.BROWSE_URL,
+                        YoutubeParsingHelper.getYoutubeMusicHeaders(),
+                        MusicCharts.requestBody(region, clientVersion).toByteArray(),
+                    )
+                    if (response.responseCode() != HTTP_OK) {
+                        throw YouTubeError.Failed("YouTube Music charts answered HTTP ${response.responseCode()}")
+                    }
+                    MusicCharts.trendingPlaylistId(response.responseBody())?.let { playlistId ->
+                        val url = YouTubeUrls.playlistUrl(playlistId)
+                        PlaylistInfo.getInfo(ServiceList.YouTube, url).expand(url, limit).distinctBy { it.videoId }
+                    }.orEmpty()
                 }
             }
         }.onFailure { if (it is CancellationException) throw it }
-        return YtChart(videos, statuses[CHARTS_HOST] ?: 0)
+        return YtChart(videos, statuses[MUSIC_CHARTS_HOST] ?: 0)
     }
 
-    fun supportedRegions(): List<String> {
-        val service = ServiceList.YouTube.supportedCountries.map { it.countryCode }
-        val chart = chartCountryCodes ?: return service
-        return service.filter { it in chart }
-    }
-
-    private val chartCountryCodes: Set<String>? by lazy {
-        runCatching {
-            val codes = YoutubeTrendingMusicExtractor::class.java.superclass
-                .getDeclaredField(CHART_COUNTRIES_FIELD)
-                .apply { isAccessible = true }
-                .get(null) as Set<*>
-            codes.filterIsInstance<String>().toSet().takeIf { it.isNotEmpty() }
-                ?: error("$CHART_COUNTRIES_FIELD is empty")
-        }.onFailure {
-            Log.w(TAG, "chart country list unreadable; offering every service country", it)
-        }.getOrNull()
-    }
+    fun supportedRegions(): List<String> = ServiceList.YouTube.supportedCountries.map { it.countryCode }.filter { it in MusicCharts.COUNTRIES }
 
     suspend fun playlistInfo(url: String, limit: Int = 200): YtVideoList = extract("playlist") {
         val playlistId = YouTubeUrls.parsePlaylistId(url)
@@ -342,13 +337,9 @@ class YouTubeExtractorClient @Inject constructor(private val downloader: TubeCap
 
         const val CHANNEL_UPLOADS_LIMIT = 200
 
-        const val TRENDING_MUSIC_URL = "https://charts.youtube.com/charts/TrendingVideos/RightNow"
+        const val MUSIC_CHARTS_HOST = "music.youtube.com"
 
-        const val CHARTS_HOST = "charts.youtube.com"
-
-        const val CHART_COUNTRIES_FIELD = "YT_CHARTS_SUPPORTED_COUNTRY_CODES"
-
-        const val TAG = "YouTubeExtractor"
+        const val HTTP_OK = 200
     }
 }
 
