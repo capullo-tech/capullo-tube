@@ -13,7 +13,7 @@ import org.schabi.newpipe.extractor.exceptions.ReCaptchaException
 import okhttp3.Request as OkRequest
 import okhttp3.Response as OkResponse
 
-private const val CHART_URL = "https://charts.youtube.com/youtubei/v1/browse?alt=json&prettyPrint=false"
+private const val CHART_URL = "https://music.youtube.com/youtubei/v1/browse?prettyPrint=false"
 
 class TubeCapulloDownloaderTest {
     private fun downloader(answer: (OkRequest) -> OkResponse): TubeCapulloDownloader = TubeCapulloDownloader(
@@ -34,7 +34,7 @@ class TubeCapulloDownloaderTest {
 
     @Test
     fun `each host keeps its own status, so another YouTube call cannot mask the chart host`() {
-        val downloader = downloader { answer(it, if (it.url.host == "charts.youtube.com") 403 else 200) }
+        val downloader = downloader { answer(it, if (it.url.host == "music.youtube.com") 403 else 200) }
         val statuses = HashMap<String, Int>()
 
         downloader.recordStatuses(statuses) {
@@ -42,7 +42,7 @@ class TubeCapulloDownloaderTest {
             downloader.execute(get("https://www.youtube.com/watch?v=abc"))
         }
 
-        assertEquals(mapOf("charts.youtube.com" to 403, "www.youtube.com" to 200), statuses)
+        assertEquals(mapOf("music.youtube.com" to 403, "www.youtube.com" to 200), statuses)
     }
 
     @Test
@@ -56,6 +56,6 @@ class TubeCapulloDownloaderTest {
             downloader.recordStatuses(statuses) { downloader.execute(get(CHART_URL)) }
         }
 
-        assertEquals(mapOf("charts.youtube.com" to 429), statuses)
+        assertEquals(mapOf("music.youtube.com" to 429), statuses)
     }
 }

@@ -55,7 +55,7 @@ class TubeCapulloDownloader @Inject constructor(http: OkHttpClient) : Downloader
     /**
      * Runs [block], recording into [statuses] the HTTP status each host answered this thread's requests
      * with. The key is the host that was asked, so a chart request redirected to a /sorry or consent
-     * page still answers for charts.youtube.com. NewPipe fetches synchronously on the caller's thread
+     * page still answers for music.youtube.com. NewPipe fetches synchronously on the caller's thread
      * through this one global downloader, so concurrent callers each see only their own requests.
      */
     fun <T> recordStatuses(statuses: MutableMap<String, Int>, block: () -> T): T {

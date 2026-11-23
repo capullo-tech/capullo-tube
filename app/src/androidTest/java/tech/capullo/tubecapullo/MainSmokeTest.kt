@@ -54,7 +54,7 @@ class MainSmokeTest {
             val excuse = trendingExcuse(log)
             println("trending unavailable, error banner shown: $texts | $excuse")
             check(log.lineSequence().none { SERVED_EMPTY.containsMatchIn(it) }) {
-                "Home showed its trending error banner over a served chart: charts.youtube.com answered 2xx and" +
+                "Home showed its trending error banner over a served chart: music.youtube.com answered 2xx and" +
                     " the chart parsed to no songs. That is an app failure, not a blocked runner." +
                     " | texts: [$texts] | TubeHome: [$log]"
             }

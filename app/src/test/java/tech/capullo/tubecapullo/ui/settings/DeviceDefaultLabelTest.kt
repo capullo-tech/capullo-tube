@@ -27,8 +27,8 @@ class DeviceDefaultLabelTest {
     @Test
     fun `an unserved country names itself and the substitute`() {
         assertEquals(
-            "Device default (Taiwan has no YouTube chart · Japan)",
-            deviceDefaultLabel("TW", supported),
+            "Device default (Mongolia has no YouTube chart · South Korea)",
+            deviceDefaultLabel("MN", supported),
         )
     }
 

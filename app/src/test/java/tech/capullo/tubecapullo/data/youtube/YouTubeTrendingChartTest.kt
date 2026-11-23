@@ -18,9 +18,11 @@ import java.util.concurrent.TimeUnit
 import okhttp3.Request as OkRequest
 import okhttp3.Response as OkResponse
 
-private const val SERVED_EMPTY_CHART =
-    """{"contents":{"sectionListRenderer":{"contents":[{"musicAnalyticsSectionRenderer":""" +
-        """{"content":{"videos":[{"videoViews":[]}]}}}]}}}"""
+// A Charts page that links no trending chart, as the Global page does.
+private val SERVED_EMPTY_CHART = YouTubeTrendingChartTest::class.java.getResource("/charts/music-charts-global.json")!!.readText()
+
+// NewPipe checks its hardcoded YouTube Music client version once, and takes any 200 longer than 500 chars.
+private val CLIENT_VERSION_OK = "{" + " ".repeat(600) + "}"
 
 class YouTubeTrendingChartTest {
     private fun client(answer: (OkRequest) -> OkResponse) = YouTubeExtractorClient(
@@ -45,8 +47,13 @@ class YouTubeTrendingChartTest {
     fun `concurrent regions each get the status of their own chart request`() {
         val bothInFlight = CyclicBarrier(2)
         val client = client { request ->
-            bothInFlight.await(10, TimeUnit.SECONDS)
-            if (""""gl":"NI"""" in request.text()) answer(request, 403, "{}") else answer(request, 200, SERVED_EMPTY_CHART)
+            when {
+                request.url.encodedPath != "/youtubei/v1/browse" -> answer(request, 200, CLIENT_VERSION_OK)
+                else -> {
+                    bothInFlight.await(10, TimeUnit.SECONDS)
+                    if (""""gl":"NI"""" in request.text()) answer(request, 403, "{}") else answer(request, 200, SERVED_EMPTY_CHART)
+                }
+            }
         }
 
         val (refused, served) = runBlocking {
@@ -61,7 +68,7 @@ class YouTubeTrendingChartTest {
 
     @Test
     fun `a chart host that never answered reports 0 and keeps the transport fault`() {
-        val client = client { throw UnknownHostException("Unable to resolve host \"charts.youtube.com\"") }
+        val client = client { throw UnknownHostException("Unable to resolve host \"music.youtube.com\"") }
 
         val chart = runBlocking { client.trendingMusic("NI") }
 
