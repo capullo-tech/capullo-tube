@@ -28,6 +28,7 @@ import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.FavoriteBorder
@@ -106,6 +107,7 @@ fun SettingsScreen(
     val similarDepth by viewModel.similarDepth.collectAsStateWithLifecycle()
     val lastfmApiKey by viewModel.lastfmApiKey.collectAsStateWithLifecycle()
     val lastfmStatus by viewModel.lastfmStatus.collectAsStateWithLifecycle()
+    val tunnelEnabled by viewModel.tunnelEnabled.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var showChartsDialog by rememberSaveable { mutableStateOf(false) }
     var showLikeModeDialog by rememberSaveable { mutableStateOf(false) }
@@ -162,7 +164,7 @@ fun SettingsScreen(
                 explanation = if (moreLikeRows == 0) {
                     "Off: Home shows no More like rows"
                 } else {
-                    "Home rows of songs like your newest likes"
+                    "Home rows of songs like where your Continue cards left off"
                 },
                 value = moreLikeRows,
                 max = AppSettings.MAX_MORE_LIKE_ROWS,
@@ -254,7 +256,7 @@ fun SettingsScreen(
             StepperItem(
                 icon = Icons.Default.Radio,
                 title = "Songs added per like",
-                explanation = "After a liked song, and between songs in Liked radio",
+                explanation = "Also used between likes in Liked radio",
                 value = songsPerLike,
                 max = AppSettings.MAX_SONGS_PER_LIKE,
                 step = AppSettings.SONGS_PER_LIKE_STEP,
@@ -353,6 +355,24 @@ fun SettingsScreen(
                 modifier = Modifier.clickable(
                     onClickLabel = "Clear play history",
                     onClick = { showClearHistoryDialog = true },
+                ),
+            )
+            HorizontalDivider()
+            SectionHeader("Multiroom")
+            ListItem(
+                leadingContent = { Icon(Icons.Default.Cloud, contentDescription = null) },
+                headlineContent = { Text("Public link") },
+                supportingContent = {
+                    Text(
+                        "While broadcasting, the multiroom QR adds a Listen anywhere link " +
+                            "through Cloudflare. Anyone with it can listen.",
+                    )
+                },
+                trailingContent = { Switch(checked = tunnelEnabled, onCheckedChange = null) },
+                modifier = Modifier.toggleable(
+                    value = tunnelEnabled,
+                    role = Role.Switch,
+                    onValueChange = viewModel::setTunnelEnabled,
                 ),
             )
             HorizontalDivider()
@@ -508,19 +528,19 @@ fun SettingsScreen(
 
 private val LikeMode.label: String
     get() = when (this) {
-        LikeMode.BLEND -> "Blend in"
-        LikeMode.SAVE_ONLY -> "Save only"
-        LikeMode.SWITCH_NOW -> "Switch now"
+        LikeMode.BLEND -> "Add similar songs"
+        LikeMode.SAVE_ONLY -> "Just save"
+        LikeMode.SWITCH_NOW -> "Start a radio"
     }
 
 private fun LikeMode.explanation(songsPerLike: Int): String = when (this) {
     LikeMode.BLEND -> if (songsPerLike == 0) {
-        "Songs added per like is 0, so the like is only saved"
+        "Songs added per like is 0, so it just saves"
     } else {
-        "$songsPerLike songs like it play next, then the queue goes on"
+        "$songsPerLike similar songs play next"
     }
-    LikeMode.SAVE_ONLY -> "The like is saved; the queue does not change"
-    LikeMode.SWITCH_NOW -> "Songs like it play after this song; a list becomes a radio"
+    LikeMode.SAVE_ONLY -> "The queue stays as it is"
+    LikeMode.SWITCH_NOW -> "A radio from the liked song replaces what's next"
 }
 
 private val HistoryRetention.label: String

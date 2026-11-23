@@ -63,6 +63,8 @@ import coil.compose.AsyncImage
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 import tech.capullo.tubecapullo.data.youtube.YtVideo
 import tech.capullo.tubecapullo.station.PlaySource
 import tech.capullo.tubecapullo.ui.shared.CompactListItem
@@ -115,17 +117,33 @@ fun UpNextSheet(onDismiss: () -> Unit, viewModel: UpNextViewModel = hiltViewMode
         playChapter = viewModel::seekTo,
     )
     val entries = remember(station) { queueEntries(station) }
+    val stationSeedId = UpNextText.stationSeedId(station.source)
+    // The rows on screen: the station's list, or, during a drag, the order being dragged.
+    var rows by remember { mutableStateOf(entries) }
+    var dragging by remember { mutableStateOf(false) }
+    LaunchedEffect(entries) { if (!dragging) rows = entries }
     val listState = rememberLazyListState()
+    val reorder = rememberReorderableLazyListState(listState) { from, to ->
+        val movable = upcomingPosition(rows, from.key) != null && upcomingPosition(rows, to.key) != null
+        if (movable) rows = rows.toMutableList().apply { add(to.index, removeAt(from.index)) }
+    }
     var userMoved by remember { mutableStateOf(false) }
     var bottomSlackPx by remember { mutableIntStateOf(0) }
     LaunchedEffect(listState) {
         listState.interactionSource.interactions
             .filterIsInstance<DragInteraction.Start>()
-            .first()
-        userMoved = true
+            .collect { userMoved = true }
     }
+    // The playing song goes to the top when the sheet opens and whenever the song changes
+    // (a tap on a row, Next); between changes your own scrolling is left alone.
+    var shownPlaying by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(entries) {
-        if (userMoved) return@LaunchedEffect
+        val playingId = station.current?.videoId
+        if (playingId != shownPlaying) {
+            shownPlaying = playingId
+            userMoved = false
+        }
+        if (userMoved || dragging) return@LaunchedEffect
         val target = initialIndex(entries)
         listState.scrollToItem(target)
         val info = listState.layoutInfo
@@ -138,7 +156,7 @@ fun UpNextSheet(onDismiss: () -> Unit, viewModel: UpNextViewModel = hiltViewMode
         }
     }
 
-    PlayerDrawer(onDismiss = onDismiss) {
+    PlayerDrawer(onDismiss = onDismiss, showHandle = false, twoSteps = false) {
         Column {
             QueueTitle(station.source)
             LazyColumn(
@@ -147,22 +165,34 @@ fun UpNextSheet(onDismiss: () -> Unit, viewModel: UpNextViewModel = hiltViewMode
                     bottom = with(LocalDensity.current) { bottomSlackPx.toDp() },
                 ),
             ) {
-                items(entries, key = { it.key }, contentType = { it::class }) { entry ->
+                items(rows, key = { it.key }, contentType = { it::class }) { entry ->
                     when (entry) {
                         is EndLine -> EndLineText(entry.text)
                         is ChapterEntry -> ChapterRow(entry, actions)
-                        is TrackEntry -> TrackRow(
-                            track = entry,
-                            isLiked = entry.video.videoId in if (
-                                entry.state == RowState.CURRENT && station.albumMode
-                            ) {
-                                likedAlbumIds
-                            } else {
-                                likedIds
-                            },
-                            isCollection = station.isCollection,
-                            actions = actions,
-                        )
+                        is TrackEntry -> ReorderableItem(reorder, key = entry.key, enabled = entry.removable) { isDragging ->
+                            TrackRow(
+                                track = entry,
+                                isLiked = entry.video.videoId in if (
+                                    entry.state == RowState.CURRENT && station.albumMode
+                                ) {
+                                    likedAlbumIds
+                                } else {
+                                    likedIds
+                                },
+                                isCollection = station.isCollection,
+                                stationSeedId = stationSeedId,
+                                isDragging = isDragging,
+                                actions = actions,
+                                dragModifier = Modifier.longPressDraggableHandle(
+                                    enabled = entry.removable,
+                                    onDragStarted = { dragging = true },
+                                    onDragStopped = {
+                                        dragging = false
+                                        upcomingPosition(rows, entry.key)?.let { viewModel.move(entry.video.videoId, it) }
+                                    },
+                                ),
+                            )
+                        }
                     }
                 }
             }
@@ -173,7 +203,7 @@ fun UpNextSheet(onDismiss: () -> Unit, viewModel: UpNextViewModel = hiltViewMode
 
 @Composable
 private fun QueueTitle(source: PlaySource?) {
-    Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+    Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 8.dp)) {
         Text("Queue", style = MaterialTheme.typography.titleLarge)
         source?.let {
             val title = UpNextText.sourceTitle(it)
@@ -271,7 +301,10 @@ private fun TrackRow(
     track: TrackEntry,
     isLiked: Boolean,
     isCollection: Boolean,
+    stationSeedId: String?,
+    isDragging: Boolean,
     actions: RowActions,
+    dragModifier: Modifier,
 ) {
     val video = track.video
     val title = remember(video.title, video.uploader) { UpNextText.clean(video) }
@@ -306,7 +339,7 @@ private fun TrackRow(
                     }
                     track.why?.let {
                         Text(
-                            UpNextText.provenance(it, video),
+                            UpNextText.provenance(it, video, stationSeedId, track.blended),
                             style = MaterialTheme.typography.labelMedium,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -316,8 +349,8 @@ private fun TrackRow(
             },
             trailingContent = { RowButtons(video, isCurrent, isLiked, isCollection, actions) },
             headlineColor = headlineColor(track.state),
-            containerColor = containerColor(track.state),
-            modifier = Modifier
+            containerColor = if (isDragging) MaterialTheme.colorScheme.surfaceContainerHighest else containerColor(track.state),
+            modifier = dragModifier
                 .rowTap(track.state) {
                     actions.playNow(video, track.state == RowState.PLAYED)
                 }
@@ -347,7 +380,8 @@ private fun TrackRow(
 @Composable
 private fun SwipeToRemove(videoId: String, onRemove: () -> Unit, content: @Composable () -> Unit) {
     key(videoId) {
-        val state = rememberSwipeToDismissBoxState()
+        // A deliberate swipe, not a scroll that drifts sideways: past 40 % of the row's width.
+        val state = rememberSwipeToDismissBoxState(positionalThreshold = { width -> width * SWIPE_REMOVE_FRACTION })
         SwipeToDismissBox(
             state = state,
             backgroundContent = {
@@ -454,7 +488,6 @@ private fun Thumbnail(url: String?, state: RowState) {
                 modifier = Modifier.fillMaxSize(),
             )
         }
-        if (state == RowState.CURRENT) PlayingBadge()
     }
 }
 
@@ -475,3 +508,5 @@ private fun PlayingBadge() {
         )
     }
 }
+
+private const val SWIPE_REMOVE_FRACTION = 0.4f

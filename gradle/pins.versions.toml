@@ -1,5 +1,8 @@
 [versions]
-capulloAudio = "1c866cf801a902c112be88310a229da12b9dde70"
+
+capulloAudio = "e749bc7875427b0b087935a94981e663d47bc714"
+
+
 newpipeExtractor = "v0.26.5"
 okhttp = "4.12.0"
 coil = "2.7.0"
@@ -9,10 +12,13 @@ sqliteJdbc = "3.41.2.2"
 hiltNavigationCompose = "1.3.0"
 uiautomator = "2.3.0"
 desugarJdkLibs = "2.1.5"
+reorderable = "3.1.0"
 
 [libraries]
 capullo-audio = { module = "com.github.capullo-tech.capullo-audio:capullo-audio", version.ref = "capulloAudio" }
 capullo-audio-ui = { module = "com.github.capullo-tech.capullo-audio:capullo-audio-ui", version.ref = "capulloAudio" }
+# Same repo, same commit, same nested group - one pin covers all three modules.
+capullo-tunnel = { module = "com.github.capullo-tech.capullo-audio:capullo-tunnel", version.ref = "capulloAudio" }
 androidx-material3 = { group = "androidx.compose.material3", name = "material3" }
 androidx-compose-material-icons-core = { group = "androidx.compose.material", name = "material-icons-core", version.ref = "composeIcons" }
 androidx-compose-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended", version.ref = "composeIcons" }
@@ -23,4 +29,5 @@ androidx-test-uiautomator = { group = "androidx.test.uiautomator", name = "uiaut
 mockk = { group = "io.mockk", name = "mockk", version.ref = "mockk" }
 sqlite-jdbc = { module = "org.xerial:sqlite-jdbc", version.ref = "sqliteJdbc" }
 androidx-hilt-lifecycle-viewmodel-compose = { module = "androidx.hilt:hilt-lifecycle-viewmodel-compose", version.ref = "hiltNavigationCompose" }
+reorderable = { module = "sh.calvin.reorderable:reorderable", version.ref = "reorderable" }
 desugar-jdk-libs-nio = { module = "com.android.tools:desugar_jdk_libs_nio", version.ref = "desugarJdkLibs" }

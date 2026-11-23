@@ -43,7 +43,8 @@ data class Why(
     val fromTitle: String?,
 )
 
-data class UpNextItem(val video: YtVideo, val why: Why, val pinned: Boolean)
+/** [blended]: added by a like, after the liked song. */
+data class UpNextItem(val video: YtVideo, val why: Why, val pinned: Boolean, val blended: Boolean = false)
 
 sealed interface LikeEffect {
     val seed: YtVideo

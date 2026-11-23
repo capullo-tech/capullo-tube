@@ -139,4 +139,8 @@ class SettingsViewModel @Inject constructor(
     fun setHistoryRetention(retention: HistoryRetention) = appSettings.setHistoryRetention(retention)
 
     fun clearPlayHistory() = playHistoryRetention.clear()
+
+    val tunnelEnabled: StateFlow<Boolean> = appSettings.tunnelEnabled
+
+    fun setTunnelEnabled(enabled: Boolean) = appSettings.setTunnelEnabled(enabled)
 }

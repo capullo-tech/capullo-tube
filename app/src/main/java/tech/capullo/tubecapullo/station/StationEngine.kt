@@ -70,14 +70,15 @@ class StationEngine @Inject constructor(
         fun merged(random: Random): List<Slot> = interleave(listOf(mix, related, similar), random)
 
         /**
-         * The first [count] songs of the merge. When a like asks for songs and Last.fm found
-         * some, one of them is always among the picks: that is the song YouTube would not
-         * have offered.
+         * [count] songs for a like: half of them (at least one) from Last.fm when it found
+         * that many, the rest YouTube's Mix and related pairs, alternating. A plain three-way
+         * merge would give Last.fm only a third.
          */
         fun picks(random: Random, count: Int): List<Slot> {
-            val picks = merged(random).take(count)
-            if (count == 0 || similar.isEmpty() || picks.any { it.why.provenance == Provenance.SIMILAR }) return picks
-            return picks.dropLast(1) + similar.first()
+            if (count == 0) return emptyList()
+            val fromSimilar = similar.take(maxOf(1, count / 2))
+            val fromYouTube = interleave(listOf(mix, related), random).take(count - fromSimilar.size)
+            return interleave(listOf(fromYouTube, fromSimilar), random)
         }
 
         fun fields(added: List<Slot>): String {
@@ -367,16 +368,21 @@ class StationEngine @Inject constructor(
             val inTail = queue.subList(at, queue.size).indexOfFirst { it.video.videoId == id }
             val queued = if (again || inTail < 0) -1 else at + inTail
             val row: String
+            var skipped = 0
             val slot = if (queued >= 0) {
                 row = "queue"
-                queue.removeAt(queued)
+                // Playing a song further down skips every song before it, as in any player's
+                // queue: the station plays on from there and refills once few are left.
+                skipped = queued - at
+                queue.subList(at, queued).clear()
+                queue.removeAt(at)
             } else {
                 row = if (again) "earlier" else "other"
                 Slot(video, Why(Provenance.USER, null, null), pinned = true)
             }
             dismissedIds -= id
             queue.add(at, slot)
-            log("jump id=$id from=$from row=$row at=$at title=${q(video.title)}")
+            log("jump id=$id from=$from row=$row at=$at skipped=$skipped title=${q(video.title)}")
             publishLocked()
             return at
         }
@@ -469,6 +475,38 @@ class StationEngine @Inject constructor(
             likesRound.removeAll { it.videoId == videoId }
             log("remove id=$videoId queued=$removed")
             growLocked()
+            publishLocked()
+        }
+    }
+
+    /**
+     * Moves an upcoming song to [to], a position among the upcoming songs (0 = next). A song
+     * dragged to the front (only Play next songs before it) is pinned like Play next, so songs
+     * a like adds later go after it. In a list the round follows the new order, so the move
+     * survives the next track change; songs added with Play next or by a like stay ahead of
+     * the list's own songs.
+     */
+    fun moveUpcoming(videoId: String, to: Int) {
+        synchronized(lock) {
+            val start = maxOf(current, 0) + 1
+            val from = (start until queue.size).firstOrNull { queue[it].video.videoId == videoId } ?: return
+            val moved = queue.removeAt(from)
+            val at = (start + to).coerceIn(start, queue.size)
+            val toFront = (start until at).all { queue[it].pinned }
+            val slot = if (toFront && !moved.pinned) Slot(moved.video, moved.why, pinned = true, blended = moved.blended) else moved
+            queue.add(at, slot)
+            if (source?.isCollection == true) {
+                val restStart = minOf(maxOf(roundPos, 0) + 1, round.size)
+                val rest = round.subList(restStart, round.size)
+                // A pinned song is an extra, outside the list's round, like Play next.
+                if (slot !== moved) rest.removeAll { it === moved }
+                val inRest = java.util.Collections.newSetFromMap(IdentityHashMap<Slot, Boolean>()).apply { addAll(rest) }
+                val reordered = queue.subList(start, queue.size).filter { it in inRest }
+                rest.clear()
+                rest += reordered
+            }
+            log("move id=$videoId from=${from - start} to=${at - start}" + if (slot !== moved) " pinned" else "")
+            persistLocked("move")
             publishLocked()
         }
     }
@@ -901,6 +939,9 @@ class StationEngine @Inject constructor(
         dismissedIds.clear()
         current = -1
         history.clear()
+        // The queue's played rows belong to the station: a new or resumed one starts its own.
+        earlier.clear()
+        playing = null
         steppingBackTo = null
         chaining = false
         chainSeed = null
@@ -1000,6 +1041,7 @@ class StationEngine @Inject constructor(
         queue += slots[saved.left]
         queue += saved.upcoming.map(slots::get)
         history += saved.history.map(slots::get)
+        saved.history.forEach { pushEarlierLocked(slots[it].video) }
         dismissedIds += saved.dismissedIds
         chainSeed = saved.chainSeed
         likesRound += saved.likesRound
@@ -1164,11 +1206,12 @@ class StationEngine @Inject constructor(
                         mixVideos,
                         relatedVideos ?: YtRelated(seedViews = -1, videos = emptyList()),
                         excludedIdsLocked(skipQueued),
+                        heardLocked(),
                     )
                     if (relatedVideos != null) {
                         log(
                             "related gate seed=${seed.videoId} kept=${lists.gateKept} " +
-                                "dropped=${lists.gateDropped}",
+                                "dropped=${lists.gateDropped} repeats=${lists.repeats}",
                         )
                     }
                     return lists
@@ -1176,9 +1219,9 @@ class StationEngine @Inject constructor(
                 // One deadline for the whole Last.fm step: a YouTube search is blocking I/O that
                 // cancellation cannot stop, so the wait is bounded, not the work.
                 val similarWork = async {
-                    val excluded = synchronized(lock) { excludedIdsLocked(skipQueued).toSet() }
+                    val (excluded, heard) = synchronized(lock) { excludedIdsLocked(skipQueued).toSet() to heardLocked(queued = skipQueued) }
                     val found = names.await()
-                    found to findSimilar(seed, found, mixVideos, relatedVideos, excluded, similarCount)
+                    found to findSimilar(seed, found, mixVideos + heard, relatedVideos, excluded, similarCount)
                 }
                 suspend fun similar(): Pair<SimilarNames, SimilarFind> = withTimeoutOrNull(if (similarLater) SIMILAR_LATE_MS else SIMILAR_WAIT_MS) { similarWork.await() }
                     ?: (SimilarNames(emptyList(), "timeout") to SimilarFind(emptyList(), 0, 0, 0)).also { similarWork.cancel() }
@@ -1269,6 +1312,12 @@ class StationEngine @Inject constructor(
             .onFailure { log("similar seed=${seed.videoId} resolve-error=${q(it.message)}") }
             .getOrElse { SimilarFind(emptyList(), 0, 0, 0) }
     }
+
+    /**
+     * Songs played this session or playing, and with [queued] the queued ones: a re-upload of
+     * one of them is a repeat.
+     */
+    private fun heardLocked(queued: Boolean = true): List<YtVideo> = earlier.toList() + listOfNotNull(playing) + if (queued) queue.map { it.video } else emptyList()
 
     private fun excludedIdsLocked(skipQueued: Boolean): MutableSet<String> {
         val ids = HashSet<String>(playedIds)
@@ -1506,7 +1555,7 @@ class StationEngine @Inject constructor(
             source = source,
             current = queue.getOrNull(now)?.video,
             earlier = earlier.toList(),
-            queued = queue.drop(now + 1).map { UpNextItem(it.video, it.why, it.pinned) },
+            queued = queue.drop(now + 1).map { UpNextItem(it.video, it.why, it.pinned, it.blended) },
             isCollection = source?.isCollection == true,
             shuffle = shuffle,
             repeat = repeat,

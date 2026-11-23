@@ -59,7 +59,7 @@ class HomeViewModelTest {
     private val moreLikeRows = MutableStateFlow(2)
     private val fullAlbums = MutableStateFlow(true)
     private val continueCards = MutableStateFlow(AppSettings.MAX_CONTINUE_CARDS)
-    private val stations = MutableStateFlow(emptyList<StationSnapshot>())
+    private val stations = MutableStateFlow(listOf(stored(1, "left1")))
     private val station = MutableStateFlow(StationState())
     private val extractor = mockk<YouTubeExtractorClient>()
     private val likedTracks = mockk<LikedTracks>()
@@ -157,25 +157,43 @@ class HomeViewModelTest {
     private fun HomeViewModel.keys() = uiState.value.sections.map { it.key }
 
     @Test
-    fun `a burst of likes reloads the like rows once, sharing one fetch, and leaves Trending alone`() = runTest(dispatcher) {
+    fun `More like rows follow the Continue cards, one per card, and leave Trending alone`() = runTest(dispatcher) {
         val home = viewModel()
         advanceUntilIdle()
-        assertEquals(listOf("listen-again", "liked-like1", "trending-NI"), home.keys())
+        assertEquals(listOf("continue", "listen-again", "liked-left1", "trending-NI"), home.keys())
         val trending = home.uiState.value.trending
 
-        likes.value = listOf(video("like2")) + likes.value
-        advanceTimeBy(300)
-        likes.value = listOf(video("like3")) + likes.value
+        stations.value = listOf(stored(2, "left2"), stored(1, "left1"))
         advanceUntilIdle()
+        assertEquals(listOf("continue", "listen-again", "liked-left2", "liked-left1", "trending-NI"), home.keys())
 
-        assertEquals(
-            listOf("listen-again", "liked-like3", "liked-like2", "trending-NI"),
-            home.keys(),
-        )
+        stations.value = listOf(stored(2, "left2"))
+        advanceUntilIdle()
+        assertEquals("removing a card removes its row", listOf("continue", "listen-again", "liked-left2", "trending-NI"), home.keys())
         assertSame(trending, home.uiState.value.trending)
         coVerify(exactly = 1) { extractor.trendingMusic(any(), any()) }
-        coVerify(exactly = 1) { extractor.relatedStreams("like2") }
-        coVerify(exactly = 1) { extractor.mix("like2", any()) }
+    }
+
+    @Test
+    fun `a new like does not refetch the More like rows`() = runTest(dispatcher) {
+        val home = viewModel()
+        advanceUntilIdle()
+
+        likes.value = listOf(video("like2")) + likes.value
+        advanceUntilIdle()
+
+        assertEquals(listOf("continue", "listen-again", "liked-left1", "trending-NI"), home.keys())
+        coVerify(exactly = 1) { extractor.mix("left1", any()) }
+    }
+
+    @Test
+    fun `with no Continue cards there are no More like rows`() = runTest(dispatcher) {
+        stations.value = emptyList()
+        fullAlbums.value = false
+        val home = viewModel()
+        advanceUntilIdle()
+
+        assertEquals(listOf("listen-again", "trending-NI"), home.keys())
     }
 
     @Test
@@ -186,7 +204,7 @@ class HomeViewModelTest {
         val home = viewModel()
         advanceUntilIdle()
 
-        assertEquals(listOf("listen-again"), home.keys())
+        assertEquals(listOf("continue", "listen-again"), home.keys())
         assertEquals("Trending isn't available right now", home.uiState.value.error)
     }
 
@@ -230,14 +248,14 @@ class HomeViewModelTest {
         val home = viewModel()
         advanceUntilIdle()
 
-        assertEquals(listOf("listen-again", "trending-NI"), home.keys())
+        assertEquals(listOf("continue", "listen-again", "trending-NI"), home.keys())
         coVerify(exactly = 0) { extractor.relatedStreams(any()) }
         coVerify(exactly = 0) { extractor.mix(any(), any()) }
 
         moreLikeRows.value = 1
         advanceUntilIdle()
 
-        assertEquals(listOf("listen-again", "liked-like1", "trending-NI"), home.keys())
+        assertEquals(listOf("continue", "listen-again", "liked-left1", "trending-NI"), home.keys())
         coVerify(exactly = 1) { extractor.trendingMusic(any(), any()) }
     }
 
@@ -254,7 +272,7 @@ class HomeViewModelTest {
         fullAlbums.value = true
         advanceUntilIdle()
 
-        assertEquals(listOf("listen-again", "full-albums", "trending-NI"), home.keys())
+        assertEquals(listOf("continue", "listen-again", "full-albums", "trending-NI"), home.keys())
         assertEquals(listOf(album), home.uiState.value.fullAlbums)
         coVerify(exactly = 1) { extractor.trendingMusic(any(), any()) }
     }
@@ -288,15 +306,17 @@ class HomeViewModelTest {
     fun `changing the charts refetches only Trending, one row per chart in order`() = runTest(dispatcher) {
         val home = viewModel()
         advanceUntilIdle()
+        coVerify(exactly = 1) { extractor.relatedStreams("left1") }
+        coVerify(exactly = 1) { extractor.relatedStreams("like1") }
 
         chartRegions.value = listOf("NO", "US")
         advanceUntilIdle()
 
         assertEquals(
-            listOf("listen-again", "liked-like1", "trending-NO", "trending-US"),
+            listOf("continue", "listen-again", "liked-left1", "trending-NO", "trending-US"),
             home.keys(),
         )
-        coVerify(exactly = 1) { extractor.relatedStreams(any()) }
+        coVerify(exactly = 2) { extractor.relatedStreams(any()) }
 
         val locale = Locale.getDefault()
         Locale.setDefault(Locale.Builder().setLanguage("mn").setRegion("MN").build())
@@ -307,7 +327,7 @@ class HomeViewModelTest {
             Locale.setDefault(locale)
         }
 
-        assertEquals(listOf("listen-again", "liked-like1", "trending-KR"), home.keys())
+        assertEquals(listOf("continue", "listen-again", "liked-left1", "trending-KR"), home.keys())
         coVerify(exactly = 1) { extractor.trendingMusic("KR", any()) }
     }
 

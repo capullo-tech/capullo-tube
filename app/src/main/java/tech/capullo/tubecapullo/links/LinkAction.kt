@@ -1,5 +1,7 @@
 package tech.capullo.tubecapullo.links
 
+import tech.capullo.audio.snapcast.JoinTarget
+
 enum class LinkVia(val logName: String) {
     SHARE("share"),
 
@@ -34,6 +36,10 @@ sealed interface LinkAction {
         override val logName get() = "open-playlist"
     }
 
+    data class Join(val station: JoinTarget) : LinkAction {
+        override val logName get() = "join"
+    }
+
     data class Reject(val reason: RejectReason) : LinkAction {
         override val logName get() = "reject"
     }
@@ -46,6 +52,7 @@ fun decideLinkAction(target: LinkTarget, somethingPlays: Boolean, askFirst: Bool
         else -> LinkAction.PlayNow(target.videoId)
     }
     is LinkTarget.Playlist -> LinkAction.OpenPlaylist(target.playlistId)
+    is LinkTarget.Join -> LinkAction.Join(target.station)
     LinkTarget.OtherYouTube -> LinkAction.Reject(RejectReason.NOT_A_VIDEO)
     LinkTarget.NotYouTube -> LinkAction.Reject(RejectReason.NOT_YOUTUBE)
 }

@@ -20,18 +20,21 @@ import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SurroundSound
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextOverflow
 import coil.compose.AsyncImage
 import kotlinx.coroutines.flow.Flow
 import tech.capullo.tubecapullo.data.youtube.YtVideo
@@ -125,6 +128,34 @@ internal fun NowPlayingBar(
                     modifier = Modifier.size(Dimens.MINI_BAR_ICON_SIZE),
                 )
             }
+        }
+    }
+}
+
+/** Shown while this device plays a station it joined: tap for the multiroom sheet, or Leave. */
+@Composable
+internal fun ListeningBar(host: String, onOpen: () -> Unit, onLeave: () -> Unit) {
+    Surface(color = MaterialTheme.colorScheme.secondaryContainer, onClick = onOpen) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = Dimens.MINI_BAR_PADDING),
+        ) {
+            Icon(
+                Icons.Default.SurroundSound,
+                contentDescription = null,
+                modifier = Modifier.size(Dimens.MINI_BAR_ICON_SIZE),
+            )
+            Spacer(Modifier.width(Dimens.MINI_BAR_ART_TEXT_GAP))
+            Text(
+                "Listening to $host",
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = onLeave) { Text("Leave") }
         }
     }
 }
