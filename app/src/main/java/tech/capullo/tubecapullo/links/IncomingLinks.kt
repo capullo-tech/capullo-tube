@@ -1,11 +1,16 @@
 package tech.capullo.tubecapullo.links
 
+import tech.capullo.audio.snapcast.JoinTarget
+import tech.capullo.audio.snapcast.JoinUrl
 import tech.capullo.tubecapullo.data.youtube.YouTubeUrls
 
 sealed interface LinkTarget {
     data class Video(val videoId: String) : LinkTarget
 
     data class Playlist(val playlistId: String) : LinkTarget
+
+    /** A capullo station's join URL (its listen QR): this device listens to that station. */
+    data class Join(val station: JoinTarget) : LinkTarget
 
     data object OtherYouTube : LinkTarget
 
@@ -18,7 +23,10 @@ object IncomingLinks {
         var sawYouTube = false
         for (word in text.split(WHITESPACE)) {
             val candidate = word.trim { it in WRAPPING }
-            if (!isYouTubeHost(hostOf(candidate))) continue
+            if (!isYouTubeHost(hostOf(candidate))) {
+                JoinUrl.parse(candidate)?.let { return LinkTarget.Join(it) }
+                continue
+            }
             sawYouTube = true
             classify(candidate)?.let { return it }
         }

@@ -23,6 +23,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -43,8 +44,10 @@ internal fun LinkEffects(
     links: LinksViewModel,
     navigator: TubeNavigator,
     snackbarHostState: SnackbarHostState,
+    onOpenMultiroom: () -> Unit,
 ) {
     val context = LocalContext.current
+    val openMultiroom by rememberUpdatedState(onOpenMultiroom)
     LaunchedEffect(links, navigator) {
         links.effects.collect { effect ->
             when (effect) {
@@ -55,6 +58,7 @@ internal fun LinkEffects(
                 }
                 is LinkEffect.Toast ->
                     Toast.makeText(context, effect.text, Toast.LENGTH_SHORT).show()
+                LinkEffect.OpenMultiroom -> openMultiroom()
             }
         }
     }

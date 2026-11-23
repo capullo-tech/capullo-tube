@@ -74,6 +74,11 @@ preview over the old one, like an OTA update.
 
 All listeners stay in sync. The browser player's Next button goes to the next song.
 
+A phone with a capullo app can join instead: scan the multiroom QR (another capullo app's works
+too), and on Android 12+ tap **Open in CapulloTube** on the page it opens. The app pauses its own
+song, plays the scanned station, and shows **Listening to** its address with a **Leave** button.
+Playing a song here also leaves.
+
 Off your Wi-Fi: turn on **Settings > Multiroom > Public link** and the multiroom QR gains a **Listen anywhere** tab with a temporary Cloudflare link. Anyone with the link can listen.
 
 ## How it works

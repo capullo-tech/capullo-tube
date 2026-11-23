@@ -1,5 +1,8 @@
 [versions]
-capulloAudio = "341e4bbf379dd5f36896c907bb713050ad5ad44f"
+
+capulloAudio = "e749bc7875427b0b087935a94981e663d47bc714"
+
+
 newpipeExtractor = "v0.26.5"
 okhttp = "4.12.0"
 coil = "2.7.0"

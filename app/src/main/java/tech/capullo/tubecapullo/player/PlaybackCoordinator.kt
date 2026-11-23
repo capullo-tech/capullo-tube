@@ -25,7 +25,7 @@ class PlaybackCoordinator @Inject constructor(
         val durationMs: Long = 0,
     )
 
-    enum class Command { TOGGLE_PLAY_PAUSE, NEXT, PREVIOUS, STOP }
+    enum class Command { TOGGLE_PLAY_PAUSE, PAUSE, NEXT, PREVIOUS, STOP }
 
     private val _state = MutableStateFlow(State())
     val state = _state.asStateFlow()
@@ -71,6 +71,10 @@ class PlaybackCoordinator @Inject constructor(
 
     fun togglePlayPause() {
         _commands.tryEmit(Command.TOGGLE_PLAY_PAUSE)
+    }
+
+    fun pause() {
+        _commands.tryEmit(Command.PAUSE)
     }
 
     fun next() {
