@@ -70,14 +70,15 @@ class StationEngine @Inject constructor(
         fun merged(random: Random): List<Slot> = interleave(listOf(mix, related, similar), random)
 
         /**
-         * The first [count] songs of the merge. When a like asks for songs and Last.fm found
-         * some, one of them is always among the picks: that is the song YouTube would not
-         * have offered.
+         * [count] songs for a like: half of them (at least one) from Last.fm when it found
+         * that many, the rest YouTube's Mix and related pairs, alternating. A plain three-way
+         * merge would give Last.fm only a third.
          */
         fun picks(random: Random, count: Int): List<Slot> {
-            val picks = merged(random).take(count)
-            if (count == 0 || similar.isEmpty() || picks.any { it.why.provenance == Provenance.SIMILAR }) return picks
-            return picks.dropLast(1) + similar.first()
+            if (count == 0) return emptyList()
+            val fromSimilar = similar.take(maxOf(1, count / 2))
+            val fromYouTube = interleave(listOf(mix, related), random).take(count - fromSimilar.size)
+            return interleave(listOf(fromYouTube, fromSimilar), random)
         }
 
         fun fields(added: List<Slot>): String {
