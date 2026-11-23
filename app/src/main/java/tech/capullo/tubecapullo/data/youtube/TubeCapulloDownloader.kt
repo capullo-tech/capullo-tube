@@ -6,7 +6,6 @@ import org.schabi.newpipe.extractor.downloader.Downloader
 import org.schabi.newpipe.extractor.downloader.Request
 import org.schabi.newpipe.extractor.downloader.Response
 import org.schabi.newpipe.extractor.exceptions.ReCaptchaException
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -19,7 +18,7 @@ class TubeCapulloDownloader @Inject constructor(http: OkHttpClient) : Downloader
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
 
-    private val statuses = ConcurrentHashMap<String, Int>()
+    private val recorder = ThreadLocal<MutableMap<String, Int>>()
 
     override fun execute(request: Request): Response {
         val url = request.url()
@@ -33,8 +32,9 @@ class TubeCapulloDownloader @Inject constructor(http: OkHttpClient) : Downloader
             values.forEach { builder.addHeader(name, it) }
         }
 
-        val response = client.newCall(builder.build()).execute()
-        statuses[response.request.url.host] = response.code
+        val okRequest = builder.build()
+        val response = client.newCall(okRequest).execute()
+        recorder.get()?.put(okRequest.url.host, response.code)
 
         if (response.code == 429) {
             response.close()
@@ -52,7 +52,21 @@ class TubeCapulloDownloader @Inject constructor(http: OkHttpClient) : Downloader
         )
     }
 
-    fun lastStatus(host: String): Int? = statuses[host]
+    /**
+     * Runs [block], recording into [statuses] the HTTP status each host answered this thread's requests
+     * with. The key is the host that was asked, so a chart request redirected to a /sorry or consent
+     * page still answers for charts.youtube.com. NewPipe fetches synchronously on the caller's thread
+     * through this one global downloader, so concurrent callers each see only their own requests.
+     */
+    fun <T> recordStatuses(statuses: MutableMap<String, Int>, block: () -> T): T {
+        val outer = recorder.get()
+        recorder.set(statuses)
+        try {
+            return block()
+        } finally {
+            if (outer == null) recorder.remove() else recorder.set(outer)
+        }
+    }
 
     private companion object {
         const val USER_AGENT =

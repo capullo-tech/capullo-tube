@@ -7,6 +7,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkStatic
 import io.mockk.unmockkStatic
+import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -30,7 +31,9 @@ import tech.capullo.tubecapullo.data.history.PlayHistory
 import tech.capullo.tubecapullo.data.history.PlayStat
 import tech.capullo.tubecapullo.data.history.StationSnapshots
 import tech.capullo.tubecapullo.data.settings.AppSettings
+import tech.capullo.tubecapullo.data.youtube.YouTubeError
 import tech.capullo.tubecapullo.data.youtube.YouTubeExtractorClient
+import tech.capullo.tubecapullo.data.youtube.YtChart
 import tech.capullo.tubecapullo.data.youtube.YtRelated
 import tech.capullo.tubecapullo.data.youtube.YtVideo
 import tech.capullo.tubecapullo.player.PlaybackCoordinator
@@ -42,6 +45,7 @@ import tech.capullo.tubecapullo.station.StationEngine
 import tech.capullo.tubecapullo.station.StationSnapshot
 import tech.capullo.tubecapullo.station.StationState
 import tech.capullo.tubecapullo.station.Why
+import java.net.UnknownHostException
 import java.util.Locale
 import kotlin.random.Random
 
@@ -100,7 +104,7 @@ class HomeViewModelTest {
         every { Log.w(any(), any<String>()) } returns 0
         every { Log.w(any(), any<String>(), any()) } returns 0
         coEvery { extractor.trendingMusic(any(), any()) } answers {
-            listOf(video("chart-${firstArg<String?>()}"))
+            YtChart(Result.success(listOf(video("chart-${firstArg<String?>()}"))), 200)
         }
         coEvery { extractor.relatedStreams(any()) } answers {
             YtRelated(seedViews = -1, videos = emptyList())
@@ -110,7 +114,6 @@ class HomeViewModelTest {
         }
         coEvery { extractor.search(any(), any()) } returns emptyList()
         every { extractor.supportedRegions() } returns listOf("JP", "KR", "NI", "NO", "US")
-        every { extractor.lastChartsStatus() } returns 200
         coEvery { likedTracks.all() } answers { likes.value }
         every { likedTracks.observe() } returns likes
         every { likedTracks.observeEntries() } returns
@@ -179,7 +182,7 @@ class HomeViewModelTest {
     fun `a chart YouTube answers with no songs shows the error banner instead of a blank Home`() = runTest(dispatcher) {
         moreLikeRows.value = 0
         fullAlbums.value = false
-        coEvery { extractor.trendingMusic(any(), any()) } returns emptyList()
+        coEvery { extractor.trendingMusic(any(), any()) } returns YtChart(Result.success(emptyList()), 200)
         val home = viewModel()
         advanceUntilIdle()
 
@@ -188,14 +191,35 @@ class HomeViewModelTest {
     }
 
     @Test
-    fun `a refused chart shows the same banner, whatever the status behind it`() = runTest(dispatcher) {
+    fun `each chart logs the status its own request got, in the line the smoke gate parses`() = runTest(dispatcher) {
         moreLikeRows.value = 0
         fullAlbums.value = false
-        coEvery { extractor.trendingMusic(any(), any()) } returns emptyList()
-        every { extractor.lastChartsStatus() } returns 403
+        chartRegions.value = listOf("NI", "NO", "US")
+        val rateLimited = YouTubeError.Failed("YouTube is rate-limiting this device. Try again shortly.")
+        val offline = YouTubeError.Failed(
+            "YouTube trending_music failed: Unable to resolve host",
+            UnknownHostException("Unable to resolve host"),
+        )
+        coEvery { extractor.trendingMusic("NI", any()) } returns YtChart(Result.success(emptyList()), 403)
+        coEvery { extractor.trendingMusic("NO", any()) } returns YtChart(Result.failure(rateLimited), 429)
+        coEvery { extractor.trendingMusic("US", any()) } returns YtChart(Result.failure(offline), 0)
         val home = viewModel()
         advanceUntilIdle()
 
+        verify { Log.w("TubeHome", "trending region=NI result=empty http=403") }
+        verify {
+            Log.w(
+                "TubeHome",
+                "trending region=NO result=failed http=429 error=YouTube is rate-limiting this device. Try again shortly.",
+            )
+        }
+        verify {
+            Log.w(
+                "TubeHome",
+                "trending region=US result=failed http=0 io=UnknownHostException " +
+                    "error=YouTube trending_music failed: Unable to resolve host",
+            )
+        }
         assertEquals("Trending isn't available right now", home.uiState.value.error)
     }
 
