@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -77,6 +78,16 @@ class HomeViewModel @Inject constructor(
     private val listenAgainDraw = MutableStateFlow(ListenAgainDraw(random.nextInt(), System.currentTimeMillis()))
 
     private var loadJob: Job? = null
+    private val continueFlow = combine(
+        snapshots.observe(),
+        stationEngine.state.map { it.stationId }.distinctUntilChanged(),
+        appSettings.continueCards,
+    ) { stations, playing, max -> continueCards(stations, playing, max) }
+
+    /** The songs the Continue cards left off on, in card order; they seed the More like rows. */
+    private val continueSeeds = continueFlow.map { cards -> cards.map { it.video } }
+        .distinctUntilChanged { a, b -> a.map { it.videoId } == b.map { it.videoId } }
+
     private var moreLikeJob: Job? = null
     private var fullAlbumsJob: Job? = null
     private var trendingJob: Job? = null
@@ -104,8 +115,14 @@ class HomeViewModel @Inject constructor(
         }
         viewModelScope.launch {
             likedTracks.observe().drop(1).debounce(LIKES_RELOAD_DEBOUNCE_MS).collect {
-                Log.i(TAG, "reload rows=more-like,full-albums reason=likes likes=${it.size}")
-                reloadLikeRows()
+                Log.i(TAG, "reload rows=full-albums reason=likes likes=${it.size}")
+                reloadFullAlbums()
+            }
+        }
+        viewModelScope.launch {
+            continueSeeds.drop(1).collect { seeds ->
+                Log.i(TAG, "reload rows=more-like reason=continue seeds=${seeds.size}")
+                reloadMoreLike()
             }
         }
         viewModelScope.launch {
@@ -113,10 +130,6 @@ class HomeViewModel @Inject constructor(
                 Log.i(TAG, "reload rows=full-albums reason=album-likes albums=${it.size}")
                 reloadFullAlbums()
             }
-        }
-        val playingStation = stationEngine.state.map { it.stationId }.distinctUntilChanged()
-        val continueFlow = combine(snapshots.observe(), playingStation, appSettings.continueCards) { stations, playing, max ->
-            continueCards(stations, playing, max)
         }
         viewModelScope.launch {
             continueFlow.collect { cards -> _uiState.update { it.copy(continueCards = cards) } }
@@ -153,12 +166,6 @@ class HomeViewModel @Inject constructor(
                 it.copy(moreLike = rows, fullAlbums = albumCards, trending = charts, isLoading = false)
             }
         }
-    }
-
-    private fun reloadLikeRows() {
-        val related = RelatedFetches(viewModelScope)
-        reloadMoreLike(related)
-        reloadFullAlbums(related)
     }
 
     private fun reloadMoreLike(related: RelatedFetches? = null) {
@@ -227,9 +234,11 @@ class HomeViewModel @Inject constructor(
     private suspend fun moreLikeRows(related: RelatedFetches): List<HomeSection.BecauseLiked> = coroutineScope {
         val rows = appSettings.moreLikeRows.value
         if (rows == 0) return@coroutineScope emptyList()
-        val likes = likedTracks.all()
-        val likedIds = likes.mapTo(HashSet()) { it.videoId }
-        likes.take(rows).map { seed ->
+        // One row per Continue card, from the song the station left off on: removing a card
+        // removes its row.
+        val seeds = continueSeeds.first().take(rows)
+        val likedIds = likedTracks.all().mapTo(HashSet()) { it.videoId }
+        seeds.map { seed ->
             async {
                 val mix = async { fetchOrNull("moreLike", "mix", seed) { extractor.mix(seed.videoId) } }
                 val relatedVideos = related.of(seed, "moreLike")

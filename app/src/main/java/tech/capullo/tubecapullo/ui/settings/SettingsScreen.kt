@@ -162,7 +162,7 @@ fun SettingsScreen(
                 explanation = if (moreLikeRows == 0) {
                     "Off: Home shows no More like rows"
                 } else {
-                    "Home rows of songs like your newest likes"
+                    "Home rows of songs like where your Continue cards left off"
                 },
                 value = moreLikeRows,
                 max = AppSettings.MAX_MORE_LIKE_ROWS,
