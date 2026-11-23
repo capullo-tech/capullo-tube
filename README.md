@@ -74,6 +74,8 @@ preview over the old one, like an OTA update.
 
 All listeners stay in sync. The browser player's Next button goes to the next song.
 
+Off your Wi-Fi: turn on **Settings > Multiroom > Public link** and the multiroom QR gains a **Listen anywhere** tab with a temporary Cloudflare link. Anyone with the link can listen.
+
 ## How it works
 
 ```
