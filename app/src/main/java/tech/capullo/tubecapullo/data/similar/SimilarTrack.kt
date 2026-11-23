@@ -9,23 +9,21 @@ enum class SimilarDepth {
     /** Last.fm's closest songs first. */
     FAMILIAR,
 
-    /** Songs past Last.fm's top [DEPTH_FAMILIAR_RANKS] with a match of at least [DEEP_MATCH_FLOOR]. */
+    /** Songs past Last.fm's top [DEPTH_FAMILIAR_RANKS]: less similar, not necessarily less known. */
     DEEP,
 }
 
 /** GUESS: the probe saw ranks 1-10 hold the well-known neighbours of a seed. */
 internal const val DEPTH_FAMILIAR_RANKS = 10
 
-/** GUESS: below 0.1 the probe's Deep picks drifted (Rosalía -> Lana Del Rey at 0.056). */
-internal const val DEEP_MATCH_FLOOR = 0.1
-
 /**
- * The order to try Last.fm's suggestions in. Deep starts past the familiar ranks and drops
- * low-confidence matches; the familiar ranks follow so a thin answer still yields songs.
+ * The order to try Last.fm's suggestions in. Deep starts past the familiar ranks; the familiar
+ * ranks follow so a short answer still yields songs. No match floor: the score is relative to
+ * each list (Redonditos' list scores 0.007 at rank 11 for a good Babasónicos match), so a
+ * fixed floor sent whole lists back to rank 1.
  */
 internal fun depthOrder(tracks: List<SimilarTrack>, depth: SimilarDepth): List<SimilarTrack> = when (depth) {
     SimilarDepth.FAMILIAR -> tracks
     SimilarDepth.DEEP ->
-        tracks.drop(DEPTH_FAMILIAR_RANKS).filter { it.match >= DEEP_MATCH_FLOOR } +
-            tracks.take(DEPTH_FAMILIAR_RANKS)
+        tracks.drop(DEPTH_FAMILIAR_RANKS) + tracks.take(DEPTH_FAMILIAR_RANKS)
 }
