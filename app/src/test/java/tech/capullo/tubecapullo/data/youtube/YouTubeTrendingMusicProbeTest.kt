@@ -18,7 +18,7 @@ class YouTubeTrendingMusicProbeTest {
 
     @Test
     fun `q1 kiosk fetch returns items`() = runBlocking {
-        val items = client.trendingMusic(region = null)
+        val items = client.trendingMusic(region = null).videos.getOrThrow()
         println("PROBE q1 count=${items.size} locale=${Locale.getDefault()}")
         println("PROBE q1 first5=${items.take(5).map { "${it.videoId}|${it.title.take(40)}" }}")
         assertTrue("Q1 FAIL: kiosk returned ${items.size} items (<10)", items.size >= 10)
@@ -27,7 +27,7 @@ class YouTubeTrendingMusicProbeTest {
 
     @Test
     fun `q2 art availability clears the art-card bar`() = runBlocking {
-        val items = client.trendingMusic(region = null, limit = 50)
+        val items = client.trendingMusic(region = null, limit = 50).videos.getOrThrow()
         val withArt = items.count { !it.thumbnailUrl.isNullOrBlank() }
         val share = if (items.isEmpty()) 0.0 else withArt.toDouble() / items.size
         println("PROBE q2 items=${items.size} withArt=$withArt share=$share")
@@ -39,7 +39,7 @@ class YouTubeTrendingMusicProbeTest {
 
     @Test
     fun `q3 duration shape - measurement only`() = runBlocking {
-        val items = client.trendingMusic(region = null, limit = 50)
+        val items = client.trendingMusic(region = null, limit = 50).videos.getOrThrow()
         val inWindow = items.count { it.durationSeconds in 60..15 * 60 }
         val unknown = items.count { it.durationSeconds == 0L }
         val share = if (items.isEmpty()) 0.0 else inWindow.toDouble() / items.size
@@ -49,9 +49,9 @@ class YouTubeTrendingMusicProbeTest {
     @Test
     fun `q4 snapshot stability + latency - measurement only`() = runBlocking {
         val t0 = System.nanoTime()
-        val a = client.trendingMusic(region = null, limit = 50).map { it.videoId }.toSet()
+        val a = client.trendingMusic(region = null, limit = 50).videos.getOrThrow().map { it.videoId }.toSet()
         val t1 = System.nanoTime()
-        val b = client.trendingMusic(region = null, limit = 50).map { it.videoId }.toSet()
+        val b = client.trendingMusic(region = null, limit = 50).videos.getOrThrow().map { it.videoId }.toSet()
         val t2 = System.nanoTime()
         val overlap = if (minOf(a.size, b.size) == 0) {
             0.0
