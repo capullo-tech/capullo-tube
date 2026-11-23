@@ -30,7 +30,7 @@ object UpNextText {
      * The reason line of an Up next row. Radio picks name their source (YouTube's Mix, its
      * related videos, Last.fm's similar songs) and add the song they came from only when it
      * is not the station's own seed, which the sheet's title already names. Songs a like
-     * brought say which like.
+     * brought add which like: "Similar · ♥ Feel Good Inc.".
      */
     fun provenance(why: Why, video: YtVideo, stationSeedId: String? = null, blended: Boolean = false): String {
         val song = why.fromTitle?.let(::songName)
@@ -44,7 +44,7 @@ object UpNextText {
                 }
                 when {
                     song == null -> source
-                    blended -> "♥ $song"
+                    blended -> "$source · ♥ $song"
                     why.fromVideoId != null && why.fromVideoId == stationSeedId -> source
                     else -> "$source · $song"
                 }

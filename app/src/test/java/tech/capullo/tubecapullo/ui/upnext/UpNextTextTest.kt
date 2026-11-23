@@ -110,11 +110,13 @@ class UpNextTextTest {
     }
 
     @Test
-    fun `a song a like brought says which like, whatever its source`() {
+    fun `a song a like brought says its source and which like`() {
         val track = video("Song")
         val feelGood = Why(Provenance.RELATED, "HyHNuVaZJ-k", "Gorillaz - Feel Good Inc. (Official Video)")
-        assertEquals("♥ Feel Good Inc.", UpNextText.provenance(feelGood, track, stationSeedId = "XFkzRNyygfk", blended = true))
-        assertEquals("♥ Feel Good Inc.", UpNextText.provenance(feelGood, track, stationSeedId = "HyHNuVaZJ-k", blended = true))
+        assertEquals("Related · ♥ Feel Good Inc.", UpNextText.provenance(feelGood, track, stationSeedId = "XFkzRNyygfk", blended = true))
+        assertEquals("Related · ♥ Feel Good Inc.", UpNextText.provenance(feelGood, track, stationSeedId = "HyHNuVaZJ-k", blended = true))
+        val similar = feelGood.copy(provenance = Provenance.SIMILAR)
+        assertEquals("Similar · ♥ Feel Good Inc.", UpNextText.provenance(similar, track, blended = true))
     }
 
     @Test

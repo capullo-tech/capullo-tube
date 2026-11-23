@@ -373,7 +373,8 @@ private fun TrackRow(
 @Composable
 private fun SwipeToRemove(videoId: String, onRemove: () -> Unit, content: @Composable () -> Unit) {
     key(videoId) {
-        val state = rememberSwipeToDismissBoxState()
+        // A deliberate swipe, not a scroll that drifts sideways: past 40 % of the row's width.
+        val state = rememberSwipeToDismissBoxState(positionalThreshold = { width -> width * SWIPE_REMOVE_FRACTION })
         SwipeToDismissBox(
             state = state,
             backgroundContent = {
@@ -500,3 +501,5 @@ private fun PlayingBadge() {
         )
     }
 }
+
+private const val SWIPE_REMOVE_FRACTION = 0.4f
