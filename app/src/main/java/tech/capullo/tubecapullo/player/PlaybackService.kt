@@ -13,9 +13,6 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
-import androidx.media3.common.audio.ChannelMixingAudioProcessor
-import androidx.media3.common.audio.ChannelMixingMatrix
-import androidx.media3.common.audio.SonicAudioProcessor
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -43,6 +40,7 @@ import kotlinx.coroutines.sync.withLock
 import tech.capullo.audio.contracts.NowPlaying
 import tech.capullo.audio.contracts.PlaybackController
 import tech.capullo.audio.player.FifoAudioBufferSink
+import tech.capullo.audio.player.FifoFormat
 import tech.capullo.audio.tunnel.TunnelManager
 import tech.capullo.tubecapullo.MainActivity
 import tech.capullo.tubecapullo.data.lyrics.LyricsRepository
@@ -122,23 +120,15 @@ class PlaybackService : MediaSessionService() {
                 context: android.content.Context,
                 enableFloatOutput: Boolean,
                 enableAudioTrackPlaybackParams: Boolean,
-            ): AudioSink {
-                val mixer = ChannelMixingAudioProcessor().apply {
-                    putChannelMixingMatrix(ChannelMixingMatrix.create(1, 2))
-                    putChannelMixingMatrix(ChannelMixingMatrix.create(2, 2))
-                }
-                val resampler = SonicAudioProcessor().apply { setOutputSampleRateHz(48000) }
-                return DefaultAudioSink.Builder(context)
-                    .setEnableFloatOutput(false)
-                    .setAudioProcessorChain(
-                        DefaultAudioSink.DefaultAudioProcessorChain(
-                            mixer,
-                            resampler,
-                            TeeAudioProcessor(sink),
-                        ),
-                    )
-                    .build()
-            }
+            ): AudioSink = DefaultAudioSink.Builder(context)
+                .setEnableFloatOutput(false)
+                .setAudioProcessorChain(
+                    DefaultAudioSink.DefaultAudioProcessorChain(
+                        *FifoFormat.stage(),
+                        TeeAudioProcessor(sink),
+                    ),
+                )
+                .build()
         }
 
         val httpDataSourceFactory = DefaultHttpDataSource.Factory()

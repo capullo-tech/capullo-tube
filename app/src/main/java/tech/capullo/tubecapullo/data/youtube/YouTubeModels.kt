@@ -20,6 +20,13 @@ data class YtAlbum(val video: YtVideo, val chapters: List<YtChapter>)
 
 data class YtVideoList(val title: String, val videos: List<YtVideo>)
 
+/**
+ * One region's chart and the HTTP status charts.youtube.com answered that region's own request with,
+ * 0 when no answer came back (DNS miss, refused connection, timeout). Regions are fetched concurrently
+ * against the same host, so the status travels with its result.
+ */
+data class YtChart(val videos: Result<List<YtVideo>>, val httpStatus: Int)
+
 enum class CollectionKind { PLAYLISTS, ALBUMS, CHANNELS }
 
 data class YtCollection(

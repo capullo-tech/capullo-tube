@@ -1,5 +1,8 @@
 package tech.capullo.tubecapullo.station
 
+import tech.capullo.tubecapullo.data.similar.SongKey
+import tech.capullo.tubecapullo.data.similar.SongNames
+import tech.capullo.tubecapullo.data.similar.differentVersions
 import tech.capullo.tubecapullo.data.youtube.YtRelated
 import tech.capullo.tubecapullo.data.youtube.YtVideo
 import tech.capullo.tubecapullo.util.TitleCleaner
@@ -25,6 +28,7 @@ internal class SongLists(
     val gateKept: Int,
     val gateDropped: Int,
     val dupes: Int,
+    val repeats: Int = 0,
 )
 
 internal fun songLists(
@@ -32,13 +36,28 @@ internal fun songLists(
     mix: List<YtVideo>,
     related: YtRelated,
     excludedIds: Set<String>,
+    heard: List<YtVideo> = emptyList(),
 ): SongLists {
     val gated = related.videos.filter { passesRelatedGate(it, related.seedViews) }
     val seedKey = TitleCleaner.key(seed.title, seed.uploader)
+    val heardSongs = (heard + seed).distinctBy { it.videoId }.map { it to SongNames(it) }
+    var repeats = 0
+
+    // Another upload of a song already played or queued (a lyric video, a re-upload) is a
+    // repeat; a marked different version (live, acoustic, remix...) is not.
+    fun repeatsHeard(video: YtVideo): Boolean {
+        val song = SongKey.of(video) ?: return false
+        val repeat = heardSongs.any { (other, names) ->
+            other.videoId != video.videoId && names.matches(song) && !differentVersions(video.title, other.title)
+        }
+        if (repeat) repeats++
+        return repeat
+    }
     val seen = HashSet<String>()
     fun allowed(video: YtVideo) = video.inTrackWindow() &&
         video.videoId != seed.videoId &&
         video.videoId !in excludedIds &&
+        !repeatsHeard(video) &&
         seen.add(video.videoId)
     val mixFresh = mix.filter(::allowed)
     val relatedFresh = gated
@@ -62,6 +81,7 @@ internal fun songLists(
         gateKept = gated.size,
         gateDropped = related.videos.size - gated.size,
         dupes = pool.size - mixKept.size - relatedKept.size,
+        repeats = repeats,
     )
 }
 

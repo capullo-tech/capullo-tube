@@ -179,4 +179,39 @@ class PairsTest {
             )
         }
     }
+
+    @Test
+    fun `a lyric re-upload of a song already played is a repeat, accents and all`() {
+        val signos = video("signos", "Soda Stereo - Signos (Letra)", uploader = "Puro Rock")
+        val played = video("prof", "Soda Stereo - Prófugos (Official Visualizer)", uploader = "Soda Stereo")
+        val lyric = video("profl", "Soda Stereo - Profugos (Letra)", uploader = "Puro Rock")
+        val other = video("ciudad", "Soda Stereo - En La Ciudad De La Furia", uploader = "Soda Stereo")
+
+        val lists = songLists(signos, listOf(lyric, other), related(), emptySet(), heard = listOf(played))
+
+        assertEquals(listOf(other), lists.mix)
+        assertEquals(1, lists.repeats)
+    }
+
+    @Test
+    fun `a marked different version of a played song still plays`() {
+        val seed = video("seed", "Franz Ferdinand - Take Me Out (Video)", uploader = "Franz Ferdinand")
+        val live = related("live", "Franz Ferdinand - 'Take Me Out' (live for Like A Version)")
+        val studioAgain = video("again", "Franz Ferdinand - Take Me Out (Lyrics)", uploader = "Lyrics Channel")
+
+        val lists = songLists(seed, listOf(studioAgain), related(live), emptySet())
+
+        assertEquals(listOf(live), lists.related)
+        assertEquals(emptyList<YtVideo>(), lists.mix)
+    }
+
+    @Test
+    fun `a queued song's own video is not a repeat of itself`() {
+        val seed = video("seed", "Soda Stereo - Signos", uploader = "Soda Stereo")
+        val queued = video("prof", "Soda Stereo - Prófugos", uploader = "Soda Stereo")
+
+        val lists = songLists(seed, listOf(queued), related(), emptySet(), heard = listOf(queued))
+
+        assertEquals(listOf(queued), lists.mix)
+    }
 }
