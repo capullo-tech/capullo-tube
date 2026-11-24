@@ -27,6 +27,7 @@ import androidx.media3.session.MediaSessionService
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
@@ -37,10 +38,15 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import tech.capullo.audio.contracts.NowPlaying
 import tech.capullo.audio.contracts.PlaybackController
 import tech.capullo.audio.player.FifoAudioBufferSink
 import tech.capullo.audio.player.FifoFormat
+import tech.capullo.audio.snapcast.SnapcastArt
+import tech.capullo.audio.snapcast.SnapcastArtwork
 import tech.capullo.audio.tunnel.TunnelManager
 import tech.capullo.tubecapullo.MainActivity
 import tech.capullo.tubecapullo.data.lyrics.LyricsRepository
@@ -72,6 +78,8 @@ class PlaybackService : MediaSessionService() {
 
     @Inject lateinit var tunnelManager: TunnelManager
 
+    @Inject lateinit var http: OkHttpClient
+
     private var loop: StationLoop? = null
 
     private var retriedVideoId: String? = null
@@ -101,6 +109,20 @@ class PlaybackService : MediaSessionService() {
         override fun previous() = runOnMain { serviceScope.launch { skipMutex.withLock { goBack() } } }
         override fun seekTo(positionMs: Long) {}
     }
+
+    // Art for web players and listeners, as in QuantumCast: the best thumbnail is downloaded and
+    // published through SnapcastArtwork, so our snapserver serves the full image (`artUrl` = its path,
+    // same-origin for the web player, so through the public link too) and only a tiny thumbnail rides
+    // in `artData`. Until it lands, or when nothing downloads, `artUrl` is the YouTube URL itself so web
+    // players and listeners can load it directly. Touched on the main thread only.
+    private var snapArtSource: BroadcastArtSource? = null
+
+    private var snapArt: SnapcastArt? = null
+
+    // Source already downloaded, publishable or not: never downloaded again (a failed download is retried).
+    private var snapArtAttempted: BroadcastArtSource? = null
+    private var snapArtJob: Job? = null
+    private val snapArtwork by lazy { SnapcastArtwork(applicationContext) }
 
     override fun onCreate() {
         super.onCreate()
@@ -457,16 +479,62 @@ class PlaybackService : MediaSessionService() {
             title = video?.title ?: "",
             artist = video?.uploader ?: "",
             album = "CapulloTube",
+            artworkBase64 = snapArt?.thumbnailBase64,
             durationMs = (video?.durationSeconds ?: 0) * 1000,
             isPlaying = playerIsPlaying,
+            extras = (snapArt?.urlPath ?: snapArtSource?.directUrl)?.let { mapOf("artUrl" to it) }.orEmpty(),
         )
     }
 
     private fun publishNowPlaying() {
+        refreshSnapArt()
         val next = buildSnapNowPlaying()
         if (next == snapNowPlaying.value) return
         snapNowPlaying.value = next
         snapcastManager.notifyPropertiesChanged()
+    }
+
+    // Download the playing video's art and publish it; re-publish the now-playing when it lands.
+    private fun refreshSnapArt() {
+        val source = coordinator.state.value.video?.let(BroadcastArtSource::of)
+        // Same art: published, in flight, or downloaded but unusable. Only a failed download retries.
+        if (source == snapArtSource &&
+            (source == null || snapArt != null || source == snapArtAttempted || snapArtJob?.isActive == true)
+        ) {
+            return
+        }
+        snapArtJob?.cancel()
+        snapArtSource = source
+        snapArt = null
+        if (source == null) return
+        snapArtJob = serviceScope.launch {
+            for (url in source.downloadUrls) {
+                val bytes = downloadArt(url) ?: continue
+                // Named and labelled from the bytes, never from the URL's extension.
+                val art = snapArtwork.publish(bytes)
+                if (snapArtSource != source) return@launch // track changed while downloading
+                snapArtAttempted = source
+                Log.i(STATION_TAG, "art url=$url path=${art?.urlPath ?: "-"}")
+                snapArt = art ?: return@launch
+                snapNowPlaying.value = buildSnapNowPlaying()
+                snapcastManager.notifyPropertiesChanged()
+                return@launch
+            }
+        }
+    }
+
+    // The image at [url], or null on any failure: a video without maxresdefault answers 404.
+    private suspend fun downloadArt(url: String): ByteArray? = withContext(Dispatchers.IO) {
+        try {
+            http.newCall(Request.Builder().url(url).build()).execute().use { response ->
+                if (response.isSuccessful) return@use response.body?.bytes()
+                Log.i(STATION_TAG, "art url=$url result=http-${response.code}")
+                null
+            }
+        } catch (e: Exception) {
+            Log.w(STATION_TAG, "art url=$url result=error error=\"${e.message}\"")
+            null
+        }
     }
 
     private fun runOnMain(block: () -> Unit) {
