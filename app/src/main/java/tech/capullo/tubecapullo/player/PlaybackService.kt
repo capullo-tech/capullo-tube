@@ -38,15 +38,13 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
-import okhttp3.Request
 import tech.capullo.audio.contracts.NowPlaying
 import tech.capullo.audio.contracts.PlaybackController
 import tech.capullo.audio.player.FifoAudioBufferSink
 import tech.capullo.audio.player.FifoFormat
 import tech.capullo.audio.snapcast.SnapcastArt
 import tech.capullo.audio.snapcast.SnapcastArtwork
+import tech.capullo.audio.snapcast.SnapcastRemoteArt
 import tech.capullo.audio.tunnel.TunnelManager
 import tech.capullo.tubecapullo.MainActivity
 import tech.capullo.tubecapullo.data.lyrics.LyricsRepository
@@ -77,8 +75,6 @@ class PlaybackService : MediaSessionService() {
     @Inject lateinit var appSettings: AppSettings
 
     @Inject lateinit var tunnelManager: TunnelManager
-
-    @Inject lateinit var http: OkHttpClient
 
     private var loop: StationLoop? = null
 
@@ -119,7 +115,8 @@ class PlaybackService : MediaSessionService() {
 
     private var snapArt: SnapcastArt? = null
 
-    // Source already downloaded, publishable or not: never downloaded again (a failed download is retried).
+    // Source already tried, whatever came of it: one attempt per track, so a dead network is not
+    // hit again at every rebuffer. The direct `artUrl` above covers a track whose download failed.
     private var snapArtAttempted: BroadcastArtSource? = null
     private var snapArtJob: Job? = null
     private val snapArtwork by lazy { SnapcastArtwork(applicationContext) }
@@ -497,7 +494,7 @@ class PlaybackService : MediaSessionService() {
     // Download the playing video's art and publish it; re-publish the now-playing when it lands.
     private fun refreshSnapArt() {
         val source = coordinator.state.value.video?.let(BroadcastArtSource::of)
-        // Same art: published, in flight, or downloaded but unusable. Only a failed download retries.
+        // Same art: published, in flight, or already tried.
         if (source == snapArtSource &&
             (source == null || snapArt != null || source == snapArtAttempted || snapArtJob?.isActive == true)
         ) {
@@ -509,7 +506,9 @@ class PlaybackService : MediaSessionService() {
         if (source == null) return
         snapArtJob = serviceScope.launch {
             for (url in source.downloadUrls) {
-                val bytes = downloadArt(url) ?: continue
+                // Capped, with timeouts, cancelled with this job. Null on any failure: a video
+                // without maxresdefault answers 404.
+                val bytes = SnapcastRemoteArt.download(url) ?: continue
                 // Named and labelled from the bytes, never from the URL's extension.
                 val art = snapArtwork.publish(bytes)
                 if (snapArtSource != source) return@launch // track changed while downloading
@@ -520,20 +519,10 @@ class PlaybackService : MediaSessionService() {
                 snapcastManager.notifyPropertiesChanged()
                 return@launch
             }
-        }
-    }
-
-    // The image at [url], or null on any failure: a video without maxresdefault answers 404.
-    private suspend fun downloadArt(url: String): ByteArray? = withContext(Dispatchers.IO) {
-        try {
-            http.newCall(Request.Builder().url(url).build()).execute().use { response ->
-                if (response.isSuccessful) return@use response.body?.bytes()
-                Log.i(STATION_TAG, "art url=$url result=http-${response.code}")
-                null
+            if (snapArtSource == source) {
+                snapArtAttempted = source
+                Log.i(STATION_TAG, "art url=${source.directUrl} result=not-downloaded")
             }
-        } catch (e: Exception) {
-            Log.w(STATION_TAG, "art url=$url result=error error=\"${e.message}\"")
-            null
         }
     }
 
