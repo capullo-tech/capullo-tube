@@ -28,7 +28,6 @@ import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.BugReport
-import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.FavoriteBorder
@@ -107,7 +106,6 @@ fun SettingsScreen(
     val similarDepth by viewModel.similarDepth.collectAsStateWithLifecycle()
     val lastfmApiKey by viewModel.lastfmApiKey.collectAsStateWithLifecycle()
     val lastfmStatus by viewModel.lastfmStatus.collectAsStateWithLifecycle()
-    val tunnelEnabled by viewModel.tunnelEnabled.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var showChartsDialog by rememberSaveable { mutableStateOf(false) }
     var showLikeModeDialog by rememberSaveable { mutableStateOf(false) }
@@ -355,24 +353,6 @@ fun SettingsScreen(
                 modifier = Modifier.clickable(
                     onClickLabel = "Clear play history",
                     onClick = { showClearHistoryDialog = true },
-                ),
-            )
-            HorizontalDivider()
-            SectionHeader("Multiroom")
-            ListItem(
-                leadingContent = { Icon(Icons.Default.Cloud, contentDescription = null) },
-                headlineContent = { Text("Public link") },
-                supportingContent = {
-                    Text(
-                        "While broadcasting, the multiroom QR adds a Listen anywhere link " +
-                            "through Cloudflare. Anyone with it can listen.",
-                    )
-                },
-                trailingContent = { Switch(checked = tunnelEnabled, onCheckedChange = null) },
-                modifier = Modifier.toggleable(
-                    value = tunnelEnabled,
-                    role = Role.Switch,
-                    onValueChange = viewModel::setTunnelEnabled,
                 ),
             )
             HorizontalDivider()

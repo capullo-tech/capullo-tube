@@ -8,7 +8,7 @@ private const val HTTPS_PORT = 443
 private const val HTTP_PORT = 80
 
 /**
- * The public link's join URL, as the multiroom QR's "Listen anywhere" tab encodes it: the tunnel's
+ * The public link's join URL, as the multiroom QR's Cloudflare chip encodes it: the tunnel's
  * base URL (`https://<host>`) through [JoinUrl.build]; an unparsable one comes back as-is. Mirrors
  * capullo-audio-ui `ListenQrDialog`'s private `publicJoinUrl`, which the library does not export.
  */

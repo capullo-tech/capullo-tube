@@ -74,12 +74,12 @@ preview over the old one, like an OTA update.
 
 All listeners stay in sync. The browser player's Next button goes to the next song.
 
-A phone with a capullo app can join instead: scan the multiroom QR (another capullo app's works
-too), and on Android 12+ tap **Open in CapulloTube** on the page it opens. The app pauses its own
-song, plays the scanned station, and shows **Listening to** its address with a **Leave** button.
-Playing a song here also leaves.
+A phone with CapulloTube can join instead: scan the multiroom QR and tap **Open in CapulloTube**
+on the page it opens. The app pauses its own song, plays the scanned station, and shows
+**Listening to** its address with a **Leave** button. Playing a song here also leaves. Without
+CapulloTube the same button opens the browser player; the page never offers another capullo app.
 
-Off your Wi-Fi: turn on **Settings > Multiroom > Public link** and the multiroom QR gains a **Listen anywhere** tab with a temporary Cloudflare link. Anyone with the link can listen.
+Off your Wi-Fi: open the multiroom QR while a song plays and pick **Cloudflare**. That creates a temporary public link; anyone with it can listen and control. It stays on until you tap **Turn off** or join another station.
 
 ## Debug: cross-device join test
 
@@ -90,7 +90,7 @@ broadcaster's adb serial, `B` the listener's.
 ```bash
 # A: start a station. Playing anything broadcasts; there is no separate broadcast command.
 adb -s "$A" shell am start -a android.intent.action.VIEW -d 'https://youtu.be/dQw4w9WgXcQ' tech.capullo.tubecapullo
-# A, optional: Settings > Multiroom > Public link (off turns it back off)
+# A, optional: the multiroom QR's Cloudflare chip (off is its Turn off button)
 adb -s "$A" shell am start -n tech.capullo.tubecapullo/.MainActivity --es dbg publiclink --es value on
 # A: log the URLs the multiroom QR shows
 adb -s "$A" shell am start -n tech.capullo.tubecapullo/.MainActivity --es dbg share

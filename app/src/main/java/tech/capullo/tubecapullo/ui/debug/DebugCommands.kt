@@ -4,7 +4,6 @@ import android.util.Log
 import tech.capullo.audio.snapcast.JoinUrl
 import tech.capullo.audio.tunnel.TunnelManager
 import tech.capullo.audio.ui.usefulLocalIps
-import tech.capullo.tubecapullo.data.settings.AppSettings
 import tech.capullo.tubecapullo.data.youtube.YtVideo
 import tech.capullo.tubecapullo.player.PlaybackCoordinator
 import tech.capullo.tubecapullo.snapcast.SnapcastManager
@@ -19,7 +18,6 @@ class DebugCommands @Inject constructor(
     private val player: PlaybackCoordinator,
     private val snapcast: SnapcastManager,
     private val tunnel: TunnelManager,
-    private val settings: AppSettings,
 ) {
     fun run(name: String, value: String?): Route? {
         Log.i(TAG, "dbg $name${value?.let { " value=$it" }.orEmpty()}")
@@ -76,11 +74,11 @@ class DebugCommands @Inject constructor(
         )
     }
 
-    /** The Settings > Multiroom > Public link switch. */
+    /** The multiroom QR's Cloudflare chip (on) and its Turn off button (off). */
     private fun setPublicLink(value: String?) {
         when (value) {
-            "on" -> settings.setTunnelEnabled(true)
-            "off" -> settings.setTunnelEnabled(false)
+            "on" -> tunnel.setRequested(true)
+            "off" -> tunnel.setRequested(false)
             else -> Log.w(TAG, "dbg publiclink: needs --es $EXTRA_VALUE on|off, got '$value'")
         }
     }
