@@ -318,7 +318,7 @@ class SnapcastManager @Inject constructor(
     private data class ClientTarget(val host: String, val port: Int, val scheme: String = "tcp")
 
     companion object {
-        private const val TAG = "SnapcastManager"
+        const val TAG = "SnapcastManager"
 
         private const val STREAM_NAME = "CapulloTube"
     }

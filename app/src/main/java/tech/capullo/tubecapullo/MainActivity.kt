@@ -2,6 +2,7 @@ package tech.capullo.tubecapullo
 
 import android.Manifest
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -62,9 +63,13 @@ class MainActivity : ComponentActivity() {
         if (intent.getBooleanExtra(PlaybackService.EXTRA_OPEN_PLAYER, false)) {
             navRequests.trySend(Route.Player)
         }
-        intent.getStringExtra(DebugCommands.EXTRA)
-            ?.let(debugCommands::run)
-            ?.let { navRequests.trySend(it) }
+        // Debuggable builds only: the activity is exported, and `publiclink on` would let any app
+        // put this phone's broadcast on the internet.
+        if (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) {
+            intent.getStringExtra(DebugCommands.EXTRA)
+                ?.let { debugCommands.run(it, intent.getStringExtra(DebugCommands.EXTRA_VALUE)) }
+                ?.let { navRequests.trySend(it) }
+        }
         if (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0) return
         when (intent.action) {
             Intent.ACTION_SEND -> {
