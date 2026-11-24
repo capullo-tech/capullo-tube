@@ -19,7 +19,7 @@ fun publicJoinUrl(tunnelUrl: String): String {
         return tunnelUrl
     }
     val host = u.host ?: return tunnelUrl
-    val https = u.scheme.equals("https", ignoreCase = true)
+    val https = (u.scheme ?: return tunnelUrl).equals("https", ignoreCase = true)
     val port = when {
         u.port != -1 -> u.port
         https -> HTTPS_PORT

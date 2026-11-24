@@ -29,8 +29,8 @@ class PublicJoinUrlTest {
     }
 
     @Test
-    fun `an unparsable or hostless URL is shown as-is`() {
-        listOf("not a url", "trycloudflare", "https://").forEach {
+    fun `an unparsable, hostless or schemeless URL is shown as-is`() {
+        listOf("not a url", "trycloudflare", "https://", "//example.com").forEach {
             assertEquals(it, it, publicJoinUrl(it))
         }
     }
