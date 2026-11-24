@@ -48,7 +48,6 @@ import tech.capullo.audio.snapcast.SnapcastRemoteArt
 import tech.capullo.audio.tunnel.TunnelManager
 import tech.capullo.tubecapullo.MainActivity
 import tech.capullo.tubecapullo.data.lyrics.LyricsRepository
-import tech.capullo.tubecapullo.data.settings.AppSettings
 import tech.capullo.tubecapullo.data.youtube.YouTubeExtractorClient
 import tech.capullo.tubecapullo.snapcast.SnapcastManager
 import tech.capullo.tubecapullo.station.RepeatMode
@@ -71,8 +70,6 @@ class PlaybackService : MediaSessionService() {
     @Inject lateinit var extractor: YouTubeExtractorClient
 
     @Inject lateinit var lyrics: LyricsRepository
-
-    @Inject lateinit var appSettings: AppSettings
 
     @Inject lateinit var tunnelManager: TunnelManager
 
@@ -362,13 +359,22 @@ class PlaybackService : MediaSessionService() {
                 }
             }
         }
-        // The public link lives exactly as long as the broadcast with the setting on. The triple
-        // drops the group churn of snapcast state, which would otherwise re-run start() per update.
+        // The public link lives while the user asked for it (the QR dialog's Cloudflare chip) and
+        // the broadcast is up. The triple drops the group churn of snapcast state, which would
+        // otherwise re-run start() per update.
         serviceScope.launch {
-            combine(appSettings.tunnelEnabled, snapcastManager.state) { enabled, snap ->
-                Triple(enabled, snap.isBroadcasting, snap.broadcastHttpPort)
-            }.distinctUntilChanged().collect { (enabled, broadcasting, httpPort) ->
-                if (enabled && broadcasting) tunnelManager.start(httpPort) else tunnelManager.stop()
+            combine(tunnelManager.requested, snapcastManager.state) { requested, snap ->
+                Triple(requested, snap.isBroadcasting, snap.broadcastHttpPort)
+            }.distinctUntilChanged().collect { (requested, broadcasting, httpPort) ->
+                if (requested && broadcasting) tunnelManager.start(httpPort) else tunnelManager.stop()
+            }
+        }
+        // Listening to another station ends this phone's own link, request included: the broadcast
+        // stack stays up through a join, so without this the link would keep serving, with its
+        // Turn off out of reach behind the Listening sheet.
+        serviceScope.launch {
+            snapcastManager.state.map { it.listeningTo != null }.distinctUntilChanged().collect { listening ->
+                if (listening) tunnelManager.setRequested(false)
             }
         }
     }
@@ -544,7 +550,9 @@ class PlaybackService : MediaSessionService() {
         stationEngine.onStationStarted = null
         serviceScope.cancel()
         // serviceScope is gone, so the collector above can't see the broadcast end; without this
-        // the singleton would keep cloudflared up against a dead snapserver port.
+        // the singleton would keep cloudflared up against a dead snapserver port. The request goes
+        // with it: the next session opens no public link until asked again.
+        tunnelManager.setRequested(false)
         tunnelManager.stop()
         snapcastManager.stopBroadcast()
         fifoSink?.close()

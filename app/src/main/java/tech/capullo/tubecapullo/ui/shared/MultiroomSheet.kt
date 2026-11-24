@@ -30,11 +30,14 @@ import javax.inject.Inject
 @HiltViewModel
 class MultiroomViewModel @Inject constructor(
     private val snapcastManager: SnapcastManager,
-    tunnelManager: TunnelManager,
+    private val tunnelManager: TunnelManager,
 ) : ViewModel() {
     val snapcastState = snapcastManager.state
     val tunnelState = tunnelManager.state
     val localClientId: String get() = snapcastManager.localClientId
+
+    /** The QR dialog's Cloudflare chip: ask for the public link, or turn it off. */
+    fun setPublicLink(on: Boolean) = tunnelManager.setRequested(on)
 
     fun setClientVolume(clientId: String, muted: Boolean, percent: Int) = snapcastManager.adjustClientVolume(clientId, percent, muted)
 
@@ -66,6 +69,7 @@ fun MultiroomSheet(onDismiss: () -> Unit, viewModel: MultiroomViewModel = hiltVi
             localClientId = viewModel.localClientId,
             httpPort = state.broadcastHttpPort,
             publicLink = tunnelState.toPublicLinkState(),
+            onSetPublicLink = (viewModel::setPublicLink).takeIf { state.isBroadcasting },
             onDismiss = onDismiss,
         )
     }
