@@ -81,6 +81,33 @@ Playing a song here also leaves.
 
 Off your Wi-Fi: turn on **Settings > Multiroom > Public link** and the multiroom QR gains a **Listen anywhere** tab with a temporary Cloudflare link. Anyone with the link can listen.
 
+## Debug: cross-device join test
+
+Debuggable builds take commands as `--es dbg <name>` on `MainActivity`; release builds ignore
+them. This drives a join between two phones over adb without touching either screen. `A` is the
+broadcaster's adb serial, `B` the listener's.
+
+```bash
+# A: start a station. Playing anything broadcasts; there is no separate broadcast command.
+adb -s "$A" shell am start -a android.intent.action.VIEW -d 'https://youtu.be/dQw4w9WgXcQ' tech.capullo.tubecapullo
+# A, optional: Settings > Multiroom > Public link (off turns it back off)
+adb -s "$A" shell am start -n tech.capullo.tubecapullo/.MainActivity --es dbg publiclink --es value on
+# A: log the URLs the multiroom QR shows
+adb -s "$A" shell am start -n tech.capullo.tubecapullo/.MainActivity --es dbg share
+adb -s "$A" logcat -d -s SnapcastManager:I | grep ' share '
+# share lan=http://192.168.1.20:41234/join/ public=https://x.trycloudflare.com/join/ broadcasting=true listening=-
+
+# B: join one of them, as a scan of the QR would (the join intent-filter takes package-targeted VIEW)
+adb -s "$B" shell am start -a android.intent.action.VIEW -d 'http://192.168.1.20:41234/join/' tech.capullo.tubecapullo
+adb -s "$B" shell am start -n tech.capullo.tubecapullo/.MainActivity --es dbg share   # listening=192.168.1.20
+adb -s "$B" logcat -d -s SnapcastManager:I | grep -E ' (join|share) '
+# B: leave the station
+adb -s "$B" shell am start -n tech.capullo.tubecapullo/.MainActivity --es dbg leave
+```
+
+`share` prints `lan=none` while not broadcasting, and `public=off|starting|error:<msg>` until the
+tunnel is up.
+
 ## How it works
 
 ```
