@@ -1,6 +1,8 @@
 package tech.capullo.tubecapullo.ui.player
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.layout.Arrangement
@@ -21,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -37,6 +40,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -57,19 +62,21 @@ private const val PAUSE_MARK = "♪"
 
 private const val LINES_ABOVE_CURRENT = 2
 
+private val TAB_SHAPE = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+
 @Composable
 internal fun LyricsCard(
     lyrics: Lyrics?,
     positionState: StateFlow<Long>,
     offsetMs: Long,
     onOpen: () -> Unit,
+    onSwitch: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClickLabel = "Show lyrics", onClick = onOpen)
-            .swipeUp(onOpen),
+            .lyricsPress(CardDefaults.shape, "Show a slim Lyrics tab instead", onOpen, onSwitch),
     ) {
         when {
             lyrics == null -> CardLines("Looking for lyrics…", "", currentFirst = false)
@@ -108,13 +115,12 @@ private fun CardLines(first: String, second: String, modifier: Modifier = Modifi
 }
 
 @Composable
-internal fun LyricsTab(onOpen: () -> Unit, modifier: Modifier = Modifier) {
+internal fun LyricsTab(onOpen: () -> Unit, onSwitch: () -> Unit, modifier: Modifier = Modifier) {
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClickLabel = "Show lyrics", onClick = onOpen)
-            .swipeUp(onOpen),
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+            .lyricsPress(TAB_SHAPE, "Show the current lyric line instead", onOpen, onSwitch),
+        shape = TAB_SHAPE,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         tonalElevation = 1.dp,
     ) {
@@ -273,6 +279,21 @@ private fun nudgeLabel(offsetMs: Long): String {
 }
 
 private fun LyricLine.shownText(): String = text.ifEmpty { if (timeMs != null) PAUSE_MARK else "" }
+
+/**
+ * A tap opens the lyrics, a hold switches between the card and the slim tab, a swipe up opens
+ * them too. Clipped to [shape] first: the press highlight otherwise fills the square bounds of
+ * a rounded surface.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+private fun Modifier.lyricsPress(shape: Shape, switchLabel: String, onOpen: () -> Unit, onSwitch: () -> Unit): Modifier = clip(shape)
+    .combinedClickable(
+        onClickLabel = "Show lyrics",
+        onLongClickLabel = switchLabel,
+        onLongClick = onSwitch,
+        onClick = onOpen,
+    )
+    .swipeUp(onOpen)
 
 private fun Modifier.swipeUp(onSwipeUp: () -> Unit): Modifier = pointerInput(Unit) {
     val threshold = ART_SWIPE_THRESHOLD.toPx()

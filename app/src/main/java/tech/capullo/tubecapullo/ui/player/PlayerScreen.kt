@@ -289,10 +289,11 @@ private fun PortraitPlayer(
                     positionState = viewModel.position,
                     offsetMs = lyricsOffsetMs,
                     onOpen = onOpenLyrics,
+                    onSwitch = viewModel::toggleLyricsCard,
                     modifier = cardSlot,
                 )
             }
-            lyrics is PlayerLyrics.Shown -> LyricsTab(onOpen = onOpenLyrics, modifier = slot)
+            lyrics is PlayerLyrics.Shown -> LyricsTab(onOpen = onOpenLyrics, onSwitch = viewModel::toggleLyricsCard, modifier = slot)
             else -> Spacer(
                 slot.navigationBarsPadding().minimumInteractiveComponentSize().height(Dimens.PLAYER_LYRICS_TAB_HEIGHT),
             )

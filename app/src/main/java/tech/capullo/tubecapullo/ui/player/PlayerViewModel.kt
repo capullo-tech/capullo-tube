@@ -42,7 +42,7 @@ class PlayerViewModel @Inject constructor(
     private val extractor: YouTubeExtractorClient,
     private val lyricsRepository: LyricsRepository,
     private val http: OkHttpClient,
-    appSettings: AppSettings,
+    private val appSettings: AppSettings,
 ) : ViewModel() {
     val playerState = player.state
     val position = player.position
@@ -92,6 +92,9 @@ class PlayerViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0L)
 
     val lyricsCard = appSettings.lyricsCard
+
+    /** A hold on the Player's lyrics switches between the card and the slim tab, as the Settings switch does. */
+    fun toggleLyricsCard() = appSettings.setLyricsCard(!appSettings.lyricsCard.value)
 
     init {
         player.state.value.video?.let(lyricsRepository::retryFailed)
