@@ -545,6 +545,16 @@ class PlaybackService : MediaSessionService() {
         writer.flush()
     }
 
+    /**
+     * Swiping the app out of recents ends everything: media3's default keeps a playing service
+     * alive, and with it the broadcast and a public link nobody could turn off any more. [onDestroy]
+     * does the teardown (broadcast, link and its request, player).
+     */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        stopSelf()
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onDestroy() {
         stationEngine.persistNow()
         stationEngine.onStationStarted = null
