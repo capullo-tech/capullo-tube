@@ -37,6 +37,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import coil.compose.AsyncImage
 import kotlinx.coroutines.flow.Flow
+import tech.capullo.audio.snapcast.SnapclientProcess
 import tech.capullo.tubecapullo.data.youtube.YtVideo
 import tech.capullo.tubecapullo.player.PlaybackCoordinator
 import tech.capullo.tubecapullo.station.LikeEffect
@@ -132,10 +133,22 @@ internal fun NowPlayingBar(
     }
 }
 
-/** Shown while this device plays a station it joined: tap for the multiroom sheet, or Leave. */
+/**
+ * Shown while this device plays a station it joined: tap for the multiroom sheet, or Leave. It
+ * says whether the station is actually heard: the bar is all the Home screen shows of a join.
+ */
 @Composable
-internal fun ListeningBar(host: String, onOpen: () -> Unit, onLeave: () -> Unit) {
-    Surface(color = MaterialTheme.colorScheme.secondaryContainer, onClick = onOpen) {
+internal fun ListeningBar(
+    host: String,
+    connection: SnapclientProcess.ConnectionState,
+    onOpen: () -> Unit,
+    onLeave: () -> Unit,
+) {
+    val failed = connection == SnapclientProcess.ConnectionState.ERROR
+    Surface(
+        color = if (failed) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.secondaryContainer,
+        onClick = onOpen,
+    ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
@@ -149,7 +162,11 @@ internal fun ListeningBar(host: String, onOpen: () -> Unit, onLeave: () -> Unit)
             )
             Spacer(Modifier.width(Dimens.MINI_BAR_ART_TEXT_GAP))
             Text(
-                "Listening to $host",
+                when (connection) {
+                    SnapclientProcess.ConnectionState.STARTING -> "Connecting to $host…"
+                    SnapclientProcess.ConnectionState.CONNECTED -> "Listening to $host"
+                    SnapclientProcess.ConnectionState.ERROR -> "Can't reach $host"
+                },
                 style = MaterialTheme.typography.titleSmall,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

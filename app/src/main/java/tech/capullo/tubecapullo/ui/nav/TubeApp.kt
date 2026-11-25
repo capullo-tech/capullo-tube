@@ -172,7 +172,7 @@ private fun ShellBottomBar(
     val station by shell.station.collectAsStateWithLifecycle()
     Column {
         snapcast.listeningTo?.let { host ->
-            ListeningBar(host, onOpen = onOpenMultiroom, onLeave = shell::leaveStation)
+            ListeningBar(host, snapcast.clientConnection, onOpen = onOpenMultiroom, onLeave = shell::leaveStation)
         }
         playerState.video?.let { video ->
             NowPlayingBar(

@@ -18,7 +18,8 @@ as clients. You pick one song. The app extends it into an endless radio:
 - **Lyrics** show under the Player's controls when a song has them: synced lyrics from
   [LRCLIB](https://lrclib.net), or lyrics pasted into the video description. LRCLIB receives the
   artist, the title and the duration of each song that plays; Settings > Look up lyrics online
-  turns that off.
+  turns that off. Tap the lyrics for all of them; hold them to switch between a slim tab and a
+  card with the current line.
 - **Similar songs** come from Last.fm. Last.fm receives the artist and title of each song a
   radio expands; each new suggestion is looked up once on YouTube and remembered. Settings >
   Similar songs turns this off, picks the Depth (Familiar or Deep), and takes an optional

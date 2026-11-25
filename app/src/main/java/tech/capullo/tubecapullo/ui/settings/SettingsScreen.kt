@@ -195,9 +195,9 @@ fun SettingsScreen(
                 supportingContent = {
                     Text(
                         if (lyricsCard) {
-                            "The Player shows the current lyric line; tap it for all lyrics"
+                            "The Player shows the current lyric line; tap it for all lyrics, hold it for the slim tab"
                         } else {
-                            "Off: a slim Lyrics tab; tap it for the lyrics"
+                            "Off: a slim Lyrics tab; tap it for the lyrics, hold it for the card"
                         },
                     )
                 },
