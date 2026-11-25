@@ -149,53 +149,75 @@ class SnapcastManager @Inject constructor(
         nsdRegistrar = null
         snapcontrolPlugin?.stop()
         snapcontrolPlugin = null
-        stopControl()
-        // A joined station outlives our broadcast stack: its snapclient is not ours to stop.
-        if (_state.value.listeningTo == null) stopLocalSnapclient()
+        // A joined station outlives our broadcast stack: its snapclient and control client, and the
+        // groups that client reports, are not ours to stop.
+        val listening = _state.value.listeningTo != null
+        if (!listening) {
+            stopControl()
+            stopLocalSnapclient()
+        }
         snapserverJob?.cancel()
         snapserverJob = null
         snapserverProcess = null
-        _state.update { it.copy(isBroadcasting = false, groups = emptyList(), streamId = "") }
+        _state.update {
+            val stopped = it.copy(isBroadcasting = false)
+            if (listening) stopped else stopped.copy(groups = emptyList(), streamId = "")
+        }
     }
 
     /**
-     * Listens to the station a join URL points at: this device's snapclient leaves our own snapserver
-     * for it. Our broadcast stack keeps running; the caller pauses local playback. Through the tunnel
-     * snapclient streams over `wss` on the tunnel's 443; on the LAN the station's `listen.json` names
-     * the stream port, with the URL's port-block guess as the fallback. Ended by [leave], or by
-     * playing something here ([startBroadcast]).
+     * Listens to the station a join URL points at: this device's snapclient and control client leave
+     * our own snapserver for it, so the groups, client volumes and latencies are the station's. Our
+     * broadcast stack keeps running; the caller pauses local playback. Through the tunnel both go
+     * over the tunnel's 443: snapclient streams over `wss`, JSON-RPC runs on `wss://host/jsonrpc`. On
+     * the LAN the station's `listen.json` names the stream and HTTP ports, with the URL's port-block
+     * guess as the fallback. Ended by [leave], or by playing something here ([startBroadcast]).
      */
     fun join(station: JoinTarget) {
         Log.i(TAG, "join host=${station.host} httpPort=${station.httpPort} secure=${station.secure}")
         joinJob?.cancel()
+        stopControl()
         _state.update {
-            it.copy(listeningTo = station.host, clientConnection = SnapclientProcess.ConnectionState.STARTING)
+            it.copy(
+                listeningTo = station.host,
+                clientConnection = SnapclientProcess.ConnectionState.STARTING,
+                groups = emptyList(),
+                streamId = "",
+            )
         }
         joinJob = scope.launch {
-            val client = if (station.secure) {
-                ClientTarget(station.host, station.port, station.scheme)
+            // Through the tunnel only its HTTPS port is reachable: no listen.json, no port block.
+            val ports = if (station.secure) {
+                null
             } else {
-                val ports = SnapserverListenInfo.fetch(station.host, station.httpPort) ?: station.ports
-                ClientTarget(station.host, ports?.streamPort ?: station.port)
+                SnapserverListenInfo.fetch(station.host, station.httpPort) ?: station.ports
             }
+            val client = ClientTarget(station.host, ports?.streamPort ?: station.port, station.scheme)
+            val httpPort = ports?.httpPort ?: station.httpPort
             ensureActive()
-            Log.i(TAG, "join dial=${client.scheme}://${client.host}:${client.port}")
+            Log.i(TAG, "join dial=${client.scheme}://${client.host}:${client.port} control=$httpPort")
             startLocalSnapclient(client)
+            startControl(station.host, httpPort, secure = station.secure)
         }
     }
 
-    /** Stops listening to a joined station; our own broadcast, if running, gets the speaker back. */
+    /**
+     * Stops listening to a joined station; our own broadcast, if running, gets the speaker and the
+     * control client back.
+     */
     fun leave() {
         if (_state.value.listeningTo == null) return
         Log.i(TAG, "leave host=${_state.value.listeningTo}")
         joinJob?.cancel()
         joinJob = null
-        _state.update { it.copy(listeningTo = null) }
+        _state.update { it.copy(listeningTo = null, groups = emptyList(), streamId = "") }
         val server = snapserverProcess
         if (_state.value.isBroadcasting && server != null) {
             startLocalSnapclient(ClientTarget("localhost", server.ports.streamPort))
+            startControl("localhost", server.ports.httpPort)
         } else {
             stopLocalSnapclient()
+            stopControl()
         }
     }
 
@@ -241,9 +263,9 @@ class SnapcastManager @Inject constructor(
         audioFocus?.abandon()
     }
 
-    private fun startControl(host: String, httpPort: Int) {
+    private fun startControl(host: String, httpPort: Int, secure: Boolean = false) {
         stopControl()
-        val client = SnapcastControlClient(host, httpPort).also { controlClient = it }
+        val client = SnapcastControlClient(host, httpPort, secure).also { controlClient = it }
         controlJob = scope.launch {
             client.initialize()
             client.notifications.collect { notif ->

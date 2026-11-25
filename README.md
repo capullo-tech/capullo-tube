@@ -77,10 +77,12 @@ All listeners stay in sync. The browser player's Next button goes to the next so
 
 A phone with CapulloTube can join instead: scan the multiroom QR and tap **Open in CapulloTube**
 on the page it opens. The app pauses its own song, plays the scanned station, and shows
-**Listening to** its address with a **Leave** button. Playing a song here also leaves. Without
-CapulloTube the same button opens the browser player; the page never offers another capullo app.
+**Listening to** its address with a **Leave** button and, once the station reports them, a
+**Devices** button for the volume and latency of every device playing it, on the LAN or through
+its public link. Playing a song here also leaves. Without CapulloTube the same button opens the
+browser player; the page never offers another capullo app.
 
-Off your Wi-Fi: open the multiroom QR while a song plays and pick **Cloudflare**. That creates a temporary public link; anyone with it can listen and control. It stays on until you tap **Turn off** or join another station.
+Off your Wi-Fi: open the multiroom QR while a song plays and pick **Cloudflare**. That creates a temporary public link; anyone with it can listen and control. It stays on until you tap **Turn off**, join another station or swipe the app away from recents (which also stops playback and the broadcast).
 
 ## Debug: cross-device join test
 

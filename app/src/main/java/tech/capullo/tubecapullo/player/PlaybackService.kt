@@ -116,7 +116,7 @@ class PlaybackService : MediaSessionService() {
     // hit again at every rebuffer. The direct `artUrl` above covers a track whose download failed.
     private var snapArtAttempted: BroadcastArtSource? = null
     private var snapArtJob: Job? = null
-    private val snapArtwork by lazy { SnapcastArtwork(applicationContext) }
+    private val snapArtwork by lazy { SnapcastArtwork.get(applicationContext) }
 
     override fun onCreate() {
         super.onCreate()
