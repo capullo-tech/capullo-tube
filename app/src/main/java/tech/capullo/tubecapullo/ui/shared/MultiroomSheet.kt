@@ -2,6 +2,7 @@ package tech.capullo.tubecapullo.ui.shared
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -12,6 +13,9 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
@@ -52,15 +56,32 @@ fun MultiroomSheet(onDismiss: () -> Unit, viewModel: MultiroomViewModel = hiltVi
     val tunnelState by viewModel.tunnelState.collectAsStateWithLifecycle()
     val listeningTo = state.listeningTo
     if (listeningTo != null) {
-        ListeningSheet(
-            host = listeningTo,
-            connection = state.clientConnection,
-            onLeave = {
-                viewModel.leave()
-                onDismiss()
-            },
-            onDismiss = onDismiss,
-        )
+        // The joined station's devices come from the control client that joined with it, so they are
+        // offered once it has reported them.
+        var showDevices by remember(listeningTo) { mutableStateOf(false) }
+        val deviceCount = state.groups.sumOf { group -> group.clients.count { it.connected } }
+        if (showDevices && deviceCount > 0) {
+            SnapcastControlSheet(
+                groups = state.groups,
+                onClientVolumeChange = viewModel::setClientVolume,
+                onClientLatencyChange = viewModel::setClientLatency,
+                localClientId = viewModel.localClientId,
+                httpPort = state.broadcastHttpPort,
+                onDismiss = onDismiss,
+            )
+        } else {
+            ListeningSheet(
+                host = listeningTo,
+                connection = state.clientConnection,
+                deviceCount = deviceCount,
+                onShowDevices = { showDevices = true },
+                onLeave = {
+                    viewModel.leave()
+                    onDismiss()
+                },
+                onDismiss = onDismiss,
+            )
+        }
     } else {
         SnapcastControlSheet(
             groups = state.groups,
@@ -75,12 +96,17 @@ fun MultiroomSheet(onDismiss: () -> Unit, viewModel: MultiroomViewModel = hiltVi
     }
 }
 
-/** This device plays a station it joined from a QR, not its own: say which, and offer Leave. */
+/**
+ * This device plays a station it joined from a QR, not its own: say which, offer the station's
+ * devices (their volumes and latencies) once [deviceCount] is known, and offer Leave.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ListeningSheet(
     host: String,
     connection: SnapclientProcess.ConnectionState,
+    deviceCount: Int,
+    onShowDevices: () -> Unit,
     onLeave: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -111,8 +137,18 @@ private fun ListeningSheet(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            FilledTonalButton(onClick = onLeave, modifier = Modifier.padding(top = 8.dp)) {
-                Text("Leave")
+            Row(
+                modifier = Modifier.padding(top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                if (deviceCount > 0) {
+                    FilledTonalButton(onClick = onShowDevices) {
+                        Text("Devices ($deviceCount)")
+                    }
+                }
+                FilledTonalButton(onClick = onLeave) {
+                    Text("Leave")
+                }
             }
         }
     }

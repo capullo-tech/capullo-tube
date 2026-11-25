@@ -116,7 +116,7 @@ class PlaybackService : MediaSessionService() {
     // hit again at every rebuffer. The direct `artUrl` above covers a track whose download failed.
     private var snapArtAttempted: BroadcastArtSource? = null
     private var snapArtJob: Job? = null
-    private val snapArtwork by lazy { SnapcastArtwork(applicationContext) }
+    private val snapArtwork by lazy { SnapcastArtwork.get(applicationContext) }
 
     override fun onCreate() {
         super.onCreate()
@@ -543,6 +543,16 @@ class PlaybackService : MediaSessionService() {
         stationEngine.dump(writer)
         writer.println("player: $playerSnapshot")
         writer.flush()
+    }
+
+    /**
+     * Swiping the app out of recents ends everything: media3's default keeps a playing service
+     * alive, and with it the broadcast and a public link nobody could turn off any more. [onDestroy]
+     * does the teardown (broadcast, link and its request, player).
+     */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        stopSelf()
+        super.onTaskRemoved(rootIntent)
     }
 
     override fun onDestroy() {
