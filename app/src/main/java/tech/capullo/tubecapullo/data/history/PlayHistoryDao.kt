@@ -22,7 +22,9 @@ interface PlayHistoryDao {
                 existing.copy(
                     title = entity.title,
                     uploader = entity.uploader,
-                    durationSeconds = entity.durationSeconds,
+                    // A play without a length (a QuantumCast song the player never measured)
+                    // keeps the length an earlier play stored.
+                    durationSeconds = entity.durationSeconds.takeIf { it > 0 } ?: existing.durationSeconds,
                     thumbnailUrl = entity.thumbnailUrl,
                     playCount = existing.playCount + 1,
                     lastPlayedAtEpochMs = entity.lastPlayedAtEpochMs,

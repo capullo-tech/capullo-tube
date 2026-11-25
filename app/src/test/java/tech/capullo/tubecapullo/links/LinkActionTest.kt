@@ -80,6 +80,19 @@ class LinkActionTest {
     }
 
     @Test
+    fun `a QuantumCast hand-off plays its playlist whether or not something plays or ask-first is on`() {
+        for (plays in bools) {
+            for (ask in bools) {
+                assertEquals(
+                    "plays=$plays ask=$ask",
+                    LinkAction.PlayRadioPlaylist(42),
+                    decideLinkAction(LinkTarget.RadioPlaylist(42), plays, ask),
+                )
+            }
+        }
+    }
+
+    @Test
     fun `links that are not a video or playlist are rejected with their own reason`() {
         for (plays in bools) {
             for (ask in bools) {

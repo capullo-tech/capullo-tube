@@ -3,6 +3,7 @@ package tech.capullo.tubecapullo.player
 import android.content.Context
 import android.content.Intent
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -23,6 +24,12 @@ class PlaybackCoordinator @Inject constructor(
         val isPlaying: Boolean = false,
         val isBuffering: Boolean = false,
         val durationMs: Long = 0,
+        /**
+         * While [isBuffering], how far ExoPlayer's buffer has filled toward what it needs to play,
+         * 0 to 1. Null when there is no measure, such as while the stream URL is still being
+         * resolved, and always when not buffering.
+         */
+        val bufferProgress: Float? = null,
     )
 
     enum class Command { TOGGLE_PLAY_PAUSE, PAUSE, NEXT, PREVIOUS, STOP }
@@ -31,12 +38,18 @@ class PlaybackCoordinator @Inject constructor(
     val state = _state.asStateFlow()
 
     sealed interface StartRequest {
-        data class Source(val source: PlaySource) : StartRequest
+        /** [preloaded]: see StationEngine.start. */
+        data class Source(val source: PlaySource, val preloaded: List<YtVideo>? = null) : StartRequest
 
         data class Resume(val stationId: Long) : StartRequest
     }
 
-    private val _starts = MutableSharedFlow<StartRequest>(replay = 1)
+    // Only the newest start matters: a newer request replaces one the service has not collected
+    // yet, so emitting never fails and every request either reaches the engine or is replaced.
+    private val _starts = MutableSharedFlow<StartRequest>(
+        replay = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
     val starts = _starts.asSharedFlow()
 
     private val _commands = MutableSharedFlow<Command>(extraBufferCapacity = 4)
@@ -56,12 +69,24 @@ class PlaybackCoordinator @Inject constructor(
     private val _events = MutableSharedFlow<String>(extraBufferCapacity = 4)
     val events = _events.asSharedFlow()
 
-    fun start(source: PlaySource) = request(StartRequest.Source(source))
+    fun start(source: PlaySource, preloaded: List<YtVideo>? = null) = request(StartRequest.Source(source, preloaded))
 
     fun resume(stationId: Long) = request(StartRequest.Resume(stationId))
 
     private fun request(start: StartRequest) {
-        context.startService(Intent(context, PlaybackService::class.java))
+        // Synchronously, before the service exists to receive the request: the Player opened
+        // right after this waits for the start instead of closing on an empty station.
+        stationEngine.expectStart()
+        try {
+            context.startService(Intent(context, PlaybackService::class.java))
+        } catch (e: IllegalStateException) {
+            // Android refuses a service start from the background; nothing would play it.
+            stationEngine.dropExpectedStart("service-refused error=\"${e.message}\"")
+            return
+        } catch (e: SecurityException) {
+            stationEngine.dropExpectedStart("service-refused error=\"${e.message}\"")
+            return
+        }
         _starts.tryEmit(start)
     }
 

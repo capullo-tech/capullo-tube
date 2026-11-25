@@ -49,13 +49,38 @@ class LyricsRepository @Inject constructor(
 
     private val offsetWrites = Mutex()
 
+    // The song the current lookup started with: a QuantumCast song starts without a length, and
+    // LRCLIB needs one, so the lookup runs again once the player has measured it.
+    private var lookedUp: YtVideo? = null
+
+    // Counts lookups so only the newest publishes. A lookup run again for the same song (its
+    // length learned) would otherwise race the first, which also waits on Loading(videoId).
+    private val publishLock = Any()
+    private var lookups = 0
+
     fun onTrackStarted(video: YtVideo) {
+        lookedUp = video
         lookup?.cancel()
-        _current.value = LyricsState.Loading(video.videoId)
+        val generation = synchronized(publishLock) {
+            _current.value = LyricsState.Loading(video.videoId)
+            ++lookups
+        }
         lookup = scope.launch {
             val done = load(video)
-            _current.compareAndSet(LyricsState.Loading(video.videoId), done)
+            synchronized(publishLock) {
+                if (generation == lookups) _current.compareAndSet(LyricsState.Loading(video.videoId), done)
+            }
         }
+    }
+
+    /** Looks the playing song up again when its lookup started before its length was known. */
+    fun onDurationLearned(video: YtVideo) {
+        val before = lookedUp ?: return
+        if (before.videoId != video.videoId || before.durationSeconds != 0L || video.durationSeconds <= 0) return
+        val state = _current.value
+        // Lyrics the cache already had are kept; only a lookup that ran without a length repeats.
+        if (state is LyricsState.Done && state.videoId == video.videoId && state.lyrics != null) return
+        onTrackStarted(video)
     }
 
     fun retryFailed(video: YtVideo) {

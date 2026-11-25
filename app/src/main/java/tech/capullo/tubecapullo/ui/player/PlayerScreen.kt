@@ -143,9 +143,10 @@ fun PlayerScreen(
         ) {
             if (video == null) {
                 // No station at all: nothing to show here, Home is where one starts. A station
-                // that is starting has a source but no video yet.
-                LaunchedEffect(station.source) { if (station.source == null) onBack() }
-                if (station.source != null) CircularProgressIndicator()
+                // that is starting has a source but no video yet, or is still fetching its list.
+                val starting = station.source != null || station.starting
+                LaunchedEffect(station.source, station.starting) { if (!starting) onBack() }
+                if (starting) CircularProgressIndicator()
             } else {
                 val clients = snapState.groups.flatMap { it.clients }
                 PortraitPlayer(
@@ -416,7 +417,7 @@ private fun ControlBar(
                     modifier = Modifier.size(40.dp),
                 )
             }
-            if (state.isBuffering) CircularProgressIndicator(Modifier.size(76.dp), strokeWidth = 2.dp)
+            if (state.isBuffering) BufferRing(state.bufferProgress, Modifier.size(76.dp), strokeWidth = 2.dp)
         }
         IconButton(onClick = viewModel::next, modifier = Modifier.size(56.dp)) {
             Icon(

@@ -15,6 +15,8 @@ import tech.capullo.tubecapullo.data.backup.LikedBackup
 import tech.capullo.tubecapullo.data.history.LikedAlbums
 import tech.capullo.tubecapullo.data.history.LikedTracks
 import tech.capullo.tubecapullo.data.history.PlayHistory
+import tech.capullo.tubecapullo.data.quantumcast.QuantumCastPlaylists
+import tech.capullo.tubecapullo.data.quantumcast.RadioPlaylist
 import tech.capullo.tubecapullo.data.youtube.YtVideo
 import tech.capullo.tubecapullo.player.PlaybackCoordinator
 import tech.capullo.tubecapullo.station.PlaySource
@@ -27,6 +29,18 @@ data class LibraryRow(val video: YtVideo, val isAlbum: Boolean)
 
 internal fun historyRows(history: List<YtVideo>, albumIds: Set<String>): List<LibraryRow> = history.map { LibraryRow(it, it.videoId in albumIds) }
 
+/** "12 songs · 3 without a YouTube link": only the songs with a YouTube link play here. */
+internal fun radioPlaylistCounts(playlist: RadioPlaylist): String {
+    val playable = playlist.playableCount
+    val missing = playlist.trackCount - playable
+    val songs = if (playable == 1) "1 song" else "$playable songs"
+    return when {
+        missing <= 0 -> songs
+        playable == 0 -> "$missing without a YouTube link"
+        else -> "$songs · $missing without a YouTube link"
+    }
+}
+
 @HiltViewModel
 class LibraryViewModel @Inject constructor(
     private val player: PlaybackCoordinator,
@@ -35,6 +49,7 @@ class LibraryViewModel @Inject constructor(
     likedTracks: LikedTracks,
     likedAlbums: LikedAlbums,
     private val playHistory: PlayHistory,
+    quantumCast: QuantumCastPlaylists,
 ) : ViewModel() {
     val liked: StateFlow<List<YtVideo>?> = likedTracks.observe()
         .stateIn<List<YtVideo>?>(
@@ -61,6 +76,13 @@ class LibraryViewModel @Inject constructor(
         null,
     )
 
+    val radioPlaylists: StateFlow<List<RadioPlaylist>?> = quantumCast.changes
+        .stateIn<List<RadioPlaylist>?>(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
+            null,
+        )
+
     val playerState = player.state
 
     fun playLiked(shuffle: Boolean) = player.start(PlaySource.Liked(shuffle))
@@ -70,6 +92,8 @@ class LibraryViewModel @Inject constructor(
     fun playSongRadio(video: YtVideo) = player.start(PlaySource.SongRadio(video))
 
     fun playAlbum(video: YtVideo) = player.start(PlaySource.Album(video))
+
+    fun playRadioPlaylist(playlist: RadioPlaylist, shuffle: Boolean) = player.start(PlaySource.QuantumCast(playlist.id, playlist.title, shuffle))
 
     fun playNext(video: YtVideo) = stationEngine.playNext(video)
 

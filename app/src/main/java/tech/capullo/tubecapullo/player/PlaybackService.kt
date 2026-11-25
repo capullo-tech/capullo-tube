@@ -16,6 +16,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.audio.AudioSink
@@ -26,6 +27,7 @@ import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -81,6 +83,13 @@ class PlaybackService : MediaSessionService() {
 
     private var stallProgress: Pair<Long, Long>? = null
     private var stallSinceMs = 0L
+
+    // Mirrors ExoPlayer's internal rebuffering flag, which picks the buffer it waits for: true only
+    // once playback fell from READY to BUFFERING by itself while meant to play. A seek, a new item
+    // or a play/pause change clears it, as ExoPlayerImplInternal does.
+    private var rebuffering = false
+    private var lastPlaybackState = Player.STATE_IDLE
+    private var bufferSampleJob: Job? = null
 
     @Volatile private var playerSnapshot = "not started"
 
@@ -152,6 +161,9 @@ class PlaybackService : MediaSessionService() {
             .setAllowCrossProtocolRedirects(true)
 
         val exo = ExoPlayer.Builder(this, renderersFactory)
+            // The builder's own default, named because bufferThresholdMs reads the buffering ring's
+            // thresholds from DefaultLoadControl's constants: another LoadControl needs them there.
+            .setLoadControl(DefaultLoadControl())
             .setMediaSourceFactory(
                 DefaultMediaSourceFactory(DefaultDataSource.Factory(this, httpDataSourceFactory)),
             )
@@ -186,14 +198,44 @@ class PlaybackService : MediaSessionService() {
                         "id=${coordinator.state.value.video?.videoId ?: "-"} " +
                         "playWhenReady=${exo.playWhenReady}",
                 )
+                val knownMs = exo.duration.takeIf { d -> d != C.TIME_UNSET }
                 coordinator.updateState {
                     it.copy(
                         isBuffering = playbackState == Player.STATE_BUFFERING,
-                        durationMs = exo.duration.takeIf { d -> d != C.TIME_UNSET } ?: it.durationMs,
+                        bufferProgress = null,
+                        durationMs = knownMs ?: it.durationMs,
                     )
                 }
+                if (playbackState == Player.STATE_READY && knownMs != null) learnDuration(knownMs)
                 if (playbackState == Player.STATE_ENDED) {
                     serviceScope.launch { loop?.advance() }
+                }
+            }
+
+            // After the individual callbacks, so a batch is seen whole: a seek reports its
+            // discontinuity and its fall to BUFFERING together, and must not read as a rebuffer.
+            override fun onEvents(player: Player, events: Player.Events) {
+                val state = exo.playbackState
+                val clearsRebuffering = events.containsAny(
+                    Player.EVENT_POSITION_DISCONTINUITY,
+                    Player.EVENT_MEDIA_ITEM_TRANSITION,
+                    Player.EVENT_PLAY_WHEN_READY_CHANGED,
+                    Player.EVENT_PLAYBACK_SUPPRESSION_REASON_CHANGED,
+                )
+                if (clearsRebuffering) {
+                    rebuffering = false
+                } else if (state == Player.STATE_BUFFERING && lastPlaybackState == Player.STATE_READY) {
+                    rebuffering = exo.playWhenReady &&
+                        exo.playbackSuppressionReason == Player.PLAYBACK_SUPPRESSION_REASON_NONE
+                }
+                if (state != Player.STATE_BUFFERING) rebuffering = false
+                lastPlaybackState = state
+                // A new item starts its own measure, never one carried over from the last.
+                if (events.contains(Player.EVENT_MEDIA_ITEM_TRANSITION)) stopBufferSampling()
+                if (state == Player.STATE_BUFFERING && exo.currentMediaItem != null) {
+                    startBufferSampling(exo)
+                } else {
+                    stopBufferSampling()
                 }
             }
 
@@ -288,7 +330,7 @@ class PlaybackService : MediaSessionService() {
         }
         stationLoop.onQueueExhausted = {
             Log.i(STATION_TAG, "loop waiting at=${stationLoop.waitingAt}")
-            coordinator.updateState { it.copy(isBuffering = false) }
+            coordinator.updateState { it.copy(isBuffering = false, bufferProgress = null) }
             coordinator.postEvent("Looking for the next track…")
         }
         serviceScope.launch {
@@ -311,7 +353,8 @@ class PlaybackService : MediaSessionService() {
         serviceScope.launch {
             coordinator.starts.collect { request ->
                 when (request) {
-                    is PlaybackCoordinator.StartRequest.Source -> stationEngine.start(request.source)
+                    is PlaybackCoordinator.StartRequest.Source ->
+                        stationEngine.start(request.source, request.preloaded)
                     is PlaybackCoordinator.StartRequest.Resume -> stationEngine.resume(request.stationId)
                 }
             }
@@ -425,6 +468,48 @@ class PlaybackService : MediaSessionService() {
         recoverStream("stall")
     }
 
+    // Runs on serviceScope (the main thread, the player's application thread) only while ExoPlayer
+    // is buffering; the first sample is taken at once so the ring never starts on a stale figure.
+    private fun startBufferSampling(exo: ExoPlayer) {
+        if (bufferSampleJob?.isActive == true) return
+        bufferSampleJob = serviceScope.launch(start = CoroutineStart.UNDISPATCHED) {
+            while (true) {
+                val position = exo.currentPosition
+                val duration = exo.duration
+                val fill = bufferFill(
+                    bufferedMs = exo.bufferedPosition,
+                    positionMs = position,
+                    thresholdMs = bufferThresholdMs(exo),
+                    remainingMs = if (duration == C.TIME_UNSET) C.TIME_UNSET else duration - position,
+                )
+                // Nothing buffered yet (still connecting) is no measure: an empty ring would look
+                // like nothing is happening, so the spinner stays until the first media arrives.
+                coordinator.updateState { it.copy(bufferProgress = fill.takeIf { f -> it.isBuffering && f > 0f }) }
+                delay(BUFFER_SAMPLE_MS)
+            }
+        }
+    }
+
+    private fun stopBufferSampling() {
+        bufferSampleJob?.cancel()
+        bufferSampleJob = null
+    }
+
+    // What DefaultLoadControl.shouldStartPlayback waits for: the after-rebuffer figure while
+    // rebuffering, the start figure otherwise (start, seek, new item), each with its own value for
+    // local URIs, which it tells apart the same way.
+    private fun bufferThresholdMs(exo: ExoPlayer): Long {
+        val config = exo.currentMediaItem?.localConfiguration
+        val scheme = config?.uri?.scheme
+        val local = config != null && (scheme.isNullOrEmpty() || scheme in DefaultLoadControl.LOCAL_PLAYBACK_SCHEMES)
+        return when {
+            rebuffering && local -> DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_FOR_LOCAL_PLAYBACK_MS
+            rebuffering -> DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS
+            local -> DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_FOR_LOCAL_PLAYBACK_MS
+            else -> DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_MS
+        }.toLong()
+    }
+
     private fun recoverStream(reason: String) {
         val video = coordinator.state.value.video ?: return
         extractor.invalidate(video.videoId)
@@ -473,7 +558,23 @@ class PlaybackService : MediaSessionService() {
     private fun currentDurationMs(): Long {
         val playerDuration = player?.duration ?: C.TIME_UNSET
         if (playerDuration != C.TIME_UNSET && playerDuration > 0) return playerDuration
-        return (coordinator.state.value.video?.durationSeconds ?: 0) * 1000
+        val videoMs = (coordinator.state.value.video?.durationSeconds ?: 0) * 1000
+        return videoMs.takeIf { it > 0 } ?: coordinator.state.value.durationMs
+    }
+
+    /**
+     * Gives the playing song the length the player found when it was queued without one (a
+     * QuantumCast song): the engine's copies, this service's own, the lyrics lookup and Snapcast.
+     */
+    private fun learnDuration(durationMs: Long) {
+        val video = coordinator.state.value.video ?: return
+        val seconds = durationMs / 1000
+        if (video.durationSeconds != 0L || seconds <= 0) return
+        stationEngine.learnDuration(video.videoId, seconds)
+        val learned = video.copy(durationSeconds = seconds)
+        coordinator.updateState { if (it.video == video) it.copy(video = learned) else it }
+        lyrics.onDurationLearned(learned)
+        publishNowPlaying()
     }
 
     private fun buildSnapNowPlaying(): NowPlaying {
@@ -483,7 +584,8 @@ class PlaybackService : MediaSessionService() {
             artist = video?.uploader ?: "",
             album = "CapulloTube",
             artworkBase64 = snapArt?.thumbnailBase64,
-            durationMs = (video?.durationSeconds ?: 0) * 1000,
+            durationMs = (video?.durationSeconds ?: 0).takeIf { it > 0 }?.let { it * 1000 }
+                ?: coordinator.state.value.durationMs,
             isPlaying = playerIsPlaying,
             extras = (snapArt?.urlPath ?: snapArtSource?.directUrl)?.let { mapOf("artUrl" to it) }.orEmpty(),
         )

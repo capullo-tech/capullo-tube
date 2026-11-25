@@ -102,6 +102,8 @@ object StationSnapshotCodec {
         is PlaySource.SongRadio -> SourceDto(SONG, video = seed.toDto())
         is PlaySource.SearchRadio -> SourceDto(SEARCH, text = query, videos = results.map { it.toDto() })
         is PlaySource.Playlist -> SourceDto(PLAYLIST, url = url, text = title, shuffle = shuffle)
+        is PlaySource.QuantumCast ->
+            SourceDto(QUANTUMCAST, url = playlistId.toString(), text = title, shuffle = shuffle)
         is PlaySource.Channel -> SourceDto(CHANNEL, url = url, text = name)
         is PlaySource.Liked -> SourceDto(LIKED, shuffle = shuffle)
         PlaySource.LikedRadio -> SourceDto(LIKED_RADIO)
@@ -116,6 +118,11 @@ object StationSnapshotCodec {
         SONG -> PlaySource.SongRadio(requireNotNull(video).toVideo())
         SEARCH -> PlaySource.SearchRadio(text.orEmpty(), videos.map { it.toVideo() })
         PLAYLIST -> PlaySource.Playlist(requireNotNull(url), text.orEmpty(), shuffle)
+        QUANTUMCAST -> PlaySource.QuantumCast(
+            requireNotNull(url?.toLongOrNull()) { "quantumcast playlist id $url" },
+            text.orEmpty(),
+            shuffle,
+        )
         CHANNEL -> PlaySource.Channel(requireNotNull(url), text.orEmpty())
         LIKED -> PlaySource.Liked(shuffle)
         LIKED_RADIO -> PlaySource.LikedRadio
@@ -157,6 +164,7 @@ object StationSnapshotCodec {
     private const val SONG = "song"
     private const val SEARCH = "search"
     private const val PLAYLIST = "playlist"
+    private const val QUANTUMCAST = "quantumcast"
     private const val CHANNEL = "channel"
     private const val LIKED = "liked"
     private const val LIKED_RADIO = "liked-radio"

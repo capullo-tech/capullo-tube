@@ -20,6 +20,7 @@ object UpNextText {
         is PlaySource.SongRadio -> SourceTitle("Radio", clean(source.seed))
         is PlaySource.SearchRadio -> SourceTitle("Radio", "\"${source.query}\"")
         is PlaySource.Playlist -> SourceTitle("Playlist", source.title)
+        is PlaySource.QuantumCast -> SourceTitle("Playlist", source.title)
         is PlaySource.Channel -> SourceTitle("Channel", source.name)
         is PlaySource.Liked -> SourceTitle("Playlist", LIKED_SONGS)
         PlaySource.LikedRadio -> SourceTitle("Radio", LIKED_SONGS)

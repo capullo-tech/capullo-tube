@@ -4,7 +4,8 @@ import tech.capullo.tubecapullo.data.youtube.YtChapter
 import tech.capullo.tubecapullo.data.youtube.YtVideo
 
 sealed interface PlaySource {
-    val isCollection: Boolean get() = this is Liked || this is Playlist || this is Channel
+    val isCollection: Boolean get() =
+        this is Liked || this is Playlist || this is Channel || this is QuantumCast
 
     data class SongRadio(val seed: YtVideo) : PlaySource
 
@@ -21,6 +22,13 @@ sealed interface PlaySource {
     }
 
     data class Channel(val url: String, val name: String) : PlaySource
+
+    /** A QuantumCast station playlist: the songs QuantumCast identified on one radio station. */
+    data class QuantumCast(
+        val playlistId: Long,
+        val title: String,
+        val shuffle: Boolean = false,
+    ) : PlaySource
 
     data class Liked(val shuffle: Boolean) : PlaySource
 

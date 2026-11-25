@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
+import tech.capullo.tubecapullo.data.quantumcast.QuantumCastPlaylists
 import tech.capullo.tubecapullo.data.settings.AppSettings
 import tech.capullo.tubecapullo.data.youtube.YouTubeError
 import tech.capullo.tubecapullo.data.youtube.YouTubeExtractorClient
@@ -53,6 +54,7 @@ class LinksViewModel @Inject constructor(
     private val settings: AppSettings,
     private val playlistLinks: PlaylistLinkRequests,
     private val snapcast: SnapcastManager,
+    private val quantumCast: QuantumCastPlaylists,
 ) : ViewModel() {
     private val _resolving = MutableStateFlow(false)
 
@@ -100,6 +102,7 @@ class LinksViewModel @Inject constructor(
                 snapcast.join(action.station)
                 _effects.trySend(LinkEffect.OpenMultiroom)
             }
+            is LinkAction.PlayRadioPlaylist -> playRadioPlaylist(action.playlistId)
             is LinkAction.ForVideo -> resolve(action)
         }
     }
@@ -144,6 +147,42 @@ class LinksViewModel @Inject constructor(
         _effects.trySend(LinkEffect.Open(Route.Player))
     }
 
+    /**
+     * Starts the playlist QuantumCast's Play handed over, unless it has no song to play here. The
+     * songs read here, through the URI QuantumCast granted, are the ones the engine plays: it may
+     * have no other way to read them.
+     */
+    private fun playRadioPlaylist(playlistId: Long) {
+        val gen = generation
+        _resolving.value = true
+        resolveJob = viewModelScope.launch {
+            try {
+                val handOff = quantumCast.handedOver(playlistId)
+                when {
+                    handOff == null -> {
+                        Log.w(TAG, "radio-playlist id=$playlistId result=unreadable")
+                        _effects.trySend(LinkEffect.Snackbar("Can't open this QuantumCast playlist"))
+                    }
+                    handOff.videos.isEmpty() -> {
+                        Log.i(TAG, "radio-playlist id=$playlistId result=no-youtube")
+                        _effects.trySend(LinkEffect.Snackbar("No YouTube songs in this playlist"))
+                    }
+                    else -> {
+                        Log.i(
+                            TAG,
+                            "radio-playlist id=$playlistId result=ok title=${q(handOff.title)} " +
+                                "playable=${handOff.videos.size}",
+                        )
+                        player.start(PlaySource.QuantumCast(playlistId, handOff.title), preloaded = handOff.videos)
+                        _effects.trySend(LinkEffect.Open(Route.Player))
+                    }
+                }
+            } finally {
+                if (gen == generation) _resolving.value = false
+            }
+        }
+    }
+
     private fun playNext(video: YtVideo) {
         if (player.state.value.video == null) {
             playNow(video)
@@ -174,6 +213,7 @@ class LinksViewModel @Inject constructor(
             is LinkTarget.Video -> videoId
             is LinkTarget.Playlist -> playlistId
             is LinkTarget.Join -> "${station.host}:${station.httpPort}"
+            is LinkTarget.RadioPlaylist -> playlistId.toString()
             LinkTarget.OtherYouTube, LinkTarget.NotYouTube -> "-"
         }
 
@@ -182,6 +222,7 @@ class LinksViewModel @Inject constructor(
             is LinkTarget.Video -> "video"
             is LinkTarget.Playlist -> "playlist"
             is LinkTarget.Join -> "join"
+            is LinkTarget.RadioPlaylist -> "radio-playlist"
             LinkTarget.OtherYouTube, LinkTarget.NotYouTube -> "none"
         }
 

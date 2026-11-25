@@ -21,7 +21,6 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SurroundSound
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -42,6 +41,7 @@ import tech.capullo.tubecapullo.data.youtube.YtVideo
 import tech.capullo.tubecapullo.player.PlaybackCoordinator
 import tech.capullo.tubecapullo.station.LikeEffect
 import tech.capullo.tubecapullo.station.RollOver
+import tech.capullo.tubecapullo.ui.player.BufferRing
 import tech.capullo.tubecapullo.ui.player.LikeChipAbove
 import tech.capullo.tubecapullo.ui.player.rememberLikeChipState
 import tech.capullo.tubecapullo.ui.theme.Dimens
@@ -108,7 +108,7 @@ internal fun NowPlayingBar(
             }
             Box(Modifier.size(Dimens.MINI_BAR_BUTTON_SIZE), contentAlignment = Alignment.Center) {
                 if (state.isBuffering) {
-                    CircularProgressIndicator(Modifier.size(Dimens.MINI_BAR_SPINNER_SIZE))
+                    BufferRing(state.bufferProgress, Modifier.size(Dimens.MINI_BAR_SPINNER_SIZE))
                 } else {
                     IconButton(
                         onClick = onTogglePlayPause,

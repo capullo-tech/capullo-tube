@@ -20,6 +20,9 @@ interface LikedTrackDao {
     @Query("DELETE FROM liked_track WHERE videoId = :videoId")
     suspend fun delete(videoId: String)
 
+    @Query("UPDATE liked_track SET durationSeconds = :seconds WHERE videoId = :videoId AND durationSeconds = 0")
+    suspend fun learnDuration(videoId: String, seconds: Long)
+
     @Query("SELECT videoId FROM liked_track")
     suspend fun ids(): List<String>
 

@@ -25,6 +25,10 @@ as clients. You pick one song. The app extends it into an endless radio:
   Similar songs turns this off, picks the Depth (Familiar or Deep), and takes an optional
   personal Last.fm API key in place of the app's. Last.fm answers are cached for 30 days, calls
   are spaced, and a rate-limit answer pauses lookups for 10 minutes.
+- **Radio station playlists** come from QuantumCast. With QuantumCast installed, the songs it
+  identifies on each radio station show under Library > Radio as one playlist per station. Its
+  Play button on a playlist opens that playlist here. Only songs with a YouTube video link play;
+  the row counts the others.
 
 Part of the [capullo-tech](https://github.com/capullo-tech) family (RadioCapullo, telecloud-radio).
 

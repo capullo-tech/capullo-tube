@@ -2,6 +2,7 @@ package tech.capullo.tubecapullo.links
 
 import tech.capullo.audio.snapcast.JoinTarget
 import tech.capullo.audio.snapcast.JoinUrl
+import tech.capullo.tubecapullo.data.quantumcast.QuantumCastContract
 import tech.capullo.tubecapullo.data.youtube.YouTubeUrls
 
 sealed interface LinkTarget {
@@ -11,6 +12,9 @@ sealed interface LinkTarget {
 
     /** A capullo station's join URL (its listen QR): this device listens to that station. */
     data class Join(val station: JoinTarget) : LinkTarget
+
+    /** QuantumCast's Play on one of its station playlists: plays that playlist here. */
+    data class RadioPlaylist(val playlistId: Long) : LinkTarget
 
     data object OtherYouTube : LinkTarget
 
@@ -25,6 +29,8 @@ object IncomingLinks {
             val candidate = word.trim { it in WRAPPING }
             if (!isYouTubeHost(hostOf(candidate))) {
                 JoinUrl.parse(candidate)?.let { return LinkTarget.Join(it) }
+                QuantumCastContract.playlistIdOfTracksLink(candidate)
+                    ?.let { return LinkTarget.RadioPlaylist(it) }
                 continue
             }
             sawYouTube = true

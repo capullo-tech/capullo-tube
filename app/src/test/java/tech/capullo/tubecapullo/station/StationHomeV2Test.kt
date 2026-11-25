@@ -26,6 +26,7 @@ import org.junit.Test
 import tech.capullo.tubecapullo.data.history.LikedAlbums
 import tech.capullo.tubecapullo.data.history.LikedTracks
 import tech.capullo.tubecapullo.data.history.StationSnapshots
+import tech.capullo.tubecapullo.data.quantumcast.QuantumCastPlaylists
 import tech.capullo.tubecapullo.data.settings.AppSettings
 import tech.capullo.tubecapullo.data.settings.LikeMode
 import tech.capullo.tubecapullo.data.similar.SimilarFinder
@@ -50,6 +51,10 @@ class StationHomeV2Test {
 
     private val list = (1..8).map { video("LIST$it") }
     private val playlist = PlaySource.Playlist(YouTubeUrls.playlistUrl("PLtestlist000001"), "Trip")
+    private val radio = PlaySource.QuantumCast(5, "Radio Paradise", shuffle = true)
+    private val quantumCast = mockk<QuantumCastPlaylists> {
+        coEvery { videos(5) } returns list
+    }
     private val chapters = listOf(
         YtChapter("Intro", 0),
         YtChapter("Side A", 60_000),
@@ -109,6 +114,7 @@ class StationHomeV2Test {
             likedAlbums,
             store,
             finder,
+            quantumCast,
         )
         if (settle) advanceUntilIdle()
         return engine
@@ -224,6 +230,26 @@ class StationHomeV2Test {
         assertEquals(left.current, after.state.value.current)
         assertEquals(left.queued, after.state.value.queued)
         assertEquals(StationEngine.SNAPSHOT_SAVE_MS + 5_000, after.startPositionFor(0))
+    }
+
+    @Test
+    fun `a QuantumCast playlist played before an app restart resumes from Room exactly`() = runTest(StandardTestDispatcher()) {
+        val before = engine()
+        change(before, radio)
+        next(before, 3)
+        val left = before.state.value
+        before.onProgress(left.current!!.videoId, StationEngine.SNAPSHOT_SAVE_MS + 5_000, 240_000)
+        advanceUntilIdle()
+
+        val after = engine()
+        after.resume(left.stationId)
+        advanceUntilIdle()
+        after.onQueueAdvanced(0)
+
+        assertEquals(radio, after.state.value.source)
+        assertTrue(after.state.value.shuffle)
+        assertEquals(left.current, after.state.value.current)
+        assertEquals(left.queued, after.state.value.queued)
     }
 
     @Test

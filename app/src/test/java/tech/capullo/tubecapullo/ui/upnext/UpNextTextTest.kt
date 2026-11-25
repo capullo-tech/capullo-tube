@@ -35,6 +35,10 @@ class UpNextTextTest {
             UpNextText.sourceTitle(PlaySource.Playlist("https://youtube.com/x", "Discovery")),
         )
         assertEquals(
+            SourceTitle("Playlist", "Radio Paradise"),
+            UpNextText.sourceTitle(PlaySource.QuantumCast(3, "Radio Paradise")),
+        )
+        assertEquals(
             SourceTitle("Channel", "Daft Punk"),
             UpNextText.sourceTitle(PlaySource.Channel("https://youtube.com/c", "Daft Punk")),
         )

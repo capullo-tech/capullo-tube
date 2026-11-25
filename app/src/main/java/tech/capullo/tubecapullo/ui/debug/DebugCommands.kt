@@ -1,9 +1,13 @@
 package tech.capullo.tubecapullo.ui.debug
 
 import android.util.Log
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import tech.capullo.audio.snapcast.JoinUrl
 import tech.capullo.audio.tunnel.TunnelManager
 import tech.capullo.audio.ui.usefulLocalIps
+import tech.capullo.tubecapullo.data.quantumcast.QuantumCastPlaylists
+import tech.capullo.tubecapullo.data.quantumcast.RadioPlaylist
 import tech.capullo.tubecapullo.data.youtube.YtVideo
 import tech.capullo.tubecapullo.player.PlaybackCoordinator
 import tech.capullo.tubecapullo.snapcast.SnapcastManager
@@ -18,6 +22,8 @@ class DebugCommands @Inject constructor(
     private val player: PlaybackCoordinator,
     private val snapcast: SnapcastManager,
     private val tunnel: TunnelManager,
+    private val quantumCast: QuantumCastPlaylists,
+    private val scope: CoroutineScope,
 ) {
     fun run(name: String, value: String?): Route? {
         Log.i(TAG, "dbg $name${value?.let { " value=$it" }.orEmpty()}")
@@ -29,6 +35,7 @@ class DebugCommands @Inject constructor(
             "skip" -> player.next()
             "liked" -> player.start(PlaySource.Liked(shuffle = false))
             "likedradio" -> player.start(PlaySource.LikedRadio)
+            "radioplaylist" -> return radioPlaylist(value)
             "share" -> logShare()
             "publiclink" -> setPublicLink(value)
             "leave" -> if (snapcast.state.value.listeningTo == null) {
@@ -39,6 +46,31 @@ class DebugCommands @Inject constructor(
             else -> Log.w(TAG, "Unknown dbg '$name'; valid: ${NAMES.joinToString(", ")}")
         }
         return null
+    }
+
+    /**
+     * Library > Radio without the UI: `--es value <id>` plays that QuantumCast playlist, no value
+     * lists the playlists as `id name playable/total`.
+     */
+    private fun radioPlaylist(value: String?): Route? {
+        if (value == null) {
+            scope.launch {
+                val playlists = quantumCast.playlists()
+                if (playlists.isEmpty()) Log.i(TAG, "dbg radioplaylist: no QuantumCast playlists")
+                playlists.forEach { Log.i(TAG, "${it.id} ${it.name} ${it.playableCount}/${it.trackCount}") }
+            }
+            return null
+        }
+        val id = value.toLongOrNull()
+        if (id == null) {
+            Log.w(TAG, "dbg radioplaylist: needs --es $EXTRA_VALUE <playlist id>, got '$value'")
+            return null
+        }
+        scope.launch {
+            val title = quantumCast.playlist(id)?.title ?: RadioPlaylist.FALLBACK_TITLE
+            player.start(PlaySource.QuantumCast(id, title))
+        }
+        return Route.Player
     }
 
     private fun dumpToLog() {
@@ -100,6 +132,7 @@ class DebugCommands @Inject constructor(
             "share",
             "publiclink",
             "leave",
+            "radioplaylist",
         )
     }
 }

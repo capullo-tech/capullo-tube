@@ -68,6 +68,8 @@ data class StationState(
     val repeat: RepeatMode = RepeatMode.OFF,
     val stationId: Long = 0,
     val album: AlbumProgress? = null,
+    /** A start or resume is still fetching what it opens (a playlist, a channel, a saved station). */
+    val starting: Boolean = false,
 ) {
     val albumMode: Boolean
         get() = source is PlaySource.Album && current?.videoId == source.video.videoId
