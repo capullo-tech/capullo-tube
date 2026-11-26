@@ -67,6 +67,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
 import tech.capullo.tubecapullo.data.backup.BackupProgress
+import tech.capullo.tubecapullo.data.quantumcast.RadioPlaylist
 import tech.capullo.tubecapullo.data.youtube.YtVideo
 import tech.capullo.tubecapullo.ui.shared.CompactListItem
 import tech.capullo.tubecapullo.ui.shared.REMOVE_FROM_HISTORY
@@ -82,6 +83,7 @@ private enum class LibraryTab(val label: String) {
     SONGS("Songs"),
     ALBUMS("Albums"),
     HISTORY("History"),
+    RADIO("Radio"),
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -90,6 +92,7 @@ fun LibraryScreen(onOpenPlayer: () -> Unit, viewModel: LibraryViewModel = hiltVi
     val liked by viewModel.liked.collectAsStateWithLifecycle()
     val albums by viewModel.albums.collectAsStateWithLifecycle()
     val history by viewModel.history.collectAsStateWithLifecycle()
+    val radioPlaylists by viewModel.radioPlaylists.collectAsStateWithLifecycle()
     val playerState by viewModel.playerState.collectAsStateWithLifecycle()
     val playingId = playerState.video?.videoId
     val backupProgress by viewModel.backupProgress.collectAsStateWithLifecycle()
@@ -100,6 +103,7 @@ fun LibraryScreen(onOpenPlayer: () -> Unit, viewModel: LibraryViewModel = hiltVi
     val likedListState = rememberLazyListState()
     val albumsListState = rememberLazyListState()
     val historyListState = rememberLazyListState()
+    val radioListState = rememberLazyListState()
     val playAlbum: (YtVideo) -> Unit = { album ->
         viewModel.playAlbum(album)
         onOpenPlayer()
@@ -141,7 +145,9 @@ fun LibraryScreen(onOpenPlayer: () -> Unit, viewModel: LibraryViewModel = hiltVi
             TopAppBar(
                 title = { Text("Library") },
                 actions = {
-                    if (selectedTab != LibraryTab.HISTORY.ordinal && backupProgress == null) {
+                    val tab = LibraryTab.entries[selectedTab]
+                    val backsUp = tab == LibraryTab.SONGS || tab == LibraryTab.ALBUMS
+                    if (backsUp && backupProgress == null) {
                         LikedOverflowMenu(
                             canExport = !liked.isNullOrEmpty() || !albums.isNullOrEmpty(),
                             onExport = {
@@ -201,6 +207,14 @@ fun LibraryScreen(onOpenPlayer: () -> Unit, viewModel: LibraryViewModel = hiltVi
                     actions = historyActions,
                     onRemove = viewModel::removeFromHistory,
                     onPlayAlbum = playAlbum,
+                )
+                LibraryTab.RADIO -> RadioTab(
+                    playlists = radioPlaylists,
+                    listState = radioListState,
+                    onPlay = { playlist, shuffle ->
+                        viewModel.playRadioPlaylist(playlist, shuffle)
+                        onOpenPlayer()
+                    },
                 )
             }
         }
@@ -373,6 +387,58 @@ private fun HistoryTab(
 }
 
 @Composable
+private fun RadioTab(
+    playlists: List<RadioPlaylist>?,
+    listState: LazyListState,
+    onPlay: (RadioPlaylist, shuffle: Boolean) -> Unit,
+) {
+    when {
+        playlists == null -> Loading()
+        playlists.isEmpty() -> EmptyState(
+            "Songs QuantumCast identifies on a radio station appear here as a playlist per station.",
+        )
+        else -> LazyColumn(Modifier.fillMaxSize(), state = listState) {
+            items(playlists, key = { it.id }) { playlist ->
+                RadioPlaylistRow(playlist, onPlay)
+            }
+        }
+    }
+}
+
+@Composable
+private fun RadioPlaylistRow(playlist: RadioPlaylist, onPlay: (RadioPlaylist, shuffle: Boolean) -> Unit) {
+    // A station whose songs all lack a YouTube link has nothing to play here.
+    val playable = playlist.playableCount > 0
+    Box(Modifier.clickable(enabled = playable, onClickLabel = "Play playlist") { onPlay(playlist, false) }) {
+        CompactListItem(
+            leadingContent = { ListArt(playlist.favicon, Icons.Default.Radio, isPlaying = false) },
+            headlineContent = {
+                Text(playlist.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            },
+            supportingContent = {
+                Text(radioPlaylistCounts(playlist), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            },
+            trailingContent = if (playable) {
+                {
+                    IconButton(
+                        onClick = { onPlay(playlist, true) },
+                        modifier = Modifier.size(Dimens.LIST_BUTTON_SIZE),
+                    ) {
+                        Icon(
+                            Icons.Default.Shuffle,
+                            contentDescription = "Shuffle",
+                            modifier = Modifier.size(Dimens.LIST_ICON_SIZE),
+                        )
+                    }
+                }
+            } else {
+                null
+            },
+        )
+    }
+}
+
+@Composable
 private fun AlbumRow(
     album: YtVideo,
     isPlaying: Boolean,
@@ -475,46 +541,7 @@ private fun TrackRowContent(
         TitleCleaner.clean(video.title, video.uploader)
     }
     CompactListItem(
-        leadingContent = {
-            Box(
-                Modifier
-                    .size(Dimens.LIST_ART_SIZE)
-                    .clip(RoundedCornerShape(Dimens.LIST_ART_CORNER))
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
-            ) {
-                Icon(
-                    Icons.Default.MusicNote,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .size(Dimens.LIST_ART_NOTE_SIZE),
-                )
-                video.thumbnailUrl?.let { url ->
-                    AsyncImage(
-                        model = url,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-                if (isPlaying) {
-                    Box(
-                        Modifier
-                            .fillMaxSize()
-                            .background(
-                                MaterialTheme.colorScheme.scrim.copy(alpha = PLAYING_SCRIM),
-                            ),
-                    )
-                    Icon(
-                        Icons.Default.GraphicEq,
-                        contentDescription = "Playing",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.align(Alignment.Center),
-                    )
-                }
-            }
-        },
+        leadingContent = { ListArt(video.thumbnailUrl, Icons.Default.MusicNote, isPlaying) },
         headlineContent = {
             Text(title, maxLines = 2, overflow = TextOverflow.Ellipsis)
         },
@@ -533,6 +560,48 @@ private fun TrackRowContent(
             MaterialTheme.colorScheme.onSurface
         },
     )
+}
+
+@Composable
+private fun ListArt(url: String?, placeholder: ImageVector, isPlaying: Boolean) {
+    Box(
+        Modifier
+            .size(Dimens.LIST_ART_SIZE)
+            .clip(RoundedCornerShape(Dimens.LIST_ART_CORNER))
+            .background(MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Icon(
+            placeholder,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier
+                .align(Alignment.Center)
+                .size(Dimens.LIST_ART_NOTE_SIZE),
+        )
+        url?.let {
+            AsyncImage(
+                model = it,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        if (isPlaying) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(
+                        MaterialTheme.colorScheme.scrim.copy(alpha = PLAYING_SCRIM),
+                    ),
+            )
+            Icon(
+                Icons.Default.GraphicEq,
+                contentDescription = "Playing",
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.align(Alignment.Center),
+            )
+        }
+    }
 }
 
 private const val PLAYING_SCRIM = 0.4f

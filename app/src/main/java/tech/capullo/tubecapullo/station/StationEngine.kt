@@ -21,6 +21,7 @@ import tech.capullo.tubecapullo.data.history.LikedAlbums
 import tech.capullo.tubecapullo.data.history.LikedTracks
 import tech.capullo.tubecapullo.data.history.PlayHistory
 import tech.capullo.tubecapullo.data.history.StationSnapshots
+import tech.capullo.tubecapullo.data.quantumcast.QuantumCastPlaylists
 import tech.capullo.tubecapullo.data.settings.AppSettings
 import tech.capullo.tubecapullo.data.settings.LikeMode
 import tech.capullo.tubecapullo.data.similar.SimilarFind
@@ -48,9 +49,12 @@ class StationEngine @Inject constructor(
     private val likedAlbums: LikedAlbums,
     private val snapshots: StationSnapshots,
     private val similarFinder: SimilarFinder,
+    private val quantumCast: QuantumCastPlaylists,
 ) : MediaSourceProvider {
+    // video is a var so a learned duration reaches every list sharing the slot (queue, round,
+    // history) without breaking the identity checks between them.
     private class Slot(
-        val video: YtVideo,
+        var video: YtVideo,
         val why: Why,
         val pinned: Boolean = false,
         val blended: Boolean = false,
@@ -125,6 +129,15 @@ class StationEngine @Inject constructor(
     private var generation = 0
 
     private var startRequests = 0
+
+    // The start or resume request still fetching what it opens, published as
+    // StationState.starting so the Player waits for it instead of closing on an empty station.
+    private var startingRequest: Int? = null
+
+    // A start asked of PlaybackCoordinator that has not reached start() or resume() yet: the
+    // service may still be starting up. One flag rather than a count, because the coordinator's
+    // start flow keeps only the newest request, so one arriving start answers them all.
+    private var startExpected = false
 
     private var shuffle = false
 
@@ -203,10 +216,43 @@ class StationEngine @Inject constructor(
         }
     }
 
-    fun start(source: PlaySource) {
+    /** Marks a start on its way from PlaybackCoordinator, so the Player waits for it. */
+    fun expectStart() {
+        synchronized(lock) {
+            startExpected = true
+            publishLocked()
+        }
+    }
+
+    /** Withdraws [expectStart] for a request the service will never receive. */
+    fun dropExpectedStart(reason: String) {
+        synchronized(lock) {
+            if (!startExpected) return
+            startExpected = false
+            log("start result=dropped reason=$reason")
+            publishLocked()
+        }
+    }
+
+    /**
+     * Starts [source]. [preloaded] is a QuantumCast list the caller already read (the hand-off,
+     * which may only be readable through QuantumCast's one-time grant); the engine plays it
+     * instead of reading the playlist again. Other sources ignore it.
+     */
+    fun start(source: PlaySource, preloaded: List<YtVideo>? = null) {
+        val fetches = when (source) {
+            is PlaySource.Playlist, is PlaySource.Channel -> true
+            is PlaySource.QuantumCast -> preloaded == null
+            is PlaySource.Album -> source.chapters.isEmpty()
+            is PlaySource.SongRadio, is PlaySource.SearchRadio, is PlaySource.Liked, PlaySource.LikedRadio -> false
+        }
         val request = synchronized(lock) {
             log("start ${describe(source)}")
-            ++startRequests
+            val next = ++startRequests
+            startExpected = false
+            startingRequest = if (fetches) next else null
+            publishLocked()
+            next
         }
         when (source) {
             is PlaySource.SongRadio -> openRadio(request, source, source.seed, Provenance.SEED)
@@ -219,6 +265,7 @@ class StationEngine @Inject constructor(
                 openRadio(request, source, first, Provenance.SEARCH, source.results.drop(1))
             }
             is PlaySource.Playlist -> startPlaylist(request, source)
+            is PlaySource.QuantumCast -> startQuantumCast(request, source, preloaded)
             is PlaySource.Channel -> startChannel(request, source)
             is PlaySource.Liked -> startLiked(request, source)
             PlaySource.LikedRadio -> startLikedRadio(request)
@@ -229,7 +276,11 @@ class StationEngine @Inject constructor(
     fun resume(id: Long) {
         val request = synchronized(lock) {
             log("resume station=$id")
-            ++startRequests
+            val next = ++startRequests
+            startExpected = false
+            startingRequest = next
+            publishLocked()
+            next
         }
         scope.launch {
             val kept = synchronized(lock) { backStack.lastOrNull { it.id == id } }
@@ -246,6 +297,8 @@ class StationEngine @Inject constructor(
                         else -> "removed"
                     }
                     log("resume station=$id result=ignored reason=$reason")
+                    settleLocked(request)
+                    publishLocked()
                     return@launch
                 }
                 saveStationLocked()
@@ -253,6 +306,7 @@ class StationEngine @Inject constructor(
                 restoreLocked(saved)
                 resumeAt = queue.first() to saved.positionMs
                 log("snapshot restored via=continue ${describeSnapshot(saved)}")
+                settleLocked(request)
                 publishLocked()
             }
             onStationStarted?.invoke()
@@ -402,6 +456,7 @@ class StationEngine @Inject constructor(
             if (back == null) {
                 val saved = backStack.removeLast()
                 startRequests++
+                startingRequest = null
                 restoreLocked(saved)
                 log(
                     "previous action=restore-station from=${kind(src)} to=${kind(saved.source)} " +
@@ -589,6 +644,84 @@ class StationEngine @Inject constructor(
         }
         scope.launch { playHistory.record(counted) }
     }
+
+    /**
+     * Fills in [durationSeconds] for [videoId] wherever the engine holds it without a length. A
+     * QuantumCast song has none until the player opens its stream; lyrics, play history,
+     * snapshots and Up next read the length from these copies. A known length never changes.
+     */
+    fun learnDuration(videoId: String, durationSeconds: Long) {
+        if (durationSeconds <= 0) return
+        synchronized(lock) {
+            var learned = 0
+            fun learn(video: YtVideo): YtVideo {
+                if (video.videoId != videoId || video.durationSeconds != 0L) return video
+                learned++
+                return video.copy(durationSeconds = durationSeconds)
+            }
+            queue.forEach { it.video = learn(it.video) }
+            history.forEach { it.video = learn(it.video) }
+            round.forEach { it.video = learn(it.video) }
+            nextRound?.forEach { it.video = learn(it.video) }
+            resumeAt?.first?.let { it.video = learn(it.video) }
+            steppingBackTo?.let { it.video = learn(it.video) }
+            playing = playing?.let(::learn)
+            chainSeed = chainSeed?.let(::learn)
+            for (i in earlier.indices) earlier[i] = learn(earlier[i])
+            for (i in likesRound.indices) likesRound[i] = learn(likesRound[i])
+            for (i in collection.indices) collection[i] = learn(collection[i])
+            for (i in likedVideos.indices) {
+                val old = likedVideos[i]
+                val updated = learn(old)
+                if (updated !== old) {
+                    likedVideos[i] = updated
+                    likedTracks.learnDuration(videoId, durationSeconds)
+                }
+            }
+            // Copies are built only where the song is, so a track start costs no rebuild of the
+            // whole back stack.
+            fun unmeasured(video: YtVideo) = video.videoId == videoId && video.durationSeconds == 0L
+            source?.takeIf { it.holds(::unmeasured) }?.let { source = it.withVideos(::learn) }
+            for (i in backStack.indices) {
+                if (backStack[i].holds(::unmeasured)) backStack[i] = backStack[i].withVideos(::learn)
+            }
+            if (learned == 0) return
+            log("duration id=$videoId dur=${durationSeconds}s copies=$learned")
+            publishLocked()
+        }
+    }
+
+    private fun PlaySource.holds(match: (YtVideo) -> Boolean): Boolean = when (this) {
+        is PlaySource.SongRadio -> match(seed)
+        is PlaySource.SearchRadio -> results.any(match)
+        is PlaySource.Album -> match(video)
+        is PlaySource.Playlist, is PlaySource.QuantumCast, is PlaySource.Channel, is PlaySource.Liked,
+        PlaySource.LikedRadio,
+        -> false
+    }
+
+    private fun StationSnapshot.holds(match: (YtVideo) -> Boolean): Boolean = source.holds(match) ||
+        slots.any { match(it.video) } ||
+        chainSeed?.let(match) == true ||
+        likesRound.any(match) ||
+        collection.any(match)
+
+    private fun PlaySource.withVideos(learn: (YtVideo) -> YtVideo): PlaySource = when (this) {
+        is PlaySource.SongRadio -> copy(seed = learn(seed))
+        is PlaySource.SearchRadio -> copy(results = results.map(learn))
+        is PlaySource.Album -> copy(video = learn(video))
+        is PlaySource.Playlist, is PlaySource.QuantumCast, is PlaySource.Channel, is PlaySource.Liked,
+        PlaySource.LikedRadio,
+        -> this
+    }
+
+    private fun StationSnapshot.withVideos(learn: (YtVideo) -> YtVideo): StationSnapshot = copy(
+        source = source.withVideos(learn),
+        slots = slots.map { it.copy(video = learn(it.video)) },
+        chainSeed = chainSeed?.let(learn),
+        likesRound = likesRound.map(learn),
+        collection = collection.map(learn),
+    )
 
     fun dump(out: Appendable) {
         synchronized(lock) {
@@ -803,6 +936,22 @@ class StationEngine @Inject constructor(
         }
     }
 
+    private fun startQuantumCast(request: Int, source: PlaySource.QuantumCast, preloaded: List<YtVideo>?) {
+        val why = Why(Provenance.PLAYLIST, null, source.title)
+        if (preloaded != null) {
+            log("quantumcast title=${q(source.title)} id=${source.playlistId} tracks=${preloaded.size} preloaded=true")
+            openFetchedList(request, source, "quantumcast", preloaded, why, source.shuffle)
+            return
+        }
+        scope.launch {
+            val videos = runCatching { quantumCast.videos(source.playlistId) }
+                .onFailure { log("quantumcast id=${source.playlistId} error=${q(it.message)}") }
+                .getOrDefault(emptyList())
+            log("quantumcast title=${q(source.title)} id=${source.playlistId} tracks=${videos.size}")
+            openFetchedList(request, source, "quantumcast", videos, why, source.shuffle)
+        }
+    }
+
     private fun startChannel(request: Int, source: PlaySource.Channel) {
         scope.launch {
             val uploads = runCatching { extractor.channelUploads(source.url).videos }
@@ -839,13 +988,23 @@ class StationEngine @Inject constructor(
                 log("start source=$kind result=dropped reason=superseded")
                 return
             }
+            settleLocked(request)
             if (videos.isEmpty()) {
                 log("start source=$kind result=idle reason=no-tracks")
+                publishLocked()
                 return
             }
             openCollectionLocked(source, videos, why, shuffled)
         }
         onStationStarted?.invoke()
+    }
+
+    /**
+     * Ends the starting state of [request] once it has opened or found nothing. A newer start
+     * owns the state by then, so a superseded request leaves it alone.
+     */
+    private fun settleLocked(request: Int) {
+        if (startingRequest == request) startingRequest = null
     }
 
     private fun startLiked(request: Int, source: PlaySource.Liked) {
@@ -899,6 +1058,7 @@ class StationEngine @Inject constructor(
                 log("start source=album result=dropped reason=superseded")
                 return
             }
+            settleLocked(request)
             resetLocked(source)
             queue += Slot(source.video, Why(Provenance.ALBUM, null, source.video.title))
             chainLocked(source.video, "album")
@@ -1064,7 +1224,8 @@ class StationEngine @Inject constructor(
             is PlaySource.Album ->
                 if (!chaining && upcomingLocked() < CHAIN_BELOW) chainLocked(src.video, "album")
             PlaySource.LikedRadio -> fillLikedRadioLocked()
-            is PlaySource.Liked, is PlaySource.Playlist, is PlaySource.Channel, null -> Unit
+            is PlaySource.Liked, is PlaySource.Playlist, is PlaySource.QuantumCast, is PlaySource.Channel, null ->
+                Unit
         }
     }
 
@@ -1562,6 +1723,7 @@ class StationEngine @Inject constructor(
             stationId = stationId,
             album = album?.takeIf { albumChaptersLocked() != null }
                 ?.let { AlbumProgress(it.chapters, maxOf(chapterIndex, 0)) },
+            starting = startExpected || startingRequest != null,
         )
     }
 
@@ -1576,6 +1738,8 @@ class StationEngine @Inject constructor(
             "source=search query=${q(source.query)} results=${source.results.size}"
         is PlaySource.Playlist -> "source=playlist title=${q(source.title)} " +
             "url=${q(source.url)} shuffle=${source.shuffle}"
+        is PlaySource.QuantumCast -> "source=quantumcast title=${q(source.title)} " +
+            "id=${source.playlistId} shuffle=${source.shuffle}"
         is PlaySource.Channel -> "source=channel name=${q(source.name)} url=${q(source.url)}"
         is PlaySource.Liked -> "source=liked shuffle=${source.shuffle} likes=${likedVideos.size}"
         PlaySource.LikedRadio ->
@@ -1590,6 +1754,7 @@ class StationEngine @Inject constructor(
         is PlaySource.SongRadio -> "song"
         is PlaySource.SearchRadio -> "search"
         is PlaySource.Playlist -> "playlist"
+        is PlaySource.QuantumCast -> "quantumcast"
         is PlaySource.Channel -> "channel"
         is PlaySource.Liked -> "liked"
         PlaySource.LikedRadio -> "liked-radio"

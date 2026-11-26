@@ -38,6 +38,15 @@ class LikedTracks @Inject constructor(
         }
     }
 
+    /** Fills an unknown length without moving the song in the user's likes. */
+    fun learnDuration(videoId: String, seconds: Long) {
+        if (seconds <= 0) return
+        scope.launch {
+            runCatching { dao.learnDuration(videoId, seconds) }
+                .onFailure { Log.w(TAG, "liked-track duration write failed", it) }
+        }
+    }
+
     suspend fun all(): List<YtVideo> = runCatching { dao.all().map { it.toYtVideo() } }
         .onFailure { Log.w(TAG, "liked-track read failed", it) }
         .getOrDefault(emptyList())

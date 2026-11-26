@@ -138,4 +138,23 @@ class IncomingLinksTest {
             IncomingLinks.find("https://youtube.com.example.net/watch?v=$id"),
         )
     }
+
+    @Test
+    fun `QuantumCast's Play hand-off names its playlist, with or without a query`() {
+        val tracks = "content://tech.capullo.quantumcast.playlists/playlists/42/tracks"
+        assertEquals(LinkTarget.RadioPlaylist(42), IncomingLinks.find(tracks))
+        assertEquals(LinkTarget.RadioPlaylist(42), IncomingLinks.find("$tracks?link=youtube"))
+    }
+
+    @Test
+    fun `other QuantumCast provider URIs are not a hand-off`() {
+        listOf(
+            "content://tech.capullo.quantumcast.playlists/playlists",
+            "content://tech.capullo.quantumcast.playlists/playlists/42",
+            "content://tech.capullo.quantumcast.playlists/tracks",
+            "content://tech.capullo.quantumcast.playlists/playlists/abc/tracks",
+            "content://tech.capullo.quantumcast.playlists/playlists/42/tracks/7",
+            "content://other.provider/playlists/42/tracks",
+        ).forEach { assertEquals(it, LinkTarget.NotYouTube, IncomingLinks.find(it)) }
+    }
 }

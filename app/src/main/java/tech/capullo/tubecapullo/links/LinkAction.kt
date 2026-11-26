@@ -40,6 +40,10 @@ sealed interface LinkAction {
         override val logName get() = "join"
     }
 
+    data class PlayRadioPlaylist(val playlistId: Long) : LinkAction {
+        override val logName get() = "play-radio-playlist"
+    }
+
     data class Reject(val reason: RejectReason) : LinkAction {
         override val logName get() = "reject"
     }
@@ -53,6 +57,7 @@ fun decideLinkAction(target: LinkTarget, somethingPlays: Boolean, askFirst: Bool
     }
     is LinkTarget.Playlist -> LinkAction.OpenPlaylist(target.playlistId)
     is LinkTarget.Join -> LinkAction.Join(target.station)
+    is LinkTarget.RadioPlaylist -> LinkAction.PlayRadioPlaylist(target.playlistId)
     LinkTarget.OtherYouTube -> LinkAction.Reject(RejectReason.NOT_A_VIDEO)
     LinkTarget.NotYouTube -> LinkAction.Reject(RejectReason.NOT_YOUTUBE)
 }

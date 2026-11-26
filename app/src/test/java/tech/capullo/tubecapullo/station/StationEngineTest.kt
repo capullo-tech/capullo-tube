@@ -8,6 +8,7 @@ import io.mockk.mockk
 import io.mockk.mockkStatic
 import io.mockk.unmockkStatic
 import io.mockk.verify
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -30,6 +31,7 @@ import org.junit.Before
 import org.junit.Test
 import tech.capullo.tubecapullo.data.history.LikedTracks
 import tech.capullo.tubecapullo.data.history.PlayHistory
+import tech.capullo.tubecapullo.data.quantumcast.QuantumCastPlaylists
 import tech.capullo.tubecapullo.data.settings.AppSettings
 import tech.capullo.tubecapullo.data.settings.LikeMode
 import tech.capullo.tubecapullo.data.similar.SimilarFind
@@ -47,6 +49,8 @@ import kotlin.random.Random
 private const val RANDOM_SEED = 7
 
 private const val PLAYLIST_ID = "PLtestlist000001"
+
+private const val RADIO_PLAYLIST_ID = 3L
 
 private fun silenceStationLog() {
     mockkStatic(Log::class)
@@ -142,6 +146,7 @@ class StationEngineTest {
         mockk(relaxed = true),
         mockk(relaxed = true),
         FakeSimilarFinder(),
+        mockk(relaxed = true),
     )
 
     @Before fun setUp() = silenceStationLog()
@@ -462,6 +467,7 @@ class StationLikeModeTest {
             mockk(relaxed = true),
             mockk(relaxed = true),
             FakeSimilarFinder(),
+            mockk(relaxed = true),
         )
         engine.start(PlaySource.SongRadio(video("SEED")))
         advanceUntilIdle()
@@ -646,6 +652,7 @@ class StationLikedRadioTest {
             mockk(relaxed = true),
             mockk(relaxed = true),
             FakeSimilarFinder(),
+            mockk(relaxed = true),
         )
         advanceUntilIdle()
         return engine
@@ -845,7 +852,21 @@ class StationCollectionsTest {
     private val likeMode = MutableStateFlow(LikeMode.BLEND)
     private val songs = MutableStateFlow(AppSettings.DEFAULT_SONGS_PER_LIKE)
 
-    private fun TestScope.engine(extractor: YouTubeExtractorClient = fakeExtractor()) = StationEngine(
+    private val radio = PlaySource.QuantumCast(RADIO_PLAYLIST_ID, "Radio Paradise")
+
+    private fun radioPlaylists(tracks: List<YtVideo> = ten) = mockk<QuantumCastPlaylists> {
+        coEvery { videos(RADIO_PLAYLIST_ID) } returns tracks
+    }
+
+    // QuantumCast's list arrives only when the test completes the gate.
+    private fun gatedRadio(gate: CompletableDeferred<List<YtVideo>>) = mockk<QuantumCastPlaylists> {
+        coEvery { videos(RADIO_PLAYLIST_ID) } coAnswers { gate.await() }
+    }
+
+    private fun TestScope.engine(
+        extractor: YouTubeExtractorClient = fakeExtractor(),
+        quantumCast: QuantumCastPlaylists = radioPlaylists(),
+    ) = StationEngine(
         extractor,
         this,
         mockk(relaxed = true),
@@ -855,6 +876,7 @@ class StationCollectionsTest {
         mockk(relaxed = true),
         mockk(relaxed = true),
         FakeSimilarFinder(),
+        quantumCast,
     )
 
     private fun TestScope.started(
@@ -892,6 +914,170 @@ class StationCollectionsTest {
         val engine = started(playlist, extractor)
 
         assertEquals(playlist, engine.state.value.source)
+    }
+
+    @Test
+    fun `a QuantumCast playlist plays its songs in order, each naming the station`() = runTest(StandardTestDispatcher()) {
+        val engine = started(radio)
+
+        val state = engine.state.value
+        assertTrue(state.isCollection)
+        assertEquals(radio, state.source)
+        val why = Why(Provenance.PLAYLIST, null, radio.title)
+        assertTrue(state.queued.all { it.why == why })
+        assertEquals(ids(ten), engine.advanceThrough(ten.size))
+    }
+
+    @Test
+    fun `a QuantumCast playlist with no playable song leaves the station idle`() = runTest(StandardTestDispatcher()) {
+        val engine = engine(quantumCast = radioPlaylists(emptyList()))
+        advanceUntilIdle()
+
+        engine.start(radio)
+        advanceUntilIdle()
+
+        assertNull(engine.state.value.source)
+        assertFalse("an empty list ends the start", engine.state.value.starting)
+    }
+
+    @Test
+    fun `a fetched list is starting until it arrives, then plays`() = runTest(StandardTestDispatcher()) {
+        val gate = CompletableDeferred<List<YtVideo>>()
+        val engine = engine(quantumCast = gatedRadio(gate))
+        advanceUntilIdle()
+
+        engine.start(radio)
+        runCurrent()
+
+        assertTrue(engine.state.value.starting)
+        assertNull(engine.state.value.source)
+
+        gate.complete(ten)
+        advanceUntilIdle()
+
+        assertFalse(engine.state.value.starting)
+        assertEquals(radio, engine.state.value.source)
+        assertEquals(ten[0], engine.state.value.current)
+    }
+
+    @Test
+    fun `a hand-off plays the list it brought without reading QuantumCast again`() = runTest(StandardTestDispatcher()) {
+        val quantumCast = radioPlaylists()
+        val engine = engine(quantumCast = quantumCast)
+        advanceUntilIdle()
+
+        engine.start(radio, preloaded = three)
+
+        val state = engine.state.value
+        assertFalse("nothing left to fetch", state.starting)
+        assertEquals(radio, state.source)
+        assertEquals(three[0], state.current)
+        assertEquals(ids(three), engine.advanceThrough(three.size))
+        coVerify(exactly = 0) { quantumCast.videos(any()) }
+    }
+
+    @Test
+    fun `a newer start while a list is fetching plays at once and the late list is dropped`() = runTest(StandardTestDispatcher()) {
+        val gate = CompletableDeferred<List<YtVideo>>()
+        val engine = engine(quantumCast = gatedRadio(gate))
+        advanceUntilIdle()
+        engine.start(radio)
+        runCurrent()
+        assertTrue("precondition: fetching", engine.state.value.starting)
+
+        val seed = video("SEED")
+        engine.start(PlaySource.SongRadio(seed))
+        advanceUntilIdle()
+
+        assertFalse(engine.state.value.starting)
+        assertEquals(PlaySource.SongRadio(seed), engine.state.value.source)
+
+        gate.complete(ten)
+        advanceUntilIdle()
+
+        val state = engine.state.value
+        assertFalse("the late list does not start again", state.starting)
+        assertEquals(PlaySource.SongRadio(seed), state.source)
+        assertEquals(seed, state.current)
+    }
+
+    @Test
+    fun `an expected start is starting with no station until the start arrives`() = runTest(StandardTestDispatcher()) {
+        val engine = engine()
+        advanceUntilIdle()
+
+        engine.expectStart()
+
+        assertTrue(engine.state.value.starting)
+        assertNull(engine.state.value.source)
+
+        val seed = video("SEED")
+        engine.start(PlaySource.SongRadio(seed))
+        advanceUntilIdle()
+
+        assertFalse("a radio opens at once", engine.state.value.starting)
+        assertEquals(PlaySource.SongRadio(seed), engine.state.value.source)
+    }
+
+    @Test
+    fun `an expected start of a fetched list stays starting until the list arrives`() = runTest(StandardTestDispatcher()) {
+        val gate = CompletableDeferred<List<YtVideo>>()
+        val engine = engine(quantumCast = gatedRadio(gate))
+        advanceUntilIdle()
+
+        engine.expectStart()
+        engine.start(radio)
+        runCurrent()
+
+        assertTrue(engine.state.value.starting)
+        assertNull(engine.state.value.source)
+
+        gate.complete(ten)
+        advanceUntilIdle()
+
+        assertFalse(engine.state.value.starting)
+        assertEquals(radio, engine.state.value.source)
+    }
+
+    @Test
+    fun `an expected start the service never receives stops starting`() = runTest(StandardTestDispatcher()) {
+        val engine = engine()
+        advanceUntilIdle()
+        engine.expectStart()
+
+        engine.dropExpectedStart("test")
+
+        assertFalse(engine.state.value.starting)
+        assertNull(engine.state.value.source)
+    }
+
+    @Test
+    fun `a QuantumCast song learns the length the player measured, once`() = runTest(StandardTestDispatcher()) {
+        val unmeasured = ten.map { it.copy(durationSeconds = 0) }
+        val engine = engine(quantumCast = radioPlaylists(unmeasured))
+        advanceUntilIdle()
+        engine.start(radio)
+        advanceUntilIdle()
+        engine.onQueueAdvanced(0)
+
+        engine.learnDuration(unmeasured[0].videoId, 213)
+
+        assertEquals(unmeasured[0].copy(durationSeconds = 213), engine.state.value.current)
+        assertEquals("the rest are still unmeasured", 0L, engine.state.value.queued.first().video.durationSeconds)
+
+        engine.learnDuration(unmeasured[0].videoId, 999)
+
+        assertEquals("a learned length stays", 213L, engine.state.value.current?.durationSeconds)
+    }
+
+    @Test
+    fun `a song with a known length keeps it`() = runTest(StandardTestDispatcher()) {
+        val engine = started(playlist)
+        engine.onQueueAdvanced(0)
+
+        engine.learnDuration(ten[0].videoId, 100)
+
+        assertEquals(ten[0], engine.state.value.current)
     }
 
     @Test
@@ -1154,6 +1340,7 @@ class StationPreviousTest {
             mockk(relaxed = true),
             mockk(relaxed = true),
             FakeSimilarFinder(),
+            mockk(relaxed = true),
         )
         advanceUntilIdle()
         return engine
@@ -1331,6 +1518,7 @@ class StationPairsTest {
             mockk(relaxed = true),
             mockk(relaxed = true),
             FakeSimilarFinder(),
+            mockk(relaxed = true),
         )
         advanceUntilIdle()
         return engine
@@ -1434,6 +1622,7 @@ class StationMoveTest {
         mockk(relaxed = true),
         mockk(relaxed = true),
         FakeSimilarFinder(),
+        mockk(relaxed = true),
     )
 
     @Before fun setUp() = silenceStationLog()
@@ -1552,6 +1741,7 @@ class StationSimilarTest {
         mockk(relaxed = true),
         mockk(relaxed = true),
         finder,
+        mockk(relaxed = true),
     )
 
     @Before fun setUp() = silenceStationLog()

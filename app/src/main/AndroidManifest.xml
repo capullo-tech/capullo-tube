@@ -9,6 +9,14 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
 
+    <!-- QuantumCast's playlists provider (data/quantumcast): its read permission (protection
+         level normal) and, on Android 11+, package visibility so the provider resolves. -->
+    <uses-permission android:name="tech.capullo.quantumcast.permission.READ_PLAYLISTS" />
+
+    <queries>
+        <package android:name="tech.capullo.quantumcast" />
+    </queries>
+
     <application
         android:name=".MainApplication"
         android:allowBackup="false"
@@ -32,6 +40,17 @@
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
+            </intent-filter>
+            <!-- QuantumCast's Play on a station playlist hands over
+                 content://tech.capullo.quantumcast.playlists/playlists/{id}/tracks. Android 13+
+                 delivers an explicit intent to another app's activity only when a filter matches. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data
+                    android:scheme="content"
+                    android:host="tech.capullo.quantumcast.playlists"
+                    android:mimeType="vnd.android.cursor.dir/vnd.tech.capullo.quantumcast.track" />
             </intent-filter>
             <!-- A capullo station's join URL (capullo-audio JoinUrl): the LAN form on the
                  broadcaster's random snapserver HTTP port (hence no android:port), and the
