@@ -17,6 +17,22 @@ plugins {
     alias(libs.plugins.hilt)
 }
 
+// Publication assigns both fields from the Release workflow's single sequence. Local builds may
+// use the same explicit identity; independent Build workflow counters never allocate versions.
+val publishedCode = providers.gradleProperty("capulloVersionCode").orNull
+val publishedName = providers.gradleProperty("capulloVersionName").orNull
+require((publishedCode == null) == (publishedName == null)) {
+    "Set capulloVersionCode and capulloVersionName together"
+}
+val apkVersionCode = publishedCode?.let {
+    requireNotNull(it.toIntOrNull()?.takeIf { code -> code in 3..2_100_000_000 }) {
+        "capulloVersionCode must be between 3 and 2100000000"
+    }
+} ?: 2
+val apkVersionName = publishedName?.also {
+    require(it.matches(Regex("[0-9][A-Za-z0-9._-]{0,79}"))) { "Invalid capulloVersionName" }
+} ?: "0.2"
+
 android {
     namespace = "tech.capullo.tubecapullo"
     compileSdk = 36
@@ -25,8 +41,8 @@ android {
         applicationId = "tech.capullo.tubecapullo"
         minSdk = 23
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.2"
+        versionCode = apkVersionCode
+        versionName = apkVersionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "LASTFM_API_KEY", "\"$lastfmApiKey\"")
     }
