@@ -54,10 +54,17 @@ def apk_identity(apk, expected):
 
 def certificate_of(apk):
     certificates = run(str(tools() / "apksigner"), "verify", "--print-certs", str(apk))
-    signer = re.search(r"Signer #1 certificate SHA-256 digest: ([a-fA-F0-9]+)", certificates)
-    if not signer:
-        raise ValueError("APK has no verified signing certificate")
-    return signer[1].lower()
+    # The label before "certificate" depends on the build-tools version: 36.0.0 prints
+    # "Signer #1 certificate SHA-256 digest", 37.0.0 prints "V2 Signer: certificate SHA-256
+    # digest" for the same APK (Release run 34, which stopped here). One signing identity is one
+    # distinct digest, whatever the label and however many signature schemes report it.
+    signers = {
+        found.lower()
+        for found in re.findall(r"certificate SHA-256 digest: ([a-fA-F0-9]{64})\b", certificates)
+    }
+    if len(signers) != 1:
+        raise ValueError(f"Expected one verified signing certificate, found {len(signers)}")
+    return signers.pop()
 
 
 def metadata(release):
