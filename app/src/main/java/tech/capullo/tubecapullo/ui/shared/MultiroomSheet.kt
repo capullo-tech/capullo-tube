@@ -89,6 +89,9 @@ fun MultiroomSheet(onDismiss: () -> Unit, viewModel: MultiroomViewModel = hiltVi
             onClientLatencyChange = viewModel::setClientLatency,
             localClientId = viewModel.localClientId,
             httpPort = state.broadcastHttpPort,
+            // This sheet has neither reset nor lock, so it does not claim isBroadcaster; the
+            // invite QR is the one broadcaster control it offers.
+            showInvite = state.isBroadcasting,
             publicLink = tunnelState.toPublicLinkState(),
             onSetPublicLink = (viewModel::setPublicLink).takeIf { state.isBroadcasting },
             onDismiss = onDismiss,
