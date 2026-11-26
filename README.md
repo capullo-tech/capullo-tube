@@ -56,17 +56,25 @@ jitpack. You do not need to clone them. To build `capullo-audio` from source ins
 
 ## Preview releases
 
-Every push to `main` publishes a preview APK. The release `preview` holds one APK. GitHub deletes
-the previous release, so only one release exists at all times.
+Every push to `main` publishes a prerelease of its own. Its tag is the APK's version name, such as
+`0.2.33`, and its Android version code is the last number, `33`: the run number of the Release
+workflow, which is the only place these numbers come from. A cancelled or failed run leaves a
+gap, which is harmless. The tag points at the exact commit that was built. Older releases stay.
 
-Install previews with [Obtainium](https://github.com/ImranR98/Obtainium):
+Install with [Obtainium](https://github.com/ImranR98/Obtainium): add
+`https://github.com/capullo-tech/capullo-tube` and enable **Include prereleases**. The default
+version detection works, because the tag matches the version inside the APK. An entry that still
+uses the old **Release title** setting: switch it back to the default and refresh. Do not uninstall.
 
-1. Add the app source `https://github.com/capullo-tech/capullo-tube`.
-2. Set version detection to **Release title**.
-3. Enable prereleases.
+Every release is signed with the same key, so each installs over the previous one. A rerun never
+replaces a published APK: it must find the same commit and the same file, or it stops. An older
+run cannot publish below a newer version.
 
-Every preview is signed with the same key as the previous one. Obtainium therefore installs a new
-preview over the old one, like an OTA update.
+A build made on your own machine is `0.2`, code `2`, and is older than every release. To build
+one that installs over a release, pass both `-PcapulloVersionCode=<n>` and
+`-PcapulloVersionName=0.2.<n>` and sign it with the release key. A build signed with another key
+(a debug build) never installs over a release, whatever its number: Android refuses it, and
+uninstalling to get around that loses the app's data.
 
 ## Listen on another device
 

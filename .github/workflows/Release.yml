@@ -11,14 +11,29 @@ permissions:
 
 concurrency:
   group: preview-release
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
+  identity:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.version.outputs.code }}
+      name: ${{ steps.version.outputs.name }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        name: Allocate publication identity
+        run: python3 scripts/preview_release.py identity "$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
   build:
+    needs: identity
     uses: ./.github/workflows/Build.yml
+    with:
+      version_code: ${{ needs.identity.outputs.code }}
+      version_name: ${{ needs.identity.outputs.name }}
     secrets: inherit
   release:
-    needs: build
+    needs: [identity, build]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout project sources
@@ -34,23 +49,11 @@ jobs:
           apk=$(find ./artifacts -name "*.apk" | head -1)
           apksigner=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
           "$apksigner" verify --print-certs "$apk" | grep 'SHA-256 digest'
-      - name: Publish the rolling preview release
+      - name: Publish immutable preview
         env:
           GH_TOKEN: ${{ github.token }}
+          PUBLICATION_NUMBER: ${{ github.run_number }}
         run: |
-          set -eu
-          apk_file=$(find ./artifacts -name "*.apk" | head -1)
-          commit_hash=$(git rev-parse --short HEAD)
-          tag="preview"
-
-          gh release delete "$tag" --yes || true
-          git tag -d "$tag" || true
-          git push origin :refs/tags/preview || true
-
-          gh release create "$tag" \
-            --target "${{ github.ref_name }}" \
-            --prerelease \
-            --title "Preview ${{ github.run_number }} ($commit_hash)" \
-            --notes "Preview build from $commit_hash. Signed with the preview key: it installs over previous previews."
-          cp "$apk_file" "capullo-tube-preview.apk"
-          gh release upload "$tag" "capullo-tube-preview.apk" --clobber
+          set -euo pipefail
+          python3 scripts/preview_release.py publish \
+            "$PUBLICATION_NUMBER" "$GITHUB_SHA" "$GITHUB_REPOSITORY" ./artifacts
