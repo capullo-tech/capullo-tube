@@ -17,6 +17,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
@@ -80,10 +81,24 @@ class AppSettingsTest {
         }
     }
 
+    /**
+     * Reads the store again until [done] holds. One long collection of `data` is not enough: in
+     * DataStore 1.1.1 a collection that starts while a write is in progress can miss that write
+     * for good (b/431787506, fixed in 1.3.0-alpha03). That made these tests time out in CI.
+     */
     private suspend fun DataStore<Preferences>.awaitSaved(done: (Preferences) -> Boolean) {
-        if (withTimeoutOrNull(5_000) { data.first(done) } != null) return
-        val holds = withTimeoutOrNull(1_000) { data.first().asMap() }
-        throw AssertionError("not saved within 5 s; the store holds $holds; ${synchronized(trouble) { trouble.toList() }}")
+        var last: Preferences? = null
+        val saved = withTimeoutOrNull(5_000) {
+            while (true) {
+                val now = data.first()
+                last = now
+                if (done(now)) break
+                delay(10)
+            }
+        }
+        if (saved == null) {
+            throw AssertionError("not saved within 5 s; the store holds ${last?.asMap()}; ${synchronized(trouble) { trouble.toList() }}")
+        }
     }
 
     /** A SharedPreferences file as an older build left it; the migration empties it. */
