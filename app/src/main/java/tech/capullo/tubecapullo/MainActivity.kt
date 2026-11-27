@@ -15,18 +15,22 @@ import androidx.core.content.ContextCompat
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.receiveAsFlow
+import tech.capullo.tubecapullo.data.settings.AppSettings
 import tech.capullo.tubecapullo.links.LinkVia
 import tech.capullo.tubecapullo.links.LinksViewModel
 import tech.capullo.tubecapullo.player.PlaybackService
 import tech.capullo.tubecapullo.ui.debug.DebugCommands
 import tech.capullo.tubecapullo.ui.nav.Route
 import tech.capullo.tubecapullo.ui.nav.TubeApp
+import tech.capullo.tubecapullo.ui.settings.StoreResetDialog
 import tech.capullo.tubecapullo.ui.theme.TubeCapulloTheme
 import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     @Inject lateinit var debugCommands: DebugCommands
+
+    @Inject lateinit var appSettings: AppSettings
 
     private val links: LinksViewModel by viewModels()
 
@@ -49,6 +53,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             TubeCapulloTheme {
                 TubeApp(navRequests = navRequestFlow, links = links)
+                StoreResetDialog(appSettings)
             }
         }
     }

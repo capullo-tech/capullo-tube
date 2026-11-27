@@ -19,7 +19,7 @@ dependencyResolutionManagement {
         maven { url = uri("https://jitpack.io") }
     }
     versionCatalogs {
-        create("libs") { from("com.github.capullo-tech:build-conventions:22483910a0cd6d7e583ec3d268ad1c8f872bb4ba") }
+        create("libs") { from("com.github.capullo-tech:build-conventions:dab9931c094df9cb6af547d8abdf85c32b687f2d") }
         create("pins") { from(files("gradle/pins.versions.toml")) }
     }
 }
