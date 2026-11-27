@@ -12,6 +12,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkStatic
 import io.mockk.unmockkStatic
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -20,7 +21,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -39,10 +40,16 @@ class AppSettingsTest {
 
     private val file: File get() = File(folder.root, "app_settings.preferences_pb")
 
+    /** What the code under test logged or threw on a background coroutine, for the failure message. */
+    private val trouble = mutableListOf<String>()
+
     @Before
     fun setUp() {
         mockkStatic(Log::class)
-        every { Log.e(any(), any(), any()) } returns 0
+        every { Log.e(any(), any(), any()) } answers {
+            synchronized(trouble) { trouble += "Log.e ${secondArg<String>()}: ${thirdArg<Throwable>()}" }
+            0
+        }
     }
 
     @After
@@ -58,7 +65,8 @@ class AppSettingsTest {
         block: suspend (AppSettings, DataStore<Preferences>) -> T,
     ): T = runBlocking {
         val job = Job()
-        val scope = CoroutineScope(Dispatchers.IO + job)
+        val uncaught = CoroutineExceptionHandler { _, e -> synchronized(trouble) { trouble += "uncaught: $e" } }
+        val scope = CoroutineScope(Dispatchers.IO + job + uncaught)
         val store = PreferenceDataStoreFactory.create(
             corruptionHandler = replaceCorruptStore("app_settings"),
             migrations = listOfNotNull(oldPrefs?.let { prefs -> SharedPreferencesMigration({ prefs }) }),
@@ -73,7 +81,9 @@ class AppSettingsTest {
     }
 
     private suspend fun DataStore<Preferences>.awaitSaved(done: (Preferences) -> Boolean) {
-        withTimeout(5_000) { data.first(done) }
+        if (withTimeoutOrNull(5_000) { data.first(done) } != null) return
+        val holds = withTimeoutOrNull(1_000) { data.first().asMap() }
+        throw AssertionError("not saved within 5 s; the store holds $holds; ${synchronized(trouble) { trouble.toList() }}")
     }
 
     /** A SharedPreferences file as an older build left it; the migration empties it. */
