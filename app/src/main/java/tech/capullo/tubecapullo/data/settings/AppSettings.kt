@@ -18,7 +18,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import tech.capullo.tubecapullo.BuildConfig
 import tech.capullo.tubecapullo.data.similar.SimilarDepth
 import java.io.IOException
@@ -39,17 +38,16 @@ val Context.appSettingsStore: DataStore<Preferences> by preferencesDataStore(
 /**
  * The app's settings, kept in a Preferences DataStore.
  *
- * The constructor blocks until the file is read, so every value starts at what the user saved,
+ * [load] reads the file before the settings exist, so every value starts at what the user saved,
  * never at a default. A setter changes its value at once and queues the write; one coroutine on
  * [scope] writes them to the file in the order they were made. A write that fails with an
  * [IOException] is logged and the value holds until the app stops.
  */
-class AppSettings(
+class AppSettings private constructor(
     private val store: DataStore<Preferences>,
+    private val saved: Preferences,
     scope: CoroutineScope,
 ) {
-    private val saved: Preferences = runBlocking { store.data.defaultsOnReadError(STORE_NAME).first() }
-
     private val writes = Channel<(MutablePreferences) -> Unit>(Channel.UNLIMITED)
 
     init {
@@ -237,6 +235,9 @@ class AppSettings(
     }
 
     companion object {
+        /** Reads [store] and returns the settings it holds. */
+        suspend fun load(store: DataStore<Preferences>, scope: CoroutineScope): AppSettings = AppSettings(store, store.data.defaultsOnReadError(STORE_NAME).first(), scope)
+
         const val MAX_TRENDING_ROWS = 5
 
         const val MAX_MORE_LIKE_ROWS = 5

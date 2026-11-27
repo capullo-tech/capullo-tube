@@ -74,7 +74,7 @@ class AppSettingsTest {
             scope = scope,
         ) { file }
         try {
-            block(AppSettings(store, scope), store)
+            block(AppSettings.load(store, scope), store)
         } finally {
             // DataStore allows one instance per file; the file is free once its scope has ended.
             job.cancelAndJoin()
@@ -249,7 +249,7 @@ class AppSettingsTest {
         }
 
         assertThrows(IllegalStateException::class.java) {
-            AppSettings(defect, CoroutineScope(Dispatchers.Unconfined))
+            runBlocking { AppSettings.load(defect, CoroutineScope(Dispatchers.Unconfined)) }
         }
     }
 }
