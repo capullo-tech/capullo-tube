@@ -71,8 +71,6 @@ def metadata(release):
     match = MARKER.search(release.get("body") or "")
     if match:
         return json.loads(match[1])
-    if release["tag_name"] == "preview":
-        return {"code": 2}
     raise ValueError(f"Release {release['tag_name']} has no version-code metadata; establish its identity before publishing")
 
 
@@ -104,16 +102,6 @@ def publish(number, sha, repo, artifacts):
     pages = json.loads(run("gh", "api", "--paginate", "--slurp", f"repos/{repo}/releases?per_page=100"))
     releases = [release for page in pages for release in page]
     existing = validate_publication(current, releases)
-    # Establish certificate continuity on the first immutable release too. The historical rolling
-    # preview predates our metadata marker, so verify its actual signed artifact once.
-    if releases and not any(metadata(release).get("certificate") for release in releases):
-        legacy = next(release for release in releases if release["tag_name"] == "preview")
-        with tempfile.TemporaryDirectory() as tmp:
-            run("gh", "release", "download", legacy["tag_name"], "--repo", repo,
-                "--pattern", "*.apk", "--dir", tmp)
-            previous = list(Path(tmp).glob("*.apk"))
-            if len(previous) != 1 or certificate_of(previous[0]) != current["certificate"]:
-                raise ValueError("Signing certificate does not match the historical preview")
     tag = current["name"]
     # Even a tag with no release must not be silently adopted at a different commit.
     refs = run("git", "ls-remote", "origin", f"refs/tags/{tag}", f"refs/tags/{tag}^{{}}")
