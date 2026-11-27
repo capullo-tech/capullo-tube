@@ -1,6 +1,8 @@
 package tech.capullo.tubecapullo.di
 
 import android.content.Context
+import android.os.SystemClock
+import android.util.Log
 import androidx.room.Room
 import dagger.Module
 import dagger.Provides
@@ -21,6 +23,8 @@ import tech.capullo.tubecapullo.data.history.PlayHistoryDao
 import tech.capullo.tubecapullo.data.history.ResolvedTrackDao
 import tech.capullo.tubecapullo.data.history.StationSnapshotDao
 import tech.capullo.tubecapullo.data.history.TubeCapulloDatabase
+import tech.capullo.tubecapullo.data.settings.AppSettings
+import tech.capullo.tubecapullo.data.settings.appSettingsStore
 import tech.capullo.tubecapullo.data.similar.LastfmSimilarFinder
 import javax.inject.Named
 import javax.inject.Singleton
@@ -36,6 +40,16 @@ object AppModule {
     @Provides
     @Singleton
     fun provideRandom(): Random = Random.Default
+
+    @Provides
+    @Singleton
+    fun provideAppSettings(@ApplicationContext context: Context, scope: CoroutineScope): AppSettings {
+        // The constructor blocks on the first read of the settings file. Keep the cost visible.
+        val start = SystemClock.elapsedRealtime()
+        return AppSettings(context.appSettingsStore, scope).also {
+            Log.d("Settings", "settings read in ${SystemClock.elapsedRealtime() - start} ms")
+        }
+    }
 
     @Provides
     @Singleton
